@@ -437,9 +437,15 @@ Plan: a small monitor term for per-type terrain level, actual vs commanded speed
 - Format: per type one `.npz` (2 cm height rasters 400 x 400, obstacle mask, boxes with centre, half size, quaternion and role,
   meshes for non-box shapes) and one `.json` (level, seed, parameters, spawn poses, routes); `index.json`, `README.md`,
   `load_example.py`, `preview_top.png`, `preview_closeups.png` (previews, not simulator renders).
-- Routes: 680 defined by the generators, 131 dropped by `check_routes.py` (119 obstacle at body height, 12 drops over 0.26 m),
-  549 kept; 51 kept routes had end points pulled back inside the tile. Street front keeps only 19 of 90 routes (the generator
-  puts the hydrant, pole, bushes and car across its fixed routes): needs a generator fix.
+- Routes (after the street-front fix of 2026-11-11 23:20): 710 defined, 60 dropped by `check_routes.py`, **650 kept**; 51 kept
+  routes had end points pulled back inside the tile. Street front: 120 of 120 kept, four per tile (street to porch over the curb;
+  street to garage up the driveway; porch to street over the rock bed and curb; garage to street), least clearance 0.40 m, from a
+  generator variant `terrain_export/street_routed.py` (obstacles placed clear of the routes, car moved, garage floor slab added,
+  door headers raised with the floor); its tiles differ from the original `street.py` for the same seed.
+- Still weak: wedges 21 routes dropped (pinwheel routes into rails or brace stands, or off steep gables), stairs 19 (all
+  amphitheatre), homes 19 (kitchen clutter on fixed route lines); causes are the sub-agent's reading, not individually diagnosed.
+  The 0.35 m clearance rule is enforced for street only.
+- `targets` in the JSON are now only the checked ones; the 44 outside the tile are under `raw_targets_unchecked`.
 - Not in it: the paper's own nine terrain types (their generator needs Isaac Sim; `review/terrain/terrain.ply` could be
   rasterised later); roll wedges; rails on amphitheatre aisles.
 - Held-out check: the generators read no apparatus file; no tile reproduces an apparatus layout or route. Apparatus-like single
@@ -453,7 +459,7 @@ Plan: a small monitor term for per-type terrain level, actual vs commanded speed
 
 1. Run 2 signals at 250, 500, 1,000 and 2,000 iterations (see "Watch in run 2").
 2. Make `export_for_eval.py` and the MuJoCo port take the camera mount and gains from the task (they still describe run 1's head camera and armature-rule gains): needed before any run-2 checkpoint is exported or rendered.
-3. Paper table only when a checkpoint walks, in pauses under 10 minutes. Street-front generator fix for `extended_v1` (19 of 90 routes kept).
+3. Paper table only when a checkpoint walks, in pauses under 10 minutes.
 4. Extended task as a second task name (`Instinct-Parkour-Extended-Amp-X2-v0`): **first version written, never run in Isaac**
    (`code/x2_port/files_instinctlab/tasks/parkour/config/x2/extended.py`). It has: the paper's 20 terrain columns plus 12 new ones
    (one per exported tile type, two for stairs, two velocity-command columns), tile meshes built from the set's boxes and meshes

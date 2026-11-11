@@ -139,6 +139,39 @@ has torch for the export):
   ahead on the floor, short of the 4x4, and one foot onto the first stair tread at the stair foot. Not compared with the
   original code's outputs yet (step 3).
 
+## Results so far and the eval ladder (2026-11-11, evening)
+
+- **Baseline pair on our apparatus, current rule, MuJoCo CPU, nominal protocol, 200 trials (seeds 1000-1199): 15 / 200 = 7.5 %**
+  (95 % interval 4.6-12.0 %); clean 0 / 200; `eval/out/baseline_20261102/ours_nominal/` (summary, results, trials.csv, events.csv,
+  renders of seeds 1156 best, 1061 median, 1136 failed). 153 of 185 failures end in the 4x4 section (78 heading back over the
+  front 4x4, 36 at button 1, 21 at the back 4x4); 13 stalls on the ramps. Plant `vendor_20260823`.
+  In THIS run the goal command shrank inside 0.5 m of every waypoint (`ACP_GOAL=shrink`), which the original run never
+  did on the way to a non-station waypoint (it switched at 0.5 m). The adapter's default is now to keep the goal length
+  except at stations; the 200 trials have NOT been re-run with it yet. Randomised protocol and NIST: not run.
+- **Impulse numbers of that run are not to be quoted.** They were summed over whole contact episodes and over every contact
+  point: 130 of 2,552 hit events lasted over 1 s and hold 87 % of the sum; the largest (2.8 million N s) is a left foot pressed
+  into the 16 cm end face of the front ramp cell next to a brace post for 45.7 s in a stalled trial, with contact forces of
+  3.5 to 4 kN per contact point (a jammed foot in the solver, not a unit error). Since then the impulse is taken over the
+  first 0.3 s only. Still open: a foot pinched over a beam edge gets opposing contact forces, so "impulse" of the face contact
+  is not the net impulse on the body, and most hits reach the penalty's cap; the penalty is in effect a hit count. Foot loads
+  over 2 kN occur in 1 to 2 % of frames (worst 31 kN): the contact stiffness on the height field needs a look.
+- **Ladder step 1 with the baseline pair (50 trials per test, nominal, on the training map):** `eval/out/baseline_20261102/ladder/step1.txt`.
+  Flat: walk, stop-and-stand, turn in place, turn and return, backward, sideways all 50 / 50. One level log 32 / 50; slanted log
+  43 / 50; wedges 25 / 50; stairs up 44 / 50; stairs down 48 / 50; log corridor with walls 16 / 50, with rails 20 / 50. Clean
+  success 0 on every obstacle test (every crossing logs side hits).
+- Ladder code `eval/ladder.py`, runner `eval/run_ladder.sh` (9-minute slices that continue). Step 2 is not built (route list
+  to be fixed). Tiles are those of the training export; a held-out set is still to be generated.
+- Bash `timeout` does not always kill a Windows python child: long runs stop themselves (`--wall-limit`, `LADDER_WALL`).
+- Body velocities use `mjOBJ_XBODY` (the Hiking agent's finding; `mjOBJ_BODY` is the inertial frame). The baseline adapter
+  reads the free joint directly and its 50-step check covers the gyro (3.6e-06). The ACP hand-over adapter had the wrong
+  call and failed its check until fixed; it now passes (6e-08 input, 3e-06 action).
+- Hand-overs: ACP `handover_pair_s1_001250_planner_v1` passes its observation check but is refused until its card names its
+  plant; Hiking `x2_parkour_v1_250`: card has no plant either, adapter not written (its port to reuse:
+  `tracks/hiking/code/x2_port/sim2sim/`); checkpoint 500's depth encoder outputs zero per the Hiking agent: not to be scored.
+- Depth views: `eval/depth_views.py` -> `eval/out/depth_views_ours/` (12 points, flat-ground check, README); chest camera on
+  `torso_link` (0.131, 0, 0.259), 61.6 deg down, 87 x 58 deg. Flat check: toes at 98 % of the image height, the 1.0 m floor line
+  at 25.3 % from the top (rule 27 +- 3 %): met.
+
 ## Harness (task 4): what was verified
 
 - Model: X2 loads on both apparatuses; 20 s of simulation takes about 2 s on one core.
