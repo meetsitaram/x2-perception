@@ -5,7 +5,7 @@ agents that watch and steer it are lost.
 
 ## 1. Become the coordinator
 1. Open a Claude Code session in `C:\Users\PC\projects\perception-agents` (it reads `CLAUDE.md`).
-2. Read, in this order: `docs/USER_RULES.md`, `state/STATUS.md`, `docs/EVAL.md`, `docs/TRACK_RULES.md`, `config/nodes.json`.
+2. Read, in this order: `docs/USER_RULES.md`, `state/SHARED_LESSONS.md`, `state/STATUS.md`, `docs/EVAL.md`, `docs/TRACK_RULES.md`, `config/nodes.json`.
 3. `bash scripts/node_check.sh` (GPU use, disk, shared filesystem), then read the heartbeats:
    `ssh -i ~/.ssh/nebius_corpus -o IdentitiesOnly=yes <user>@<ip> 'cat /mnt/filesystem-g4/status/*.json; tmux ls'`.
 4. Read each `state/<track>.md`: it has what is running, the newest checkpoint and the exact resume and stop commands.
@@ -17,7 +17,7 @@ one session per role). Give each this prompt, with its own track filled in:
 
 > You are the `<acp | ssr | hiking>` track agent of the perception-agents team (or: the eval monitor). Read, in this order, and
 > follow: `docs/USER_RULES.md`, your brief `.claude/agents/<role>.md`, `docs/TRACK_RULES.md`, `docs/SHARED_FS.md`, `docs/EVAL.md`,
-> `config/nodes.json`, `state/STATUS.md`, and your own `state/<role>.md`. You are resuming, not starting: your state file says what
+> `config/nodes.json`, `state/STATUS.md`, `state/SHARED_LESSONS.md`, and your own `state/<role>.md`. You are resuming, not starting: your state file says what
 > is already running on your node and how to resume it; check the node and the heartbeat before changing anything, and do not
 > restart a healthy run. Your node is `<ip>` only (`ssh -i ~/.ssh/nebius_corpus -o IdentitiesOnly=yes -o BatchMode=yes
 > <user>@<ip>`); never touch the other nodes or another track's tree. Keep your state file current, do not wait for answers,

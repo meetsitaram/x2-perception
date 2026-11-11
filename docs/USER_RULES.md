@@ -60,3 +60,9 @@ anything else. When the user decides something new, the coordinator adds it here
 
 ## Repository hygiene
 - "Why would you include ip addresses in a repo. Don't do that." No node addresses, login names, cloud project or instance ids, keys or tokens in the repo; they live in the git-ignored `config/nodes.local.json`. Run `bash scripts/check_no_secrets.sh` before every push. The repo is https://github.com/meetsitaram/perception-agents . (2026-11-11)
+- Back up to the shared filesystem (user, 2026-11-11: "periodically save checkpoints and other motion data files and any intermediate files to the shared filesystem as backup"): checkpoints, training logs, generated motion and label files, terrain files, configs and code changes go to `/mnt/filesystem-g4/tracks/<track>/` at least every 30 minutes (rsync from the node's local disk if the run writes there), and the supervisor does it automatically, not by hand. Nothing a restart would need may live only on a node's local disk. Keep the newest two checkpoints plus one every 1,000 iterations; record in the state file where each kind of file is and how to restore it.
+
+## Transparency and sharing (2026-11-11)
+- "Ask the agents to also have paper-mentioned evaluation success criteria": each track reports its paper's own evaluation, as the paper defines it, beside the common apparatus eval.
+- "Include enough logs to capture all the metrics, rewards, penalties etc included in the papers so we have more transparency on what is going on": every reward and penalty term, termination cause, curriculum level and paper metric is logged per iteration, on the shared filesystem, with a legend. The dashboard shows them.
+- "Ask them to talk to each other to share common issues each encountered and addressed": `state/SHARED_LESSONS.md` is the shared notebook; every agent reads it and adds to it, and the coordinator relays questions between tracks.

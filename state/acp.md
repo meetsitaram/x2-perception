@@ -1,6 +1,6 @@
 # ACP track state
 
-Updated 2026-11-11 20:56 UTC (track agent). **Stage 1 is training** on node acp: run `s1_v1`, tmux session `acp`, 36,000 envs since iteration 750; see section 4.
+Updated 2026-11-11 21:27 UTC (track agent). **Stage 1 is training** on node acp: run `s1_v1`, tmux session `acp`, 36,000 envs since iteration 750; backup loop in tmux session `acp-backup`; see section 4.
 
 ## 0. Answer to the question that decides the track
 
@@ -180,6 +180,33 @@ labels for all clip sets with `ref_labels.py`.
   warp-lang 1.18.0: the desktop's versions); lock file `tracks/acp/env/requirements.lock.txt`. Rebuild:
   `python3 -m venv ~/acp_env && ~/acp_env/bin/pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128 && ~/acp_env/bin/pip install mujoco==3.17.0 mujoco-warp==3.17.0 warp-lang==1.18.0 numpy joblib pyyaml scipy`.
 
+### Where every file is, and how to restore (backup rule, 2026-11-11)
+
+Node names only here; addresses and the login are in the git-ignored `config/nodes.local.json`.
+
+| What | Where (all under `/mnt/filesystem-g4/tracks/acp/` unless said) | Written by | Restore |
+|---|---|---|---|
+| Checkpoints | `runs/<run>/ckpt_<it>.pt`, `latest.pt` | trainer, every 250 iterations, straight to the shared filesystem | supervisor resumes from `latest.pt` |
+| Training logs | `runs/<run>/train.out`, `log.jsonl`, `supervisor.log` | trainer / supervisor, shared filesystem | read in place |
+| Code and configs | `code/` (master copy); a snapshot per run in `runs/<run>/code_snapshot/` | me (rsync from the desktop scratchpad); snapshot by the backup loop | copy the snapshot back to `code/` |
+| Clip sets, props, ramp rasters | `data/clips/` | copied once from the desktop (`loco-manip-apparatus/build/train`) | re-copy from the desktop, list in "Copies made" |
+| Reference-derived contact labels | `code/cfg/labels_stage1_sets.json.pt` (cache) | `acp/data.py` at first start | delete it: it is regenerated from the clips in about a minute |
+| X2 model files | `/mnt/filesystem-g4/data/robots/x2/` and `code/gear_sonic/...` | copied once from gwbc-v6 | re-copy, see its README |
+| Benchmark and diagnostic outputs | `backup/tmp_outputs/` (from the node's `/tmp/*.out`) | backup loop | read in place |
+| Anything a job writes on the node's local disk | `backup/local/` (mirror of `~/acp_local` on the node; empty so far) | backup loop | rsync back |
+| Python environment | NOT copied (node local `~/acp_env`); pinned list `env/requirements.lock.txt`, refreshed by the backup loop | | rebuild with the commands in "What runs now" |
+| Heartbeat | `/mnt/filesystem-g4/status/acp.json` | trainer | |
+| Manifest of the last backup pass | `backup/MANIFEST.txt` | backup loop | |
+
+Backup loop: `code/backup.sh`, tmux session `acp-backup` on node acp, one pass every 20 minutes; the supervisor starts it if
+it is not running (`tmux new -d -s acp-backup "bash /mnt/filesystem-g4/tracks/acp/code/backup.sh"` by hand). Each pass mirrors
+the local-disk items above, snapshots the code next to every run, prunes checkpoints to the newest two plus every multiple
+of 1,000 plus `latest.pt`, and rewrites the manifest. Checked 2026-11-11 21:24 UTC: first pass ran, `ckpt_000250` and
+`ckpt_000500` pruned, `ckpt_000750` and `ckpt_001000` kept. Only on the node's local disk now: the Python environment and
+the throw-away benchmark run folders in `/tmp` (their outputs are mirrored). Not a second copy: runs, logs, code and clips
+exist once, on the shared filesystem (plus the desktop sources for clips and model files); the shared filesystem itself is
+the backup the rule asks for.
+
 ### GPU use (user: "make sure the GPUs are well used"), measured 2026-11-11 20:41-20:50 UTC
 
 Full training loop (physics + observations + PPO update), fresh policy, 20 iterations each, njmax 300:
@@ -206,14 +233,21 @@ sample budget stays in the same range (about 10 billion transitions).
 njmax raised 300 -> 450: MuJoCo Warp printed "nefc overflow - please increase njmax beyond 300" 102 times in the 12,000-env
 run (constraint rows dropped in some worlds); none in the first iterations at 450.
 
-### Stage 1 so far (iteration 770)
+### Stage 1 so far (iteration 1,010, 21:24 UTC)
 
-Reward per step 0.10 at iteration 200, 0.076 at 700-770 (maximum 0.30): it fell while the reset curriculum moved the start
-phase from 0.90 to 0.28, i.e. episodes got longer and harder faster than tracking improved. Base position error 0.15 m, joint
-error 0.18 rad (flat since iteration 100), contact agreement 93 %. Finish rate per set at iteration 720: Pico 2x2 0.85, ramps
-0.74, flat 0.64, blocks 0.63, tp stairs 0.59, chains 0.57, 4x4 0.56, fitted stair climbs 0.26, stair descents 0.07.
-Open concern: the curriculum advances on "not terminated" with a loose termination (0.5 m), so the phase can fall without
-the tracking getting tighter; stair climbs and descents are the weak sets. To judge at about iteration 2,000.
+| Iteration | Reward per step (max 0.30) | Start phase (mean) | Finished | Base pos error | Joint error |
+|---|---|---|---|---|---|
+| 200 | 0.100 | 0.73 | 0.52 | 0.11 m | 0.179 rad |
+| 700 | 0.077 | 0.33 | 0.57 | 0.145 m | 0.178 rad |
+| 1,010 | 0.098 | 0.03 | 0.76 | 0.138 m | 0.171 rad |
+
+The reset curriculum reached the clip starts (phase 0.03; 10 % of envs at 0.0, 90 % below 0.1) at about iteration 1,000, so
+episodes are now whole 10 s segments; since then reward and finish rate rise and the errors fall slowly. Orientation error
+0.20 rad, contact-point error 0.087 m, contact agreement 93.7 %. Finish rate per set at iteration 1,010: Pico 2x2 0.96,
+ramps 0.87, flat 0.85, blocks 0.83, tp stairs 0.79, 4x4 0.77, chains 0.69, fitted stair climbs 0.67, **stair descents 0.10**.
+Weak: stair descents (38 clips, 3.1 min, 5 % share); joint tracking is loose (reward term 0.64 of 1). To judge at iteration
+2,000: if descents stay under 0.3, raise their share and look at the failures; if joint error stays near 0.17 rad, tighten
+the termination (paper-silent) rather than the paper's reward kernels.
 
 ### Code (`/mnt/filesystem-g4/tracks/acp/code`; the node is the master copy, the desktop copy is only in a session scratchpad)
 
