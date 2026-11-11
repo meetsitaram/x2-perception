@@ -382,3 +382,134 @@ Plumbing checked by reading the code (2026-11-11): the command is the world-x sp
 exp(-err^2 / 0.25) as in Table 7, MuJoCo free-joint angular velocity is already body-frame. PD gains, armature, effort limits,
 default pose and action scale (0.25 x effort / kp) are the same vendor plant the Hiking track's X2 task uses (10 Hz natural
 frequency, damping ratio 2: hip and knee kp 115, ankle pitch 35, ankle roll 12.4).
+
+## Root-cause investigation of standing still (2026-11-11, 21:50-22:55 UTC)
+
+Bisect runs (all 8,192 robots, vendor plant, head camera, walking starts from moving frames, domain randomisation and
+terminations as in r3; "flat" = every robot on the open flat tile, no curriculum):
+
+| Run | Rewards | Iterations | vx curve | Verdict |
+| --- | --- | --- | --- | --- |
+| d1 | flat; only `lin_vel` + `ang_vel`; style weight 0 | 280 | 0.64 (20), 0.47 (60), 0.20 (120), 0.22 (150), 0.50 (180), 0.69 (210), 0.84 (240), 0.91 (270) | **moves**: 59 % of episodes reach the tile end at 270 |
+| d2 | d1 + posture and joint-deviation terms (`orientation`, `ang_vel_xy`, `base_height`, `lateral`, `dof_dev`, `stand_still`) | 240 | 0.44 (30), 0.16 (60), 0.14 (100), 0.18 (140), 0.26 (180), 0.41 (210), 0.55 (240) | **moves**, about 40 iterations later than d1 |
+| d3 | d1 with plant `mc_20261024` | queued | | |
+| d4 | flat, all Table 6 terms, style weight 0, plant `mc_20261024` | queued | | expected to stand; this is the run that names the penalty group |
+
+What is proven by a run:
+- The code can produce locomotion: commands, frames, velocity kernels, PD and action scale work (d1, d2).
+- The posture and joint-deviation terms do not cause standing by themselves (d2).
+- Standing does not need terrain, side obstacles or the style reward to appear... not yet proven: d4 tests it.
+
+What d1's motion is: **a fast shuffle, not a walk.** Probe on flat ground, 256 robots, 12 s, command 0.6 m/s, no noise
+(`eval/d1_probe/gait.json`, clip `eval/d1_probe/d1_it250_flat.mp4`: MuJoCo playback of the recorded MuJoCo Warp states, chase
+view and legs close-up): speed 0.68 m/s, 6.8 touchdowns per foot per second, median air time 0.06 s (no air phase reaches
+0.1 s), step length 0.10 m, swing clearance 2.2 cm, base height 0.666 m, all 256 survive. I looked at the frames: legs nearly
+straight, feet pattering under the body. The yaw-rate error in the training log (1.0 rad/s against a 0.07 command) is the
+action noise shaking the body (std 1.35): without noise the same policy has 0.28 rad/s.
+
+**Measured: under the paper's reward table this shuffle earns less than standing.** Same probe, each policy scored with the
+full Table 6 (weighted, per step, command 0.6 m/s, no noise; `eval/terms_probe/`):
+
+| Term (weight) | Standing policy (r3, it 300) | Shuffling policy (d1, it 250) | Difference |
+| --- | --- | --- | --- |
+| lin_vel (1.0) | 0.240 | 0.929 | +0.69 |
+| single_support (0.2) | 0.003 | 0.200 | +0.20 |
+| base_height (0.4) | 0.351 | 0.392 | +0.04 |
+| ang_vel (0.8) | 0.796 | 0.568 | -0.23 |
+| orientation (0.5) | 0.498 | 0.363 | -0.13 |
+| ang_vel_xy (0.25) | 0.244 | 0.130 | -0.11 |
+| action_rate (-0.12) | -0.001 | -0.153 | -0.15 |
+| smoothness (-0.06) | 0.000 | -0.152 | -0.15 |
+| dof_dev (-1.8) | -0.189 | -0.324 | -0.13 |
+| impact (-1.3) | -0.001 | -0.167 | -0.17 |
+| slip (-0.2) | 0.000 | -0.134 | -0.13 |
+| dof_vel, dof_torque, limits | -0.145 | -0.075 | +0.07 |
+| lateral (0.08) | 0.080 | 0.080 | 0 |
+| **r_l total** | **1.876** | **1.657** | **-0.22** |
+
+So the cause is in the reward balance, not in a broken code path: with Table 6 as written, a robot that stands under a 0.6 m/s
+command already collects 1.88 of about 3 per step, and the first gaits that exploration can reach (a shuffle) collect less,
+because what they gain in velocity tracking (+0.69) and single support (+0.20) is taken back by yaw-rate and roll/pitch-rate
+tracking, impact, slip, action smoothness and joint deviation (-1.11). Only a clean gait (quiet torso, soft landings, smooth
+actions) beats standing, and nothing leads there from a stand. In training the action noise makes this worse: the standing
+policy scores 1.40 with its own noise (std 0.72), and the noise is not reduced because the entropy bonus holds it.
+Hypothesis, not yet proven: the paper's Isaac Gym setup gets across this gap (its ablation without style reward still walks),
+through details the paper does not state (initial state, reward scheduling, noise level, contact model for impact and slip).
+
+Plain bugs checked:
+- Command frame and sign, tracking kernel width and units: correct (read; and d1 tracks 0.6 m/s at 0.68 m/s).
+- Observation normalisation: the actor and critics use running normalisation; encoder inputs are clamped; d1/d2 learn with it.
+- Action scale, PD gains, armature, default pose: read back from the live model (table below); the same vendor plant as the
+  Hiking track's X2 task. The one hand-set value was waist pitch/roll at 120/6.
+- Learning-rate collapse (1e-5 to 1e-3, KL 0.01-0.025): present in every run including d1 and d2, which learn; not the cause.
+- Discriminator saturation: no; a standing robot's style reward is 0.26-0.35, not 0, and the discriminator output is -0.7.
+- Mirror maps: `tests/test_mirror.py` passes on the node (kinematic check, with three cases that must fail).
+- Standing-command share: the paper's U(0, 1.2) m/s gives 12.5 % of walkers a command under the 0.15 threshold. In r1/r2 the
+  walking starts overrode the speed with the frame's (median 0.09 m/s), so about a third of walkers were commanded to stand:
+  a real defect, fixed in r3 (`--rsi_min_speed 0.3`), not sufficient alone.
+- Standing frames in the prior: 15-24 % (fixed in r3 with `--prior_min_speed 0.2`), not sufficient alone.
+- Odd and unexplained: the standing policy without noise holds about 2 of 21 joints beyond their position limit
+  (`dof_pos_lim` -0.139). To look at.
+
+On the coordinator's question of what the two standing X2 tracks share: d1 ruled out the robot model, gains and action scale
+as blockers of motion (the X2 moves at commanded speed in this simulator with them), and d1 kept the same motion data starts.
+It points at reward balance against a too-good standing score; the shared motion data's standing share is a second, smaller
+contributor (measured here). Whether the softer vendor gains make a clean step harder is what d3 tests.
+
+Fix and plan (within the paper's method):
+1. d3 (plant only) and d4 (all Table 6 terms on flat, no style) run now, 300 iterations each. d4 pass/fail: if vx is under 0.2
+   at 300 the penalty group is confirmed as what holds the robot at a stand.
+2. r5 (queued after them, runs unattended): the full method with the motion prior's weight raised to 1.0 under per-critic
+   normalisation (style 44 % of the gradient), plant `mc_20261024`, camera `torso60`. The motion prior is the paper's own
+   mechanism for shaping a clean gait, and a gait close to the data is smooth and soft-landing, so it also scores on Table 6.
+   Pass: vx at least 0.3 and single support at least 0.3 with air times over 0.1 s by iteration 500, mean level rising by
+   1,000. Stop at 500 otherwise.
+3. If r5 fails: start from a moving policy instead of from a stand, still by RL and still without SuperMimic: train d2-style
+   (tracking + posture) for 250 iterations, then switch on the remaining Table 6 terms and the style reward over the next
+   500 iterations (`--only_terms` with a schedule; needs a small code change). This is a reward schedule the paper does not
+   describe, so it would be listed as a deviation; the final rewards are the paper's.
+4. Question for the Hiking track (via the coordinator): which reward terms pay its standing X2 the most per step, and does its
+   G1 run go through a shuffle phase before walking?
+
+## What the simulator applies (read back from the live MuJoCo Warp model; `eval/model_*.json`)
+
+Physics 200 Hz, policy 50 Hz, total mass in the json. Armature, effort limit, action scale (0.25 x effort / armature kp) and
+default pose are the same in both plants.
+
+| Joint (both sides) | armature | effort N.m | action scale | default rad | kp / kd vendor_20260823 (r1-r4, d1, d2) | kp / kd mc_20261024 (d3 on) |
+| --- | --- | --- | --- | --- | --- | --- |
+| hip pitch | 0.02908 | 120 | 0.2613 | -0.312 | 114.8 / 7.31 | 100 / 4 |
+| hip roll, hip yaw | 0.02908 | 120 | 0.2613 | 0 | 114.8 / 7.31 | 100 / 3 |
+| knee | 0.02908 | 120 | 0.2613 | 0.669 | 114.8 / 7.31 | 150 / 5 |
+| ankle pitch | 0.00884 | 36 | 0.2579 | -0.363 | 34.9 / 2.22 | 40 / 3 |
+| ankle roll | 0.003133 | 24 | 0.4851 | 0 | 12.37 / 0.79 | 30 / 2 |
+| waist yaw | 0.02908 | 120 | 0.2613 | 0 | 114.8 / 7.31 | 40 / 8 |
+| waist pitch, roll (not policy joints, held) | 0.003133 | 24 | 0.4851 | 0 | 120 / 6 (hand-set) | 40 / 5 |
+| shoulder pitch | 0.00884 | 36 | 0.2579 | 0.2 | 34.9 / 2.22 | 30 / 1 |
+| shoulder roll | 0.00884 | 36 | 0.2579 | +-0.2 | 34.9 / 2.22 | 20 / 1 |
+| shoulder yaw | 0.003133 | 24 | 0.4851 | 0 | 12.37 / 0.79 | 20 / 1 |
+| elbow | 0.003133 | 24 | 0.4851 | -0.6 | 12.37 / 0.79 | 50 / 1 |
+
+The MJCF and the vendor plant file in the code copy are byte-identical to `/mnt/filesystem-g4/data/robots/x2/`. The plant is
+chosen with `--plant` (default `mc_20261024`, user decision 2026-11-11); the hand-set waist gains apply only to plants without
+a stiffness table. Training randomises kp and kd by x0.9-1.1 and motor strength by x0.8-1.2 around these (Table 10).
+
+## Cameras (user spec 2026-11-11: ground from about 10 cm behind the toe tips to at least 2 m ahead, feet in view, range 3 m)
+
+Measured with the ray march on flat ground, plant `mc_20261024`, 36 x 36 image, distances from the front edge of the soles
+(`eval/model_mc_20261024.json`; frames in `renders/camera_check/`: flat, a 4x4 at 1.5 m and at 0.3 m, a stair foot at 0.3 m,
+standing and a kinematic mid-stride pose, PNG upscaled and the raw 36 x 36 arrays):
+
+| Option | Mount | Tilt below horizontal | Square field of view | Depth range | Height | Ground seen, standing | Width at 0.5 m | Legs in image (standing / mid-stride) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `head` (runs so far) | `head_pitch_link`, (0.0576, 0, -0.0484) | 40 deg | 54.9 deg | 0.1-2.0 m | 1.13 m | 0.61 to 1.56 m | not visible | 17 % |
+| `chest` | `torso_link`, (0.155, 0, 0.20) | 75 deg | 54.9 deg | 0.1-2.0 m | 1.00 m | -0.03 to 1.21 m | 1.13 m | 8 % / 12 % |
+| `torso60` (new, from r5 on) | `torso_link`, (0.0488, 0, 0.4378) **provisional** | 60 deg | 64 deg | 0.1-3.0 m | 1.22 m | 0.05 to 3.06 m; the rays below that land on the feet (unoccluded they would reach 0.13 m behind the toes) | 1.63 m | 6 % / 7 % |
+
+`torso60`: camera frame x forward, y left, z up in the parent body, rotated about y by the tilt; rays on a regular 36 x 36
+tangent-plane grid; depth is distance along the optical axis, clamped to the range and scaled to 0-1; no crop. The mount point
+is the Hiking track's G1 torso-camera offset placed on the X2 torso link with y centred (for mirror symmetry); it is to be
+replaced by the X2 offset the Hiking track fixes. A real sensor needs 64 deg in the image's vertical direction (a D435i's
+58 deg does not reach; a Gemini 335 at 65 deg or a D435i turned to portrait does). In the frames the feet and hands are
+visible; a 4x4 at 1.5 m is one to two pixel rows, at 0.3 m about three. The paper's waist camera pose and field of view are
+not given in the paper, so its footprint cannot be computed for comparison; `head` and `chest` remain selectable.
