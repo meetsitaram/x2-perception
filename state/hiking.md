@@ -46,6 +46,9 @@ Updated 2026-11-11 23:10 UTC (Hiking track agent). Node `hiking`; address and lo
   0.40 to 1.27 m. Paper's G1 camera placed on the X2 at the same height (1.24 m), 48 deg, paper crop: 0.23 to 1.01 m (that point is
   inside the X2's head shell at the G1's 0.049 m forward offset; the head's face is at 0.076 m). Same height, 0.10 m forward,
   60 deg, all rows: 0.01 to 2.00 m. G1 itself (not computed by FK; about 1.24-1.27 m high): about 0.3 to 1.1 m from the camera.
+- The SSR track's estimate for the same camera: `torso_link` (-0.026, 0, 0.125), 53.5 deg (toe line 96%, 0.55 m at 49.5%, 1.0 m
+  at 27.1%, -0.02 to 1.85 m). At that height (0.92 m) the mesh puts the chest shell front at x = +0.096 m, so that point is
+  12 cm inside the torso; the two poses differ by 16 cm forward, 13 cm in height and 8 deg. One of them must be adopted by both.
 - Not done: random mount offsets per robot (the released code has none); an Isaac-rendered frame at the chest pose (the frames
   dumped by the pre-launch check are from the superseded brow-height pose and are marked SUPERSEDED in `runs/_smoke_v2/`).
 - Row order (checked on run 1's Isaac recording): row 0 is the top of the image (far), the last row is nearest the feet.
@@ -108,6 +111,53 @@ Updated 2026-11-11 23:10 UTC (Hiking track agent). Node `hiking`; address and lo
 - Run 1 was restarted from `model_500` with reference v2 at 22:28; in the 150 iterations it then ran the speed ratio stayed at 0.
   That is too short to judge the fix, and run 2 starts with v2 from scratch.
 - Run 2, iteration 11: speed ratio 0.24, both feet down 51% (untrained policy flailing; not a result).
+
+### Which terms pay the standing X2 (answer to the SSR track's question)
+
+Weighted reward per control step (episode sum / episode length), from the per-term logs:
+
+| Term | X2 run 1 at 499 (stands) | G1 at 500 | G1 at 5,000 |
+|---|---|---|---|
+| is_alive | +0.0483 | +0.0577 | +0.0568 |
+| track_ang_vel_z_exp | +0.0160 | +0.0132 | +0.0180 |
+| track_lin_vel_xy_exp | +0.0116 | +0.0201 | +0.0218 |
+| stand_still | +0.0000 | +0.0010 | +0.0022 |
+| volume_points_penetration (edges) | -0.0000 | -0.0041 | -0.0045 |
+| feet_slide | -0.0010 | -0.0038 | -0.0032 |
+| dof_acc_l2 | -0.0010 | -0.0023 | -0.0018 |
+| feet_flat_ori | -0.0012 | -0.0021 | -0.0023 |
+| dof_pos_limits | -0.0021 | -0.0001 | -0.0004 |
+| action_rate_l2 | -0.0030 | -0.0050 | -0.0068 |
+| pelvis_orientation_l2 (torso tilt on the X2) | -0.0031 | -0.0010 | -0.0009 |
+| heading_error | -0.0040 | -0.0069 | -0.0033 |
+| dont_wait | -0.0096 | -0.0058 | -0.0039 |
+| all task terms | +0.0478 | +0.0569 | +0.0679 |
+| style (discriminator) reward per step, before its 0.25 coefficient | 0.646 | 0.436 | 0.511 |
+
+- What pays the stander: staying alive (the largest term by far); yaw tracking, which it earns in full by turning on the spot
+  toward the target; and about half of a walker's linear-tracking reward, because the exponential kernel (std 0.5) still pays
+  exp(-0.63^2 / 0.25) = 0.2 at zero speed. It also avoids about 0.011 per step of penalties a walker pays (edge penetration, foot
+  slide, action rate, joint acceleration, foot tilt). The wait penalty (-0.0096) and lost tracking do not outweigh these by much:
+  the stander is at 0.048 against 0.057 for the G1 at the same iteration.
+- The style reward is where the X2 stander does better than the G1 ever did (0.65 against 0.44-0.51): consistent with a reference
+  that was one fifth standing. How the 0.25-weighted style reward compares in size with the task terms inside the trainer was not
+  traced.
+- Did the G1 pass through a shuffle? Yes, by its air-time reward: per 100 steps 0.0054 at 500, 0.0071 at 1,000, 0.0088 at 5,000,
+  against roughly 0.05-0.06 at 20,000 (0.56 per episode). So for its first 5,000 iterations the G1 moved with very short swing
+  phases while falling in 34-71% of episodes. It never stood: the X2 at 499 has 0.0008 per 100 steps, seven times lower again.
+
+### Rest pose with zero actions (answer on the lean-back question)
+
+- Isaac, pre-launch check of the run-2 task (mc_20261024 gains, 64 robots on the training terrain with reset noise, 2.2 s):
+  1.05 episodes ended per robot, 63 of 71 by tilt over 1 rad. Run 1's gains under the same check: 1.86 per robot in 3 s; the G1
+  task: 2.45. So with zero actions the default pose is not held in Isaac under either plant; it falls rather than settling into
+  a lean. Pelvis pitch at rest was not recorded (direction of the fall not logged).
+- MuJoCo, stock MJCF with sphere soles, flat ground, no noise (`rest_pose.py`): falls forward at 1.4 s under both plants. In
+  the default pose the centre of mass is 0.016 m ahead of the pelvis origin and the sole contact points span -0.083 to +0.121 m
+  (centre 0.019 m), so the pose is balanced only if the joints hold it exactly; knees sag 0.044 rad under mc gains.
+- This does not reproduce the SSR track's "settles 7.6 deg leaning back" (its model holds the waist stiffly and uses its own
+  feet). The 9 deg backward lean of run 1's checkpoint 500 is the policy's choice of stance, not the rest pose.
+- Nothing was changed in the default pose.
 
 **Watch in run 2** (`metrics.jsonl`): `Curriculum/walk_monitor/speed_ratio`, `double_support`, `Episode_Reward/rewards_feet_air_time/sum`,
 `rewards_dont_wait/sum`, at 250, 500, 1,000, 2,000. G1 reference at 500 (4,096 robots): air time 0.040, wait penalty -4.3,
