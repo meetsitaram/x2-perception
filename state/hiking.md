@@ -181,6 +181,51 @@ iteration 50 while everything falls, 0.02 from iteration 200 on). So the standin
 camera or the standing share of the motion reference alone: all three were changed and the pattern is the same at 250. The early
 "speed" at iterations 50-100 is robots falling forward, not walking. Checkpoint: `runs/x2_parkour_v2/20261111_225809/model_250.pt`.
 
+### Does the style reward tell standing from walking? (offline, CPU, `code/x2_port/score_discriminator.py`)
+
+Each checkpoint's discriminator scored on 10-frame windows built from the motion file as the task builds them; reward =
+clamp(1 - 0.25 (D - 1)^2, 0); the policy gets 0.25 x this.
+
+| Discriminator | Reference walking (> 0.3 m/s) | Reference standing stretches | Synthetic perfect stand (default pose, zero velocity) | Stand as share of walking |
+|---|---|---|---|---|
+| X2 run 2, iteration 250 (reference v2) | 0.917 (D +0.44) | 0.811 | 0.720 (D -0.06) | 78% |
+| same discriminator on reference v1 | 0.909 | 0.823 | 0.720 | 79% |
+| G1, iteration 500 | 0.948 (D +0.55) | 0.888 | 0.875 (D +0.29) | 92% |
+| G1, iteration 5,000 | 0.923 | 0.840 | 0.835 | 90% |
+| G1, iteration 20,000 (walks stairs) | 0.874 | 0.771 | 0.750 (D 0.00) | 86% |
+
+- The style reward separates standing from walking only weakly on both robots: a motionless robot in the default pose collects
+  78% (X2) or 86-92% (G1) of what real walking collects. The discriminator's outputs stay between about -0.1 and +0.6 (targets
+  are +1 for the reference and -1 for the policy), and with this reward form D = 0 already pays 0.75.
+- **The G1 walked with a discriminator that separates even less than the X2's.** So the style prior is not what makes the G1
+  walk and the X2 stand; the difference has to be in the task terms or the robot (staying alive against the wait penalty and
+  tracking, and how costly a first step is for each robot).
+- Which inputs carry what little separation there is (X2): joint positions (walking windows with stand joint positions drop
+  0.917 -> 0.811) and base linear velocity (0.917 -> 0.873); joint velocities, gravity and angular velocity carry almost none
+  (0.914-0.924). Same ranking on the G1.
+- Logged discriminator terms are alike on both: weight decay 92 (X2 run 1 at 260) against 109-117 (G1), gradient penalty 0.043
+  against 0.044, loss 0.36 against 0.21-0.38. The weight-decay figure is not an anomaly.
+- The policy's own windows were not scored (no rollout of run 2 available on the CPU yet); the trainer logs 0.50 for them at 249,
+  below the synthetic stand's 0.72, so the discriminator does mark the policy's actual standing as less reference-like than a
+  perfect stand.
+- Approximations: reference velocities are finite differences of the file without the task's interpolation; clip seams skipped.
+
+### Terms that correspond to a "get off the ground" recipe (for carrying one over from SSR as a listed deviation)
+
+| Role | Term here | Value now |
+|---|---|---|
+| Survival reward | `is_alive` | +3.0 per step (x 0.02 s): the largest term, about 0.06 per step |
+| Penalty for not moving when told to | `dont_wait` | -0.5 (about -0.011 per step for a stander) |
+| Penalty for moving when told to stand | `stand_still` | -0.3, offset 4.0 |
+| Linear tracking | `track_lin_vel_xy_exp` | +2.0, kernel exp(-err^2 / 0.5^2): pays 0.2 at zero speed for a 0.63 m/s command |
+| Yaw tracking | `track_ang_vel_z_exp` | +2.0, same kernel; a stander earns it in full by turning on the spot |
+| Heading | `heading_error` | -1.0 |
+| Swing reward | `feet_air_time` | +0.5, only when commanded above 0.15 m/s |
+| Gait penalties a first step pays | `action_rate_l2` -0.005, `feet_slide` -0.4, `dof_acc_l2` -1.25e-7, `feet_flat_ori` -0.4, `volume_points_penetration` -4.0 | |
+| Style | discriminator reward | x 0.25 |
+| Curriculum | `tracking_exp_vel`, thresholds 0.3 / 0.6 | robots that stand stay on the easy rows |
+| Command | forward 0.45-1.0 m/s to a target, 5% told to stand, resampled every 8-12 s | |
+
 **Watch in run 2** (`metrics.jsonl`): `Curriculum/walk_monitor/speed_ratio`, `double_support`, `Episode_Reward/rewards_feet_air_time/sum`,
 `rewards_dont_wait/sum`, at 250, 500, 1,000, 2,000. G1 reference at 500 (4,096 robots): air time 0.040, wait penalty -4.3,
 full-length episodes 40%, terrain level 1.48.

@@ -225,6 +225,25 @@ STEP2 = {
     "amphitheatre_loop": lambda: tile("amphitheatre_loop", "stairs", "stairs_L3_v6", 0),
     "home_dead_end_and_back": lambda: tile("home_dead_end_and_back", "homes", "homes_L3_v0", 2, back=True),
 }
+# what each step-2 route needs: skill -> level that has to be passed in step 1 before the route is scored for a checkpoint
+# (the baseline pair runs every route once, as the reference). From the tiles' own dimensions.
+STEP2_NEEDS = {
+    "street_out_and_back": {"wedge": 1},                                   # gentle ramps up to 0.34 m, open space, a kerb
+    "street_doorway_out_and_back": {"wedge": 1, "corridor": 3},            # the same street tile, through a doorway
+    "corridor_walls_out_and_back": {"log": 2, "corridor": 1},              # 1.33 m corridor, four 9 cm logs each way
+    "corridor_rails_out_and_back": {"log": 2, "corridor": 1},
+    "wedge_field_loop": {"wedge": 3},                                      # pinwheel cells with crests of 0.21 to 0.27 m
+    "stairs_U_turn": {"stairs_up": 2},                                     # rise 0.15 m, run 0.30 m, a U turn on the landing
+    "amphitheatre_loop": {"stairs_up": 2, "stairs_down": 2},               # curved steps, rise 0.125 m
+    "home_dead_end_and_back": {"corridor": 3},                             # a doorway into a furnished room and back
+}
+
+
+def eligible_routes(profile):
+    """Step-2 routes a checkpoint may run, from its step-1 profile ({skill: {"highest_level_passed": n}})."""
+    return [r for r, need in STEP2_NEEDS.items() if all(profile.get(k, {}).get("highest_level_passed", 0) >= lv for k, lv in need.items())]
+
+
 FLAT = ("flat_walk", "flat_stop_stand", "flat_turn_in_place", "flat_turn_and_return", "flat_backward", "flat_sideways")
 FLAT_GATE = FLAT[:4]                 # the only hard gate: 50 of 50 on each of these
 STEP1_V0 = STEP1                     # the first version: one tile of the training export per skill (kept for continuity)

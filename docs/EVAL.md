@@ -265,7 +265,7 @@ be stepped over (pelvis path across its centre line), as on the apparatus.
 
 **Step 2: reviewed routes on the map**: a fixed, named subset of the routes the user reviewed (loops with turns, routes
 through the main walk area, a dead end with a turn in place), unblocked ones only (every route in the export passed the route
-check). PROPOSED, not run until the coordinator confirms (`eval/ladder.py` `STEP2`, pictures in `eval/out/step2_proposal/`):
+check). The list (`eval/ladder.py` `STEP2`, pictures in `eval/out/step2_proposal/`):
 `street_out_and_back` (15.5 m), `street_doorway_out_and_back` (13.3 m, through a doorway), `corridor_walls_out_and_back` and
 `corridor_rails_out_and_back` (13.8 m, four logs each way), `wedge_field_loop` (9.4 m round a pinwheel), `stairs_U_turn` (7.4 m,
 up a U stair to 1.8 m), `amphitheatre_loop` (10.7 m round curved steps), `home_dead_end_and_back` (14.5 m, through a doorway into
@@ -294,8 +294,10 @@ pass the route check (0.25 m corridor, 0.25 m step); tightest wall clearance 0.2
    The report is a **profile**: the highest level passed per skill, with the success and clean-success counts of all three
    levels, and the weakest skill named (`<run>/step1.txt` and `.json`).
 3. **Step 2 routes are tagged with the skills and levels they need;** a checkpoint runs the routes whose skills it has
-   passed, so a policy good at stairs but not at wedges still gets its stair routes scored. (Tags: to be added with the
-   confirmed route list.)
+   passed, so a policy good at stairs but not at wedges still gets its stair routes scored. The eight routes (approved by the
+   coordinator 2026-11-11) and their tags (`eval/ladder.py`, `STEP2_NEEDS`): `street_out_and_back` wedge 1; `street_doorway_out_and_back`
+   wedge 1 and corridor 3; `corridor_walls_out_and_back` and `corridor_rails_out_and_back` log 2 and corridor 1; `wedge_field_loop`
+   wedge 3; `stairs_U_turn` stairs_up 2; `amphitheatre_loop` stairs_up 2 and stairs_down 2; `home_dead_end_and_back` corridor 3.
 4. **The apparatuses (step 3)** are run when every skill is passed at level 3, and in any case for the best checkpoint of
    each track once a day, so there is always a current apparatus number.
 5. **Difficulty is measured, not assumed:** `eval/out/profile_table.*` keeps success per skill and level for every checkpoint

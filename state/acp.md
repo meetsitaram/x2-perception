@@ -773,3 +773,22 @@ writes the plant name always.
 
 Checkpoints on disk at 23:41: 1,000, 1,500, 1,750, 2,000 (the backup loop prunes to the newest two plus every 1,000); 1,250 survives only as
 `eval/handover_pair_s1_001250_planner_v1/tracker_ckpt_001250.pt`.
+
+Planner v2 result (23:51 UTC): MLP planner from the checkpoint-2,000 rollouts, held-out target error median 5.8 cm (90th
+percentile 16.8 cm), feet occupancy accuracy 89.9 %. Planner-driven closed loop on the reference terrains (CPU, 108
+episodes, same clips and starts, old gains): tracker 2,000 with oracle contacts 92.6 % (86.1-96.2), with planner contacts
+**44.4 %** (35.4-53.9); v1 at 1,250 was 46.3 %: no change, as expected without co-training. Per set with planner contacts
+(12 episodes each): Pico 2x2 0.92, terrain-park stairs 0.67, stair descents 0.67, fitted climbs 0.50, 4x4 0.42, ramps 0.33,
+blocks 0.25, chains 0.17, flat locomotion 0.08. Flat locomotion is the worst: those clips turn, stop and strafe, and a
+planner-driven robot that leaves the reference's timing is ended 0.5 m from the reference (the failure rule of this check),
+so the flat number says more about the rule than about walking. Hand-over:
+`eval/handover_pair_s1_002000_vendor_planner_v2/` (card with plant `vendor_20260823`, kp, kd and the planner definition).
+
+Chains at 2,000 (`eval/paper_eval/s1_v1_002000_plant_default_weak_sets.txt`): 21.9 % ended early, 31 of 164 clips fail more
+than half the time, the same clips as at 1,250: slow (0.18-0.28 m/s) steps onto a 39-41 cm platform; 97 % end with the robot
+behind the reference in the middle of the clip. A 40 cm step-up is at the limit of what the X2 can do without hands; these
+clips may be kinematically possible only in the retarget. To check next (CPU): replay those references against their boxes
+for penetration, and decide whether to drop them.
+
+Recovery after the gains switch: reward 0.087 at iteration 2,007, 0.111 at 2,080 (0.123 before the switch); joint error
+0.171 -> 0.161 rad (0.156 before).
