@@ -28,6 +28,7 @@ pluggable `ContactSource`, called every control step:
 from __future__ import annotations
 
 import math
+import os
 
 import numpy as np
 
@@ -58,6 +59,37 @@ class ContactSource:
 
 class NoContacts(ContactSource):
     name = "no planner (zeros)"
+
+
+class OnnxPlanner(ContactSource):
+    """This round's ACP planner as the track exports it (planner_mlp.onnx): inputs the tracker's own proprioception history
+    (495, un-normalised) and goal command (3), and a 17 x 11 scan (x -0.8 .. 0.8 m, y -0.5 .. 0.5 m, heading frame, height
+    minus root height); outputs contact_targets (1, 9, 3) in the body-yaw frame and occupancy (1, 9). A target is valid
+    when its occupancy is over 0.5. Used as exported (no latch, no edge mask) unless the card's options are switched on."""
+
+    def __init__(self, onnx_path, latch=0.0):
+        import onnxruntime as ort
+        so = ort.SessionOptions()
+        so.intra_op_num_threads = so.inter_op_num_threads = 1
+        self.sess = ort.InferenceSession(str(onnx_path), sess_options=so, providers=["CPUExecutionProvider"])
+        self.name = "the track's planner %s (as exported%s)" % (os.path.basename(str(onnx_path)), ", target latch %.1f s" % latch if latch else "")
+        self.adapter = None
+        self.last = None
+
+    def run(self, hist, goal, scan):
+        t, o = self.sess.run(["contact_targets", "occupancy"], {"proprio_history": np.asarray(hist, np.float32)[None], "goal_command": np.asarray(goal, np.float32)[None],
+                                                                "scan_17x11": np.asarray(scan, np.float32)[None]})
+        return t[0].astype(float), o[0].astype(float)
+
+    def __call__(self, view: View, cmd: Command) -> dict:
+        ad = self.adapter
+        p, _, R = view.body_pose("pelvis")
+        scan = np.clip(view.height_scan(to_world(PLAN_SCAN, p[:2], heading_of(R))) - p[2], -2.0, 2.0)
+        t, o = self.run(ad.hist.flat(), ad.goal_now, scan)
+        self.last = dict(scan=scan, targets=t, occupancy=o)
+        out = ContactSource.__call__(self, view, cmd)
+        out["target"], out["valid"] = t, o > 0.5
+        return out
 
 
 class FootMlpPlanner(ContactSource):
@@ -161,6 +193,8 @@ class ACPAdapter(Adapter):
     def __init__(self, contacts: ContactSource | None = None):
         self.z = None
         self.contacts = contacts or NoContacts()
+        self.contacts.adapter = self
+        self.debug = {}
         self.plan_log = []               # per step: the planned foot targets in the world (for renders and checks)
 
     def load(self, path):
@@ -183,7 +217,7 @@ class ACPAdapter(Adapter):
 
     def _proprio(self, view: View):
         _, _, R = view.body_pose("pelvis")
-        _, w_body = view.body_velocity("pelvis")
+        w_body = view.d.qvel[3:6].copy()                            # free joint: angular velocity in the body frame
         return np.concatenate((w_body, -R[2, :], view.q() - self.q0, view.qd(), self.a_prev))
 
     def reset(self, view: View, rng):
@@ -198,6 +232,10 @@ class ACPAdapter(Adapter):
         yaw = heading_of(R)
         self.hist.push(self._proprio(view))
         scan = np.clip(view.height_scan(to_world(SCAN, p[:2], yaw)) - p[2], -2.0, 2.0)
+        want = cmd.target_heading if (cmd.hold and cmd.target_heading is not None) else math.atan2(cmd.target_xy[1] - p[1], cmd.target_xy[0] - p[0])
+        dpsi = (want - yaw + math.pi) % (2 * math.pi) - math.pi
+        goal = np.concatenate((bounded_goal(cmd.target_xy, p[:2], yaw, self.goal_r), [dpsi if cmd.dist > 0.05 or cmd.hold else 0.0]))
+        self.goal_now = goal
         cs = self.contacts(view, cmd)
         ok = np.asarray(cs["valid"], float)
         tgt = np.asarray(cs["target"], float) * ok[:, None]
@@ -206,12 +244,10 @@ class ACPAdapter(Adapter):
                                   np.asarray(cs["contact"], float)[:, None]), 1)
         c_, s_ = math.cos(yaw), math.sin(yaw)
         self.plan_log.append([(p[0] + c_ * t[0] - s_ * t[1], p[1] + s_ * t[0] + c_ * t[1], p[2] + t[2], bool(v)) for t, v in zip(cs["target"][:2], cs["valid"][:2])])
-        want = cmd.target_heading if (cmd.hold and cmd.target_heading is not None) else math.atan2(cmd.target_xy[1] - p[1], cmd.target_xy[0] - p[0])
-        dpsi = (want - yaw + math.pi) % (2 * math.pi) - math.pi
-        goal = np.concatenate((bounded_goal(cmd.target_xy, p[:2], yaw, self.goal_r), [dpsi if cmd.dist > 0.05 or cmd.hold else 0.0]))
         obs = np.concatenate((self.hist.flat(), scan, tgt.ravel(), goal))
         a = np.clip(self.actor(self.norm(obs)), -20.0, 20.0)
         self.a_prev = a
+        self.debug = dict(obs=obs, action=a, scan=scan, goal=goal)
         return self.q0 + self.scale * a
 
 
@@ -222,3 +258,26 @@ class ACPBaselinePlannerTest(ACPAdapter):
     def __init__(self):
         import os
         super().__init__(FootMlpPlanner(os.environ["ACP_PLANNER_NPZ"]))
+
+
+class ACPHandover(ACPAdapter):
+    """A tracker + planner pair as the ACP track hands it over (a folder with actor.npz, planner_mlp.onnx and
+    adapter_card.json): ACP_HANDOVER_DIR. ACP_LATCH (s) switches the card's optional target latch on (not implemented
+    yet: 0 only)."""
+
+    def __init__(self):
+        d = os.environ["ACP_HANDOVER_DIR"]
+        super().__init__(OnnxPlanner(os.path.join(d, "planner_mlp.onnx")))
+        self.load(os.path.join(d, "actor.npz"))
+        import json
+        card = json.load(open(os.path.join(d, "adapter_card.json")))
+        self.checkpoint = "ACP %s, iteration %s (stage %s) + %s" % (os.path.basename(d.rstrip("/\\")), card.get("iteration"), card.get("stage"), self.contacts.name)
+        self.label = card.get("label")
+
+    def plant(self, joint_names):
+        z = self.z
+        assert self.joints == list(joint_names)
+        import json
+        card = json.load(open(os.path.join(os.environ["ACP_HANDOVER_DIR"], "adapter_card.json")))
+        return dict(kp=np.asarray(z["kp"], float), kd=np.asarray(z["kd"], float), default_q=self.q0, effort=np.asarray(card["effort"], float),
+                    armature=np.asarray(card["armature"], float))

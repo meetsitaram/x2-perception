@@ -67,7 +67,12 @@ class View:
         return self.d.xpos[b].copy(), self.d.xquat[b].copy(), self.d.xmat[b].reshape(3, 3).copy()
 
     def body_velocity(self, body="pelvis"):
-        """(linear, angular) velocity in the body's own frame."""
+        """(linear, angular) velocity in the body's own frame. For the root (pelvis) read straight from the free joint
+        (checked against two tracks' recordings); for other bodies from mj_objectVelocity, which has NOT been checked
+        against a recording yet (it disagreed with the free joint's angular velocity for the pelvis: do not trust it)."""
+        if body == "pelvis":
+            R = self.d.xmat[self._pelvis].reshape(3, 3)
+            return R.T @ self.d.qvel[:3], self.d.qvel[3:6].copy()
         v6 = np.zeros(6)
         mujoco.mj_objectVelocity(self.m, self.d, mujoco.mjtObj.mjOBJ_BODY, self.m.body(body).id, v6, 1)
         return v6[3:].copy(), v6[:3].copy()
