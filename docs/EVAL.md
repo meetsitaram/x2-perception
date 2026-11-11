@@ -252,10 +252,11 @@ stumble score and logs as above). Flat tests are on a flat floor; the others on 
 | `log_single` | step over one level log (8 cm), square, from 0.9 m before to 0.8 m past it | `single_beams_L4_v1` |
 | `log_slanted` | the same over a log with one end raised (14 cm at the top; a box, not in the raster) | `single_beams_L3_v0` |
 | `wedges` | 4.9 m across a pinwheel of four wedges (11 to 13 degrees, crest 0.14 to 0.17 m) | `wedges_L3_v1`, route 0 |
-| `stairs_up`, `stairs_down` | a straight flight of 6 steps (rise 0.14 m, run 0.31 m) with walls and handrails, up, and down | `stairs_L3_v0`, routes 0 and 1 |
+| `stairs_up`, `stairs_down` | a straight flight of 6 steps (rise 0.14 m, run 0.31 m) with walls and handrails: from the floor up to the middle of the landing; from there down the far flight to the floor | `stairs_L3_v0`, route 0, first 3.0 m / the rest |
 | `log_corridor_walls`, `log_corridor_rails` | 6.9 m along a 1.3 m corridor over four logs, between walls / between rails on posts | `log_corridors_L3_v0`, `_v1`, route 0 |
 
-For backward and sideways the waypoint carries the heading to keep; the standard velocity command then has a backward or
+Tile routes are kept 0.6 m inside the tile (0.3 m for the start) and end at a 1 s station, because the export's routes end as
+close as 9 cm to the tile's rim, where one more step is off the course. For backward and sideways the waypoint carries the heading to keep; the standard velocity command then has a backward or
 sideways component, and goal-driven policies get the target direction with a zero heading change. A log on the route has to
 be stepped over (pelvis path across its centre line), as on the apparatus.
 

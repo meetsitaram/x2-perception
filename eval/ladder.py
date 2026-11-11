@@ -24,6 +24,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from apparatus import Apparatus, data_dir, quat_mat  # noqa: E402
 
 TIME_LIMIT = 60.0        # s per ladder test (the routes are 2 to 9 m)
+EDGE_START = 3.7         # m: the same for the start pose (stair tiles have only 0.5 m of flat run-up)
+EDGE = 3.4               # m: route points are kept this far inside the 8 m tile (the raster ends at 3.99; export routes end as
+#                          close as 0.09 m to it, and a robot that arrived and took one more step was "off the course")
 T0, WALL = time.time(), float(os.environ.get("LADDER_WALL", "520"))   # s: a run stops itself after this (a test not finished is redone)
 
 
@@ -83,7 +86,7 @@ def _tile(ttype, tile_id):
     return meta[0], np.load(D / (ttype + ".npz"), allow_pickle=False)
 
 
-def tile(name, ttype, tile_id, route=0, upto=None, reverse=False):
+def tile(name, ttype, tile_id, route=0, upto=None, reverse=False, skip=None):
     """A course on one tile of the export: its route `route`, optionally cut `upto` metres after the start."""
     t, z = _tile(ttype, tile_id)
     i = t["index"]
@@ -123,6 +126,17 @@ def tile(name, ttype, tile_id, route=0, upto=None, reverse=False):
         pts = pts[::-1]
         yaw = math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0])
     P = np.array(pts, float)
+    P[0] = np.clip(P[0], -EDGE_START, EDGE_START)           # keep the start and the end off the tile's rim (see EDGE)
+    P[1:] = np.clip(P[1:], -EDGE, EDGE)
+    if skip is not None:                                    # start `skip` metres along the route (on a landing)
+        seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
+        cum = np.r_[0, np.cumsum(seg)]
+        k = int(np.searchsorted(cum, skip))
+        u = (skip - cum[k - 1]) / max(seg[k - 1], 1e-9)
+        P = np.vstack((P[k - 1] + u * (P[k] - P[k - 1]), P[k:]))
+        yaw = math.atan2(P[1][1] - P[0][1], P[1][0] - P[0][0])
+        if upto is not None:
+            upto -= skip
     if upto is not None:                                    # cut the polyline `upto` metres from the start
         seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
         cum = np.r_[0, np.cumsum(seg)]
@@ -142,7 +156,8 @@ def tile(name, ttype, tile_id, route=0, upto=None, reverse=False):
     g = z["height"][i].astype(float)
     c0 = z["cell0_center"] if "cell0_center" in z.files else np.array([-3.99, -3.99])
     return Course("ladder:" + name, g, float(c0[0]), float(c0[1]), float(z["resolution"]) if "resolution" in z.files else 0.02, boxes,
-                  [float(P[0, 0]), float(P[0, 1]), math.degrees(yaw)], [wp(float(p[0]), float(p[1])) for p in way], name, extra)
+                  [float(P[0, 0]), float(P[0, 1]), math.degrees(yaw)],
+                  [wp(float(p[0]), float(p[1]), hold=(1.0 if k == len(way) - 1 else 0.0)) for k, p in enumerate(way)], name, extra)   # the route ends at a station
 
 
 def beam_course(name, ttype, tile_id, slanted, before=0.9, after=0.8):
@@ -185,8 +200,9 @@ STEP1 = {
     "log_single": lambda: beam_course("log_single", "single_beams", "single_beams_L4_v1", False),
     "log_slanted": lambda: beam_course("log_slanted", "single_beams", "single_beams_L3_v0", True),
     "wedges": lambda: tile("wedges", "wedges", "wedges_L3_v1", 0),
-    "stairs_up": lambda: tile("stairs_up", "stairs", "stairs_L3_v0", 0),
-    "stairs_down": lambda: tile("stairs_down", "stairs", "stairs_L3_v0", 1),
+    # stairs_L3_v0: flat to x -3.4, six steps up to a 2.3 m landing at 0.84 m, six steps down, flat. Route 0 runs x -3.85 -> 2.42.
+    "stairs_up": lambda: tile("stairs_up", "stairs", "stairs_L3_v0", 0, upto=3.0),             # from the floor to the middle of the landing
+    "stairs_down": lambda: tile("stairs_down", "stairs", "stairs_L3_v0", 0, skip=3.0),         # from there down to the floor
     "log_corridor_walls": lambda: tile("log_corridor_walls", "log_corridors", "log_corridors_L3_v0", 0),
     "log_corridor_rails": lambda: tile("log_corridor_rails", "log_corridors", "log_corridors_L3_v1", 0),
 }

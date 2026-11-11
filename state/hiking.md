@@ -1,8 +1,119 @@
 # hiking state
 
-Updated 2026-11-11 22:25 UTC (Hiking track agent). Node `hiking`; address and login are in `config/nodes.local.json`.
+Updated 2026-11-11 23:10 UTC (Hiking track agent). Node `hiking`; address and login are in `config/nodes.local.json`.
 
-## What is running
+## What is running: run 2 (`x2_parkour_v2`), from scratch since 22:58 UTC
+
+- Task `Instinct-Parkour-TorsoCam-Amp-X2-v0`, 8,192 robots, to 30,000 iterations, tmux `hiking_x2`, supervisor
+  `code/x2_port/supervise_x2.py` (stall detection, auto-resume, checkpoint every 250, metrics, GPU log, backup manifest).
+  Start or resume: `bash /mnt/filesystem-g4/tracks/hiking/code/x2_port/start_x2_parkour_v2.sh`.
+  Stop: `touch /mnt/filesystem-g4/tracks/hiking/runs/x2_parkour_v2/_supervisor/STOP`.
+- Run folder `/mnt/filesystem-g4/tracks/hiking/runs/x2_parkour_v2/` (`<start time>/model_<it>.pt`, `metrics.jsonl`, `gpu.csv`,
+  `_supervisor/`). Heartbeat `/mnt/filesystem-g4/status/hiking.json`.
+- First throughput (iteration 11): 19,600 samples/s, 10.0 s per iteration (collection 8.0 s, learning 2.0 s), 51 GB of 96 GB GPU
+  memory. Slower than run 1 (23,000-25,000/s, 35 GB) because the depth input is twice as tall (36 rows instead of 18).
+- No checkpoint yet (first at iteration 250, about 23:40 UTC).
+- Run 1 (`x2_parkour_v1`) was stopped at 22:54 UTC at iteration about 650; its checkpoints `model_250.pt` and `model_500.pt` are
+  kept. GPU idle between the runs: 237 s.
+
+### What run 2 changes against run 1 (everything else identical; the paper's terrains, commands, rewards, curriculum, PPO)
+
+| Item | Run 2 | Why |
+|---|---|---|
+| PD gains | plant `mc_20261024` (table below); armature, effort, default pose and action scale unchanged | user: "Use the ones used for supermimic training last iteration" |
+| Depth camera | chest RealSense: on `torso_link` at (0.131, 0.0, 0.259), 61.6 deg below horizontal, 87 x 58 deg, all 36 rows kept, the paper's left/right crop (36 x 32 per frame), range 0-3 m | the user's camera; a departure from the paper's camera at the user's direction |
+| Depth encoder input | 8 frames of 36 x 32 (run 1: 18 x 32); conv output 4 x 36 x 32 = 4,608 into the same head | follows from the crop |
+| Motion reference | v2: standing cut to 3% (run 1 until iteration 500: 21%) | measured defect, see "Standing" |
+| Torso tilt term | on `torso_link` from the start (run 1: from iteration 250) | |
+| Logging | commanded vs actual speed, support shares, step rate, terrain level per type, from iteration 0 | |
+
+### Camera (run 2): calibration and acceptance
+
+- Reference: the user's infrared frame, `docs/camera/` in this repo. Acceptance: at the standing pose on flat ground the toe tips
+  are just inside the bottom edge, a floor line 1.0 m ahead of the toes is at 27% (+-3%) of the image height from the top, and a
+  0.55 m line is near 52%.
+- Solved for the simulated standing pose (`code/x2_port/chest_solve.py`), lens 3 cm proud of the chest shell (shell front from the
+  torso mesh: x = 0.101 m at that height): **lens 1.055 m above the ground, 61.6 deg below horizontal, 1.1 cm ahead of the toe
+  tips**. Result: toe line at 99.9%, 0.55 m at 52.1%, 1.0 m at 26.2% from the top; top edge sees 1.66 m ahead of the toes.
+  Picture with the lines marked: `state/hiking_v2_camera_check.png` (MuJoCo preview, not a training-simulator frame); more in
+  `/mnt/filesystem-g4/tracks/hiking/renders/camera_check/` (colour view, depth 0-3 m, the 36 x 32 policy view, `camera_check.txt`).
+- The coordinator's reading (0.90 m, 53 deg, lens 12 cm behind the toes) fits the two main landmarks too but puts the 0.55 m line
+  at about 50%; the mesh says the chest shell is only 1.3 cm behind the toe tips in the default pose. The user's measured height
+  and angle would settle it; a change is two numbers in `x2_parkour_target_amp_cfg.py` (`X2_TORSO_CAMERA_POS`, `..._PITCH_DOWN`).
+- The view reaches 1.66 m, not the 2 m the user mentioned earlier: with a 58 deg vertical field of view, seeing the toes and 2 m
+  at once needs the camera about 1.25 m high.
+- Earlier candidates, for the record (flat ground, standing, ahead of the toe tips): run 1 head camera, 40 deg, paper crop:
+  0.40 to 1.27 m. Paper's G1 camera placed on the X2 at the same height (1.24 m), 48 deg, paper crop: 0.23 to 1.01 m (that point is
+  inside the X2's head shell at the G1's 0.049 m forward offset; the head's face is at 0.076 m). Same height, 0.10 m forward,
+  60 deg, all rows: 0.01 to 2.00 m. G1 itself (not computed by FK; about 1.24-1.27 m high): about 0.3 to 1.1 m from the camera.
+- Not done: random mount offsets per robot (the released code has none); an Isaac-rendered frame at the chest pose (the frames
+  dumped by the pre-launch check are from the superseded brow-height pose and are marked SUPERSEDED in `runs/_smoke_v2/`).
+- Row order (checked on run 1's Isaac recording): row 0 is the top of the image (far), the last row is nearest the feet.
+
+### Gains applied in run 2, read back from the Isaac articulation (`runs/_smoke_v2/applied_*.json`)
+
+| Joints | kp / kd applied (mc_20261024) | kp / kd run 1 (armature rule) | armature | effort N.m | velocity rad/s | action scale rad |
+|---|---|---|---|---|---|---|
+| hip pitch | 100 / 4 | 114.8 / 7.31 | 0.02908 | 120 | 11.94 | 0.261 |
+| hip roll, hip yaw | 100 / 3 | 114.8 / 7.31 | 0.02908 | 120 | 11.94 | 0.261 |
+| knee | 150 / 5 | 114.8 / 7.31 | 0.02908 | 120 | 11.94 | 0.261 |
+| ankle pitch | 40 / 3 | 34.9 / 2.22 | 0.00884 | 36 | 13.09 | 0.258 |
+| ankle roll | 30 / 2 | 12.4 / 0.79 | 0.003133 | 24 | 15.08 | 0.485 |
+| waist yaw | 40 / 8 | 114.8 / 7.31 | 0.02908 | 120 | 11.94 | 0.261 |
+| waist pitch, roll | 40 / 5 | 12.4 / 0.79 | 0.003133 | 24 | 13.09 | 0.485 |
+| shoulder pitch | 30 / 1 | 34.9 / 2.22 | 0.00884 | 36 | 13.09 | 0.258 |
+| shoulder roll | 20 / 1 | 34.9 / 2.22 | 0.00884 | 36 | 13.09 | 0.258 |
+| shoulder yaw | 20 / 1 | 12.4 / 0.79 | 0.003133 | 24 | 15.08 | 0.485 |
+| elbow, wrist yaw | 50 / 1 | 12.4 / 0.79 | 0.003133 | 24 | 15.08 | 0.485 |
+| wrist pitch, roll | 20 / 1 | 16.8 / 1.07 | 0.00425 | 6 | 20.94 | 0.089 |
+| head yaw (held at 0) | 3.4 / 0.114 | 16.8 / 1.07 | 0.00425 | 2.6 | 6.02 | not commanded |
+| head pitch (held at 0) | 10 / 0.8 | 16.8 / 1.07 | 0.00425 | 0.6 | 6.28 | not commanded |
+
+- Every applied kp and kd equals the plant file's value (first-match substring rule reproduced); no joint differs from the intent.
+- Action scale = 0.25 x effort / (armature x (2 pi 10)^2), from the armature, not from the new stiffness. Actuator type:
+  delayed PD, 0-2 physics steps of delay, torque clipped to effort. Default pose: hip pitch -0.312, knee 0.669, ankle pitch
+  -0.363, elbow -0.6, shoulder pitch 0.2, shoulder roll +-0.2, the rest 0.
+- Run 1 used the armature-rule column; its checkpoints must be played with those gains.
+
+### Model audit (Isaac's conversion of the URDF against the MJCF)
+
+- Total mass: Isaac 41.967 kg = URDF link sum 41.967 kg; **MJCF 43.475 kg**. The whole difference is the pelvis: 3.523 kg in the
+  URDF and Isaac, 5.032 kg in the MJCF (+1.509 kg). Every other body agrees within 5 g. Which is right is not known to me.
+- Joint limits agree except waist pitch (URDF +-0.314, MJCF +-0.349) and waist roll (URDF +-0.488, MJCF +-0.524).
+- Armature per joint: identical in Isaac and the MJCF.
+- Fixed links (IMUs, cameras, lidar) are merged into their parents by the converter with their mass; the body masses above
+  already include them. Inertia tensors were not compared.
+- Feet: Isaac uses the convex hull of the foot mesh, sole 0.073 m below the ankle; the MJCF has 12 spheres of 5 mm per foot.
+- Self-collision: on, minus the 5 always-overlapping pairs.
+- The URDF used in training is the shared one minus the massless `base_link` and the XML declaration.
+
+## Standing: what was measured (run 1) and what run 2 does about it
+
+- Run 1 at checkpoint 500 stands and does not walk: Isaac Stair Up test 0 of 200 reached, 198 still standing; whole-population
+  log at iterations 520-615: commanded 0.63 m/s, actual 0.00 m/s, both feet down 95%.
+- MuJoCo run of `model_500` (CPU): stands, leans back 9 deg, no steps, 0.15 m in 14 s. Files and validation of the port:
+  `tracks/hiking/renders/ckpt500_mujoco/`, `tracks/hiking/code/x2_port/sim2sim/`.
+- At checkpoint 500 the depth encoder's output is exactly zero for all 50 recorded depth stacks: the policy ignored depth.
+- Style data: reference v1 was 21% standing (30% under 0.1 m/s; median speed 0.32 m/s); the paper's G1 file is 5% (7.5%; median
+  0.41). Reference v2 (`data/motions/hiking_x2/x2_parkour_motion_without_run_v2_retargetted.npz`, 400 s): 3.3% standing kept on
+  purpose, median 0.53 m/s, 67% of frames inside the 0.45-1.0 m/s command range. Script `build_x2_motion.py`, numbers by
+  `motion_stats.py` in the same folder.
+- The G1 log (iterations 0-5,098) has no phase like run 1's: full-length episodes never above 69%, wait penalty never below -7.0,
+  air-time reward never below 0.015 after iteration 150. Run 1 at 499: 89%, -9.6, 0.008.
+- Reward balance per step (weighted): standing X2 at 499 earns 0.048, the walking G1 at 5,000 earns 0.068; the gaps are tracking
+  (-0.010), alive (-0.009) and the wait penalty (-0.006). Standing does not out-earn walking on the task terms; the style reward
+  (discriminator reward about 0.5-0.65 per step before its 0.25 coefficient) is paid in full for standing when a fifth of the
+  reference stands.
+- Ankle action scale and default pose equal the X2's working values in gwbc-v6 (same formula and numbers).
+- Run 1 was restarted from `model_500` with reference v2 at 22:28; in the 150 iterations it then ran the speed ratio stayed at 0.
+  That is too short to judge the fix, and run 2 starts with v2 from scratch.
+- Run 2, iteration 11: speed ratio 0.24, both feet down 51% (untrained policy flailing; not a result).
+
+**Watch in run 2** (`metrics.jsonl`): `Curriculum/walk_monitor/speed_ratio`, `double_support`, `Episode_Reward/rewards_feet_air_time/sum`,
+`rewards_dont_wait/sum`, at 250, 500, 1,000, 2,000. G1 reference at 500 (4,096 robots): air time 0.040, wait penalty -4.3,
+full-length episodes 40%, terrain level 1.48.
+
+## Run 1 (`x2_parkour_v1`, stopped 22:54 UTC): record
 
 - **X2 paper-terrain run `x2_parkour_v1`**: task `Instinct-Parkour-Target-Amp-X2-v0`, **8,192 robots** since iteration 250
   (4,096 before), to 30,000 iterations, first started 2026-11-11 20:22 UTC. tmux session `hiking_x2` on the node, under
@@ -18,7 +129,7 @@ Updated 2026-11-11 22:25 UTC (Hiking track agent). Node `hiking`; address and lo
 - 22:13-22:18 (291 s): paper-eval plumbing test at checkpoint 500, training restarted by itself from `model_500`.
 - Nothing else is queued on the node.
 
-## Early signals (trainer's own printed means; not a score)
+## Run 1 early signals (trainer's own printed means; not a score)
 
 | Iteration | Robots | Mean reward | Episode length (of 1,000 steps) | Terrain level | Velocity-tracking term (0-1) | Episodes ending in a fall |
 |---|---|---|---|---|---|---|
@@ -284,15 +395,13 @@ Plan: a small monitor term for per-type terrain level, actual vs commanded speed
 
 ## Next
 
-1. Watch the standing-still signal (Early signals) at 1,000 and 1,500 iterations against the G1 numbers.
-2. Early numbers at about 1,000 and 2,000 iterations from `metrics.jsonl`; add actual-speed and double-support logging.
-3. MuJoCo sim2sim of an X2 checkpoint (port `scripts/sim2sim_mujoco.py`: X2 joint order, head camera, mesh vs sphere feet).
+1. Run 2 signals at 250, 500, 1,000 and 2,000 iterations (see "Watch in run 2").
+2. Make `export_for_eval.py` and the MuJoCo port take the camera mount and gains from the task (they still describe run 1's head camera and armature-rule gains): needed before any run-2 checkpoint is exported or rendered.
+3. Paper table only when a checkpoint walks, in pauses under 10 minutes. Street-front generator fix for `extended_v1` (19 of 90 routes kept).
 4. Extended task as a second task name (`Instinct-Parkour-Extended-Amp-X2-v0`): **not started**. Needed: an Isaac terrain
    importer for `extended_v1` tiles beside the paper's nine types, route spawns and targets, backward and sideways commands with
-   matching motion clips, the stumble, foothold and clearance terms (whether these training penalties stay is an open question in
-   `docs/USER_RULES.md`). Start only after the paper-terrain run has a checkpoint that walks the paper's terrains.
+   matching motion clips, the stumble, foothold and clearance terms (the user: "INCLUDE THEM"). Start only after the paper-terrain run has a checkpoint that walks the paper's terrains.
 
 ## Blockers
 
-None. Open questions for the coordinator: one 40-minute pause or several 10-minute pauses for a full paper table; whether the
-extended task's training penalties stay.
+None. Open: the user's measured camera height and angle; which pelvis mass is right (URDF 3.52 kg or MJCF 5.03 kg).
