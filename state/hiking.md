@@ -16,6 +16,20 @@ Updated 2026-11-11 23:10 UTC (Hiking track agent). Node `hiking`; address and lo
 - Run 1 (`x2_parkour_v1`) was stopped at 22:54 UTC at iteration about 650; its checkpoints `model_250.pt` and `model_500.pt` are
   kept. GPU idle between the runs: 237 s.
 
+### Standing rules for this run (user, via the coordinator, 2026-11-11)
+
+- No training stop whose only purpose is an evaluation, a recording or a render. Isaac evaluation only inside a restart that is
+  needed anyway. `code/x2_port/pause_and_eval.sh` stays unused unless the coordinator says otherwise. Everything else comes from
+  the training logs, the MuJoCo port on the desktop CPU, or the eval monitor.
+- The run-2 versions of `export_for_eval.py` and the MuJoCo port exist only on the desktop
+  (`C:/Users/PC/projects/perception-agents-work/hiking_sim2sim_x2/`): the upload to the shared filesystem was refused by the
+  permission system and nobody copies them until the user allows it. The copies on the node (`code/x2_port/export_for_eval.py`,
+  `code/x2_port/sim2sim/`) are the run-1 versions; do not export a run-2 checkpoint with them. Run-2 renders are made on the
+  desktop and shown from there.
+- Run 2 runs to iteration 1,000 before any judgement; one line at 500 and 1,000 (signals table below).
+- MuJoCo, run 2 `model_250` (desktop, 14 s flat): stands and shuffles in place drifting backwards, 0.54 m net, mean forward
+  speed -0.04 m/s against 0.74 commanded, both feet down 87%, no fall; actions did not depend on the depth image.
+
 ### What run 2 changes against run 1 (everything else identical; the paper's terrains, commands, rewards, curriculum, PPO)
 
 | Item | Run 2 | Why |
