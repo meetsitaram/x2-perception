@@ -569,3 +569,73 @@ epoch; after 5 of 30 epochs its target error is 31 cm against the MLP's 6 cm at 
 `runs/planner_v1/train.out`). The 1e-4 learning rate is the paper's; it may simply need many more updates than 30 epochs.
 
 Pauses of stage 1 so far: 20:40-20:51 (GPU benchmark), 21:54:37-21:57:21 (logging switch + paper eval, 2 min 44 s).
+
+## 10. Stage 2 port, switch criterion, weak sets (2026-11-11 evening)
+
+Coordinator decisions applied: stage 2 co-training ported now; stage 1 is not run to 12,000 by default; no geometric picker
+and no comparison with the old SuperMimic planner on my side; the eval is a ladder (single-tile skills, reviewed routes,
+apparatuses) and scores the pair on step 1 first.
+
+### Stage 2 co-training: ported (in `tracks/acp/code_next`, installed into `code/` at the checkpoint-2,000 pause)
+
+`python -m acp.train --stage 2 --init <stage-1 checkpoint> --run runs/s2_v1 ...` (new run folder; stage-1 path unchanged):
+- **Planner in the loop** (`acp/env.py`): every control step the planner (attention by default, `--planner-arch`) reads the
+  tracker's own noisy history, the goal and the 17 x 11 scan with N(0, 0.03) m noise; each environment independently gets
+  the planner's complete contact command with probability eta_obs and the reference's otherwise (paper: not interpolated).
+- **Rewards** (Table 3, stage 2): `track_contact_label`, `track_contact_pos_base`, `track_contact_pos_global` x (1 - eta_rew);
+  `track_planned_contact` = exp(-sum_b m_b |p_exec - p_hat_b|^2 / (sigma_c^2 max(1, sum m_b))) with weight 1.5 eta_rew; mimic
+  and regularisation terms unchanged. Logged raw, weighted and with the current weight (`weight/<term>`).
+- **Schedules** (Eq. 3, linear, the reward one later): the paper gives no numbers; mine: eta_obs starts 200 iterations
+  after the stage-2 start, eta_rew at 700, both ramp over 1,000 iterations (`--u-obs --u-rew --n-ann`).
+- **Hindsight replay, online** (`acp/planner.py` `Recorder`, `Replay`): the first 3,000 environments start in the first 10 %
+  of their clip and are recorded (at most 500 steps, Table S5); an episode that reaches 90 % of the clip without failing is
+  labelled once per PPO iteration (the paper's rule: onset after segments >= 10 steps, 1.5 s horizon, footprint
+  +-0.8 x +-0.5 m) and pushed to a 1.5 M-sample ring buffer; ten planner updates of 4,096 samples per PPO iteration with
+  Adam 1e-4, from 1,000 entries on (Table S5). Other environments start at U(0, 0.98) (Table S2, stage 2).
+- **PPO**: target KL 0.01, entropy 0.005 (Table S6, stage 2); 36,000 envs kept (the paper: 4,800 on 2 GPUs).
+- **Logged per iteration in addition:** `stage2/eta_obs`, `stage2/eta_rew`, `planner/loss_affordance`,
+  `planner/loss_occupancy`, `planner/updates`, `planner/new_samples`, `planner/replay_size`, `planner/recorded_episodes`,
+  `planner/recorded_successes`, `planner/fed_to_tracker_share`, `planner/target_vs_reference_m`.
+- **Checked:** on the CPU (64 robots, from checkpoint 1,250): schedules, weights, planned-contact reward, planner feeding and
+  logging run end to end; the recorder / replay / planner-update path: see "CPU smoke" below. NOT yet run on the GPU.
+- **Still to do for stage 2:** a planner-driven paper eval with a goal-based failure rule; checkpoint export of the pair as
+  one hand-over; the per-tile partition of the buffer (only needed with stage-3 goal terrains).
+- Also changed with this code: the contact placement error now compares the realised contact with the nearer of the
+  current commanded target and the one before its last change (the command switches to the following step around
+  touchdown); a CPU fallback for the physics loop (small checks beside training).
+
+### When stage 1 hands over to stage 2
+
+Criterion (coordinator): paper eval pooled >= about 95 % with stair descents and chains above 85 %, or a plateau (< 1 point
+per 1,000 iterations), whichever first once stage 2 is ready. What the paper says about stage-1 length: only wall-clock,
+"Stage 1 requires approximately 1 day using 3 NVIDIA RTX 4090 GPUs" with 12,000 envs per worker (Table S6: "Stage-1
+distributed totals are not reported"); no iteration count, no stopping rule. At our 115,000 steps/s one day is about 10
+billion transitions = about 11,500 of our iterations, so the paper's stage 1 was probably about as long as my 12,000 budget;
+that does not argue against a criterion, it only says not to expect 98.5 % early.
+
+### Weak sets at checkpoint 1,250 (`eval/paper_eval/s1_v1_001250_weak_sets.txt`; from the saved paper-eval rollouts)
+
+Failures are clip-specific, not random: the same clips fail on every try (evaluation is deterministic up to the clip draw).
+- **Stair descents (38.9 % ended early; 27 of 38 clips fail at least once, 13 more than half the time).** Ends are spread
+  over the whole clip; the robot is as often ahead as behind the reference; yaw error 0.37 rad (the largest of any stair
+  set). The always-failing clips are the ones with 21-22 cm risers and the ones with a side wall (a 2.76 m box beside the
+  flight): 12/12, 10/10, 8/8, 5/5. Treads there are 30 cm boxes, so the 24 cm foot fits; the short-tread explanation is not
+  what the data shows for this set. The set is small (38 clips, 3.1 min, 5 % share), so each clip is seen often: coverage is
+  not the cause either. Most likely: steep descents need the heel on the tread edge and a precise knee bend that the loose
+  tracking (0.16 rad joint error) does not deliver, plus contact with the side wall, which the 9 x 7 scan shows only as a
+  tall column.
+- **Fitted stair climbs (12.3 %; 19 of 105 clips, all 19 always).** 78 % of the failures end in the middle of the clip with
+  the root 0.42 m too low: the robot does not get up the flight. The always-failing clips are jogging climbs (0.46 m/s) on
+  22 cm risers with 23-27 cm treads: here the 24 cm foot against a 23-27 cm tread is plausible (toe against the next riser).
+- **Chains (23.4 %; 38 of 164 clips, 33 always).** 97 % end with the robot behind the reference, 63 % in the middle
+  quintile: slow clips (0.14-0.28 m/s) stepping onto a 39-41 cm platform or a low stair; the robot stalls at the step-up
+  and the reference walks away (0.5 m limit).
+- Across all sets the robot ends *behind* the reference (59-97 % of failures), never ahead: it is slower than the
+  reference, which fits a goal command that says only direction, not distance, beyond 0.3 m.
+What I will do: nothing to the paper's rewards; at the switch decision, if these three stay low, (1) raise the share of the
+failing clips by sampling clips in proportion to their failure rate (the paper has no such rule; recorded as ours),
+(2) re-check the reference clips themselves on 22 cm risers (they may penetrate the riser or float), before anything else.
+
+### CPU smoke of the recorder / replay / planner updates
+
+(filled in below when the run finishes)

@@ -78,3 +78,4 @@ anything else. When the user decides something new, the coordinator adds it here
 
 ## Patience with long runs (2026-11-11)
 - The user, when the X2 Hiking run was judged at iteration 500: "We trained that for almost two days to have decent results" (the G1 run: little air time until after iteration 2,000, decent only towards 20,000). Judge a run against the G1 curve at equal samples, not against a finished policy; check for defects on CPU without stopping it; restart only for a defect shown with numbers.
+- Review renders must not stop training (user, 2026-11-11: "Use mujoco and don't interrupt training by running isaacsim"): render checkpoints in MuJoCo on CPU, labelled "MuJoCo, not the training simulator", after checking the MuJoCo observation build against recorded simulator observations. Isaac Sim renders only when training is paused for another reason or the user asks.
