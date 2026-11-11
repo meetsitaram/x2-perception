@@ -61,6 +61,8 @@ class X2:
     dadr: np.ndarray
     terrain_geom: int
     wall_geoms: set
+    wall_cls: dict = field(default_factory=dict)         # box geom id -> obstacle class, for boxes that are floor obstacles
+    #                                                      (a slanted 4x4 cannot be in a height field): scored like the floor
     body_group: dict = field(default_factory=dict)       # body id -> "foot" | "shin" | "knee" | "thigh" | "trunk" | "arm" | "head"
     foot_ids: tuple = ()
 
@@ -158,6 +160,9 @@ def build(app=None, plant_override: dict | None = None, friction: float = 1.0, r
     x = X2(m, names, plant, np.array([m.jnt_qposadr[i] for i in jid]), np.array([m.jnt_dofadr[i] for i in jid]),
            mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "terrain"),
            {g for g in range(m.ngeom) if m.geom_group[g] == GROUP_WALL})
+    for i, b in enumerate(app.boxes if app is not None else []):
+        if b.get("cls"):
+            x.wall_cls[mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, "wall_%d" % i)] = b["cls"]
     for b in range(1, m.nbody):
         x.body_group[b] = _group_of(m.body(b).name)
     x.foot_ids = tuple(m.body(n).id for n in FOOT_BODIES)

@@ -75,3 +75,6 @@ anything else. When the user decides something new, the coordinator adds it here
 
 ## Eval ladder (2026-11-11)
 - The user: "Eval shouldn't go straight to the apparatus for evals, and instead do simpler tests on our terrain map with some of the routes we reviewed earlier." Checkpoints are scored in steps: (1) simple tests on tiles of the extended terrain map (flat command following incl. turn in place, backward and sideways; one 4x4 log; slanted 4x4; wedges; stairs; a log corridor), (2) some of the routes on the map that the user reviewed (loops with turns, routes through the main walk area), (3) only then the two held-out apparatuses, which stay the final result. Each step is reported per section with trial counts, so it is visible what a policy can and cannot do before it meets the apparatus.
+
+## Patience with long runs (2026-11-11)
+- The user, when the X2 Hiking run was judged at iteration 500: "We trained that for almost two days to have decent results" (the G1 run: little air time until after iteration 2,000, decent only towards 20,000). Judge a run against the G1 curve at equal samples, not against a finished policy; check for defects on CPU without stopping it; restart only for a defect shown with numbers.

@@ -107,6 +107,7 @@ class Trial:
         self.path = app.path() if app is not None else np.zeros((1, 2))
         self.beams = app.route.get("beams", []) if app is not None else []      # 4x4 stepovers: every one must be crossed
         self.zones = app.route.get("zones", []) if app is not None else []
+        self.beam_lines = app.route.get("beam_lines", self.beams) if app is not None else []   # every 4x4, for the side-hit class
         self.wps = app.waypoints if app is not None else []
         self._f6 = np.zeros(6)
         sx, sy = np.meshgrid(np.linspace(-1, 1, 7) * X.SOLE_HALF[0] + X.SOLE_X, np.linspace(-1, 1, 3) * X.SOLE_HALF[1], indexing="ij")
@@ -166,7 +167,7 @@ class Trial:
 
     def _cls(self, x, y):
         """Which obstacle a side face at (x, y) belongs to: "4x4", "wedge", "stair" or "other" (door threshold, brace foot)."""
-        for b in self.beams:
+        for b in self.beam_lines:
             a, c = np.asarray(b["a"]), np.asarray(b["b"])
             t = np.clip((np.array([x, y]) - a) @ (c - a) / ((c - a) @ (c - a)), 0, 1)
             if np.linalg.norm(a + t * (c - a) - [x, y]) < BEAM_NEAR:
@@ -204,7 +205,13 @@ class Trial:
         dist = float(np.linalg.norm(vec))
         th = math.radians(w["heading_deg"]) if w["hold_s"] > 0 and w["heading_deg"] is not None else None
         holding = w["hold_s"] > 0 and dist < RADIUS
-        if holding:
+        if w.get("face_deg") is not None and not holding:   # keep this heading while moving there (backward / sideways)
+            th = math.radians(w["face_deg"])
+            err = X.wrap(th - yaw)
+            c_, s_ = math.cos(yaw), math.sin(yaw)
+            u = vec / max(dist, 1e-9) * float(np.clip(dist, 0.15, 0.5 * a.vmax))
+            vel = np.array([c_ * u[0] + s_ * u[1], -s_ * u[0] + c_ * u[1], float(np.clip(1.5 * err, -a.wmax, a.wmax))])
+        elif holding:
             err = X.wrap(th - yaw) if th is not None else 0.0
             vel = np.array([0.0, 0.0, float(np.clip(1.5 * err, -a.wmax, a.wmax)) if abs(err) > 0.15 else 0.0])
         else:
@@ -231,6 +238,8 @@ class Trial:
         w = self.wps[self.wp]
         inside = (math.hypot(w["x"] - d.qpos[0], w["y"] - d.qpos[1]) < RADIUS
                   and abs(d.qpos[2] - self.ground(w["x"], w["y"]) - self.h0) < Z_TOL)
+        if inside and w.get("heading_tol_deg") is not None:      # a turn test: the station counts only when faced
+            inside = abs(X.wrap(math.radians(w["heading_deg"]) - X.yaw_of(d.qpos[3:7]))) < math.radians(w["heading_tol_deg"])
         self.hold_t = self.hold_t + dt if inside else 0.0
         if inside and self.hold_t >= w["hold_s"]:
             self.reach_t.append(round(float(d.time), 2))
@@ -290,16 +299,17 @@ class Trial:
             fw = c.frame.reshape(3, 3).T @ self._f6[:3]       # the contact force in the world frame
             fh = float(math.hypot(fw[0], fw[1]))
             nz = abs(float(c.frame[2]))
-            on_wall = env_geom in x.wall_geoms
+            tag = x.wall_cls.get(env_geom)                  # a box that is a floor obstacle (slanted 4x4): scored like the floor
+            on_wall = env_geom in x.wall_geoms and tag is None
             group = x.body_group[body]
-            if group == "foot" and not on_wall:             # the foot's vertical load counts every contact, however light
+            if group == "foot" and not on_wall and not (tag and nz < SIDE_NZ):             # the foot's vertical load counts every contact, however light
                 load[body] += fn * nz
             if fn < F_MIN:
                 continue
             name = m.body(body).name
             side = "left" if name.startswith("left") else "right" if name.startswith("right") else "-"
-            face = (not on_wall) and self._relief(c.pos[0], c.pos[1]) > SIDE_RELIEF     # the raster has a face here
-            cls = "wall" if on_wall else (self._cls(c.pos[0], c.pos[1]) if face else None)
+            face = (not on_wall) and (tag is not None or self._relief(c.pos[0], c.pos[1]) > SIDE_RELIEF)   # a face is here
+            cls = "wall" if on_wall else (tag or (self._cls(c.pos[0], c.pos[1]) if face else None))
             if group == "foot":
                 # the foot against the side of something: a wall box, or a horizontal-dominant contact where the raster
                 # really has a face (height-field contacts can report a tilted normal on flat ground at impact). A sole

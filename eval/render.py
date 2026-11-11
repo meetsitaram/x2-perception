@@ -61,7 +61,8 @@ def render(run: pathlib.Path, seed: int, view: str, track: str, t0=None, t1=None
     s = json.load(open(run / "summary.json"))
     res = {r["seed"]: r for r in json.load(open(run / "results.json"))}[seed]
     z = np.load(run / "traj" / ("%d.npz" % seed))
-    app = None if s["apparatus"] == "flat" else Apparatus(s["apparatus"])
+    from ladder import load_course
+    app = None if s["apparatus"] == "flat" else load_course(s["apparatus"])
     x = X.build(app, wall_alpha=0.30, render_size=size)       # same model; gains do not matter for a replay
     m = x.model
     d = mujoco.MjData(m)
@@ -85,7 +86,8 @@ def render(run: pathlib.Path, seed: int, view: str, track: str, t0=None, t1=None
     path = out / (name + ".mp4")
     wr = imageio.get_writer(str(path), fps=slow / (every * dt), codec="libx264", ffmpeg_params=["-crf", "22", "-preset", "medium"])
     font, small = _font(19), _font(16)
-    label = "%s | track: %s | apparatus: %s | seed %d | %s" % (s["simulator"], track, s["apparatus"], seed, s.get("protocol", ""))
+    label = "%s | track: %s | %s: %s | seed %d | %s" % (s["simulator"], track, "ON THE TRAINING MAP, test" if s.get("ladder_step") else "apparatus",
+                                                       s["apparatus"].replace("ladder:", ""), seed, s.get("protocol", ""))
     label2 = ("%s | " % s["label"] if s.get("label") else "") + "checkpoint: %s" % s["checkpoint"]
     frames = list(range(k0, k1, every))
     still_at = set(frames[int(i * (len(frames) - 1) / max(stills - 1, 1))] for i in range(stills)) if stills and frames else set()
