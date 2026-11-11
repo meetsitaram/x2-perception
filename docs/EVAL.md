@@ -232,8 +232,52 @@ it will be once an adapter for `acp3_v2` exists (it needs the gwbc-supermimic co
 No open questions at the moment.
 
 ## Eval ladder (user, 2026-11-11)
-"Eval shouldn't go straight to the apparatus for evals, and instead do simpler tests on our terrain map with some of the routes we reviewed earlier." Every checkpoint is scored bottom-up; a higher step is run only when the step below is mostly passed (the monitor sets and states the gate), and the report always shows all steps reached.
-1. **Skills on single tiles** of the extended map (`/mnt/filesystem-g4/data/terrains/extended_v1/`): flat (walk, stop and stand, turn in place, backward, sideways), one 4x4 log, slanted 4x4, wedges, stairs up and down, log corridor with walls or rails.
-2. **Reviewed routes** on the map: a fixed, named subset of the routes the user reviewed (loops with turns, routes through the main walk area, a dead end with a turn in place), unblocked ones only.
-3. **The two held-out apparatuses** (the rules above): the final result against the 99% goal.
-Same arrival radius, stumble score and logs on every step. The map is training terrain for the tracks, so steps 1 and 2 use held-out seeds and a fixed route list, and are reported as "on the training map", never as the apparatus result.
+
+"Eval shouldn't go straight to the apparatus for evals, and instead do simpler tests on our terrain map with some of the
+routes we reviewed earlier." Every checkpoint is scored bottom-up. Steps 1 and 2 are **on the training map**: they say what a
+policy can do per skill, they are never the apparatus result, and their tables and renders are labelled so.
+
+**Step 1: one skill per test** (`eval/ladder.py`, `STEP1`; 50 trials each, nominal protocol, 60 s limit, same 0.20 m arrival,
+stumble score and logs as above). Flat tests are on a flat floor; the others on fixed tiles of the export
+`/mnt/filesystem-g4/data/terrains/extended_v1` (floor raster + the boxes that are not in the raster), levels 3 to 4 of 9.
+
+| Test | What the robot has to do | Course |
+|---|---|---|
+| `flat_walk` | walk 4 m straight (2 waypoints) | flat |
+| `flat_stop_stand` | walk 2 m, stop and stand 1 s, walk 2 m, stop and stand 1 s | flat |
+| `flat_turn_in_place` | on the spot: turn to face back and stand 1 s, turn to face ahead and stand 1 s (the station counts only within 20 degrees of the heading) | flat |
+| `flat_turn_and_return` | walk 1.5 m, then back to the start (a 180 degree turn) | flat |
+| `flat_backward` | 1.5 m backward, facing ahead | flat |
+| `flat_sideways` | 1 m to the left, then 2 m to the right, facing ahead | flat |
+| `log_single` | step over one level log (8 cm), square, from 0.9 m before to 0.8 m past it | `single_beams_L4_v1` |
+| `log_slanted` | the same over a log with one end raised (14 cm at the top; a box, not in the raster) | `single_beams_L3_v0` |
+| `wedges` | 4.9 m across a pinwheel of four wedges (11 to 13 degrees, crest 0.14 to 0.17 m) | `wedges_L3_v1`, route 0 |
+| `stairs_up`, `stairs_down` | a straight flight of 6 steps (rise 0.14 m, run 0.31 m) with walls and handrails, up, and down | `stairs_L3_v0`, routes 0 and 1 |
+| `log_corridor_walls`, `log_corridor_rails` | 6.9 m along a 1.3 m corridor over four logs, between walls / between rails on posts | `log_corridors_L3_v0`, `_v1`, route 0 |
+
+For backward and sideways the waypoint carries the heading to keep; the standard velocity command then has a backward or
+sideways component, and goal-driven policies get the target direction with a zero heading change. A log on the route has to
+be stepped over (pelvis path across its centre line), as on the apparatus.
+
+**Step 2: reviewed routes on the map**: a fixed, named subset of the routes the user reviewed (loops with turns, routes
+through the main walk area, a dead end with a turn in place), unblocked ones only (every route in the export passed the route
+check). NOT BUILT YET: the list of which reviewed routes to use is still to be fixed with the coordinator.
+
+**Step 3: the two held-out apparatuses** (everything above this section): the result against the 99 % goal.
+
+**Gates (proposed by the eval monitor, not yet confirmed by the user).** A checkpoint moves from step 1 to step 2 when every
+step-1 test it is supposed to master has at least 45 of 50 successes (90 %; the interval's lower end is then 79 %) and the
+four flat walking tests have 50 of 50; from step 2 to step 3 when every step-2 route has at least 45 of 50. Below a gate the
+higher step is not run for that checkpoint, with two exceptions: the baseline pair (run on every step once, as the reference),
+and a run the coordinator asks for. Skills a method does not claim (backward, sideways) are reported but do not gate.
+
+**Known limits of steps 1 and 2 as built:** the tiles are the ones in the training export (the tracks may train on exactly
+these tiles and routes); a held-out set made with other seeds from the same generators is the next thing to add. Meshes
+that are not in the raster (cylinders, stones, bushes) become their bounding boxes. One tile per skill: a test says "this
+log", not "logs in general".
+
+**Plant (user, 2026-11-11):** a policy is always run under the X2 plant it was trained with, taken from its adapter card (name
+and per-joint kp, kd); the harness default is only for test fixtures. Every summary, table and render label states the plant.
+A hand-over whose card does not state its plant and gains is refused. The 2 November baseline pair runs under
+`vendor_20260823` (its checkpoint's own setting; the exported gains equal that plant's exactly).
+

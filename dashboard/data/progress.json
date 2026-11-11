@@ -226,5 +226,41 @@
   "episode_len": null,
   "terrain_level": null,
   "note": "83% of clips finished"
+ },
+ {
+  "id": "acp-1620",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, stage 1",
+  "iteration": 1620,
+  "total": 12000,
+  "reward": 0.119,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "85% of clips finished"
+ },
+ {
+  "id": "hiking-499",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking, X2 on the paper's terrains",
+  "iteration": 499,
+  "total": 30000,
+  "reward": 58.4,
+  "episode_len": 1000,
+  "terrain_level": 1.0,
+  "note": "standing, not walking: 0 of 200 reach a 3.7 m target"
+ },
+ {
+  "id": "hiking-589",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking, X2 on the paper's terrains",
+  "iteration": 589,
+  "total": 30000,
+  "reward": 37.01,
+  "episode_len": 637,
+  "terrain_level": 0.87,
+  "note": "run v1; to be replaced by run v2"
  }
 ]

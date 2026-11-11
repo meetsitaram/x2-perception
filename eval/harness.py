@@ -685,6 +685,7 @@ def main():
         os.remove(part)
     meta = dict(label=a.label, apparatus=a.apparatus, route=(app.route["name"] if app else None), simulator="MuJoCo %s (CPU), dt %.4f s" % (mujoco.__version__, X.SIM_DT),
                 adapter=adapter.name, checkpoint=str(adapter.checkpoint), observes=adapter.observes, control_dt=adapter.control_dt,
+                plant=adapter.plant_name or "harness default vendor_20260823 (test fixture)",
                 protocol=a.protocol if not a.stand else "standing check (zero command)", seeds=[a.seed0, a.seed0 + a.trials - 1],
                 time_limit=a.seconds, sections=(app.sections if app else []),
                 definition=dict(radius=RADIUS, z_tol=Z_TOL, end_stand=END_STAND, stall=STALL, fall_h=FALL_H, fall_tilt=FALL_TILT,

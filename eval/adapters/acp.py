@@ -271,6 +271,12 @@ class ACPHandover(ACPAdapter):
         self.load(os.path.join(d, "actor.npz"))
         import json
         card = json.load(open(os.path.join(d, "adapter_card.json")))
+        missing = [k for k in ("plant", "kp", "kd") if not card.get(k)]
+        if missing:
+            raise ValueError("hand-over refused: adapter_card.json does not state %s (a policy is run under the plant it was trained "
+                             "with, named in its card with per-joint kp and kd)" % ", ".join(missing))
+        assert np.allclose(card["kp"], self.z["kp"]) and np.allclose(card["kd"], self.z["kd"]), "the card's gains differ from actor.npz"
+        self.plant_name = str(card["plant"])
         self.checkpoint = "ACP %s, iteration %s (stage %s) + %s" % (os.path.basename(d.rstrip("/\\")), card.get("iteration"), card.get("stage"), self.contacts.name)
         self.label = card.get("label")
 

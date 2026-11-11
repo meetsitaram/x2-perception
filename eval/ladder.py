@@ -220,26 +220,36 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
         (d / "traj").mkdir(parents=True, exist_ok=True)
         results, t0 = [], time.time()
         if (d / "summary.json").exists() and not os.environ.get("LADDER_REDO"):
-            print("%-20s already done, kept" % test, flush=True)        # a group cut by its wall limit continues here
-            continue
+            results = json.load(open(d / "results.json"))               # done before: keep, or add trials up to the count asked
+            if len(results) >= trials:
+                print("%-20s already done (%d trials), kept" % (test, len(results)), flush=True)
+                continue
+        part = d / "partial.json"
+        if part.exists():
+            results = json.load(open(part))
+        have = {r["seed"] for r in results}
         for i in range(trials):
+            if seed0 + i in have:
+                continue
             if time.time() - T0 > WALL:                 # never unbounded: stop cleanly, the same command continues later
-                print("wall limit reached in %s after %d trials; run the same command again" % (test, i), flush=True)
+                json.dump(results, open(part, "w"))
+                print("wall limit reached in %s after %d trials; run the same command again" % (test, len(results)), flush=True)
                 sys.exit(3)
             r = tr.run(seed0 + i, protocol, TIME_LIMIT, record=True)
             tr.save_traj(d / "traj" / ("%d.npz" % (seed0 + i)))
             results.append(r)
+        results.sort(key=lambda r: r["seed"])
+        if part.exists():
+            os.remove(part)
         meta = dict(label=label, ladder_step=step, test=test, on="the training map (not an apparatus result)", apparatus=course.name, route=course.name,
                     tile=course.route.get("tile"), simulator="MuJoCo %s (CPU), dt %.4f s" % (mujoco.__version__, X.SIM_DT), adapter=adapter.name,
                     checkpoint=str(adapter.checkpoint), observes=adapter.observes, control_dt=adapter.control_dt, protocol=protocol_name,
+                    plant=adapter.plant_name or "harness default vendor_20260823 (test fixture)",
                     seeds=[seed0, seed0 + trials - 1], time_limit=TIME_LIMIT, sections=course.sections,
                     definition=dict(radius=Hn.RADIUS, end_stand=Hn.END_STAND, stall=Hn.STALL, hit_f=Hn.HIT_F, hit_j=Hn.HIT_J))
         s = Hn.summarise(results, meta)
         s["renders"] = Hn.pick_renders(results)
-        keep = set(s["renders"].values())
-        for r in results:
-            if r["seed"] not in keep:
-                os.remove(d / "traj" / ("%d.npz" % r["seed"]))
+        # every trajectory is kept (a test is 50 short trials): a later extension of the test may pick other trials to render
         json.dump(results, open(d / "results.json", "w"), indent=1)
         json.dump(s, open(d / "summary.json", "w"), indent=1)
         Hn.write_logs(d, results, course.waypoints)
@@ -272,9 +282,10 @@ def collect(out, step):
                          tile=s.get("tile"), renders=s.get("renders")))
     if not rows:
         return rows
-    json.dump(dict(label=head.get("label"), step=step, on="the training map (not an apparatus result)", adapter=head["adapter"], checkpoint=head["checkpoint"],
+    json.dump(dict(label=head.get("label"), plant=head.get("plant"), step=step, on="the training map (not an apparatus result)", adapter=head["adapter"], checkpoint=head["checkpoint"],
                    protocol=head["protocol"], rows=rows), open(out / ("step%d.json" % step), "w"), indent=1)
-    lines = ["%s | step %d, ON THE TRAINING MAP (not an apparatus result) | %s | protocol %s" % (head.get("label") or head["adapter"], step, head["checkpoint"], head["protocol"]),
+    lines = ["%s | step %d, ON THE TRAINING MAP (not an apparatus result) | %s | plant %s | protocol %s" % (
+        head.get("label") or head["adapter"], step, head["checkpoint"], head.get("plant"), head["protocol"]),
              "%-22s %-10s %-9s %-12s %-6s %-8s %-10s %-7s %s" % ("test", "success", "rate", "95 % interval", "clean", "penalty", "waypoints", "time", "outcomes / tile")]
     for r in rows:
         lines.append("%-22s %3d / %-4d %5.0f %%   %3.0f - %3.0f %%   %3d    %6.2f   %4.1f / %-3d %5s   %s%s" % (

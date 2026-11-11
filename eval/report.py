@@ -8,6 +8,7 @@ for run in sys.argv[1:]:
     n = s["trials"]
     pc = lambda k: "%.1f %%" % (100.0 * k / max(n, 1))  # noqa: E731
     print("== %s" % (s.get("label") or s["adapter"]))
+    print("   plant (the gains the policy was trained with): %s" % s.get("plant", "not recorded in this run"))
     print("   %s | apparatus %s (%s) | protocol %s | seeds %d-%d | %s" % (s["checkpoint"], s["apparatus"], s["route"], s["protocol"], s["seeds"][0], s["seeds"][1], s["simulator"]))
     print("   success        %d / %d = %s   (95 %% interval %.1f - %.1f %%)" % (s["successes"], n, pc(s["successes"]), 100 * s["ci95"][0], 100 * s["ci95"][1]))
     print("   clean success  %d / %d = %s   (95 %% interval %.1f - %.1f %%)" % (s["clean_successes"], n, pc(s["clean_successes"]), 100 * s["clean_ci95"][0], 100 * s["clean_ci95"][1]))

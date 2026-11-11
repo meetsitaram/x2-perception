@@ -34,6 +34,7 @@ HIST, NJ = 10, 31
 
 class ACPBaseline(Adapter):
     name = "acp-baseline-2026-11-02"
+    plant_name = "vendor_20260823"       # the plant acp3_v2 was trained with (its checkpoint cfg); the export carries its gains
     control_dt = 0.02
     goal_mag = 0.5
     observes = ("proprioception history (10 x 50 Hz), 9 x 7 height scan of the floor, goal direction and heading; foot contact "

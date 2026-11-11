@@ -126,6 +126,9 @@ class Adapter:
     vmax = 0.6                     # m/s: forward speed limit of the standard velocity command
     wmax = 1.0                     # rad/s: yaw rate limit of the standard velocity command
     observes = "nothing"           # one line: what the policy observes (goes into the result files)
+    plant_name = None              # the X2 plant (gains) the policy was TRAINED with; a real policy's adapter must set it from
+    #                                its card and return that plant's kp / kd in plant(): the harness default is never used
+    #                                for a trained policy (user rule, 2026-11-11). None = a test fixture on the default.
 
     def plant(self, joint_names):
         """Optional dict with any of kp, kd, effort, armature, default_q as (31,) arrays in `joint_names` order."""

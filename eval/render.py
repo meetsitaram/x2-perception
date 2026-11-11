@@ -88,7 +88,7 @@ def render(run: pathlib.Path, seed: int, view: str, track: str, t0=None, t1=None
     font, small = _font(19), _font(16)
     label = "%s | track: %s | %s: %s | seed %d | %s" % (s["simulator"], track, "ON THE TRAINING MAP, test" if s.get("ladder_step") else "apparatus",
                                                        s["apparatus"].replace("ladder:", ""), seed, s.get("protocol", ""))
-    label2 = ("%s | " % s["label"] if s.get("label") else "") + "checkpoint: %s" % s["checkpoint"]
+    label2 = ("%s | " % s["label"] if s.get("label") else "") + "plant %s | checkpoint: %s" % (s.get("plant", "?"), s["checkpoint"])
     frames = list(range(k0, k1, every))
     still_at = set(frames[int(i * (len(frames) - 1) / max(stills - 1, 1))] for i in range(stills)) if stills and frames else set()
     lk, yaw_s, side = None, None, 1.0
