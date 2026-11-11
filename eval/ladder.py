@@ -86,7 +86,7 @@ def _tile(ttype, tile_id):
     return meta[0], np.load(D / (ttype + ".npz"), allow_pickle=False)
 
 
-def tile(name, ttype, tile_id, route=0, upto=None, reverse=False, skip=None):
+def tile(name, ttype, tile_id, route=0, upto=None, reverse=False, skip=None, back=False):
     """A course on one tile of the export: its route `route`, optionally cut `upto` metres after the start."""
     t, z = _tile(ttype, tile_id)
     i = t["index"]
@@ -144,11 +144,17 @@ def tile(name, ttype, tile_id, route=0, upto=None, reverse=False, skip=None):
         if k < len(P):
             u = (upto - cum[k - 1]) / max(seg[k - 1], 1e-9)
             P = np.vstack((P[:k], P[k - 1] + u * (P[k] - P[k - 1])))
+    far = None
+    if back:                                                # out and back: stand 1 s at the far end, turn on the spot, return
+        far = len(P) - 1
+        P = np.vstack((P, P[-2::-1]))
     # waypoints at most 1.2 m apart, so progress is seen and a stall is caught on long legs
-    way = []
-    for a, b in zip(P[:-1], P[1:]):
+    way, far_wp = [], None
+    for k, (a, b) in enumerate(zip(P[:-1], P[1:])):
         n = max(1, int(math.ceil(np.linalg.norm(b - a) / 1.2)))
         way += [a + (b - a) * (j + 1) / n for j in range(n)]
+        if far is not None and k + 1 == far:
+            far_wp = len(way) - 1
     from harness import _seg_cross
     need = [dict(name=b["name"], a=b["a"], b=b["b"]) for b in beam_lines
             if any(_seg_cross(p, q, b["a"], b["b"]) is not None for p, q in zip(P[:-1], P[1:]))]
@@ -157,7 +163,8 @@ def tile(name, ttype, tile_id, route=0, upto=None, reverse=False, skip=None):
     c0 = z["cell0_center"] if "cell0_center" in z.files else np.array([-3.99, -3.99])
     return Course("ladder:" + name, g, float(c0[0]), float(c0[1]), float(z["resolution"]) if "resolution" in z.files else 0.02, boxes,
                   [float(P[0, 0]), float(P[0, 1]), math.degrees(yaw)],
-                  [wp(float(p[0]), float(p[1]), hold=(1.0 if k == len(way) - 1 else 0.0)) for k, p in enumerate(way)], name, extra)   # the route ends at a station
+                  [wp(float(p[0]), float(p[1]), hold=(1.0 if k in (len(way) - 1, far_wp) else 0.0),
+                      name=("far end: stand 1 s, then turn back" if k == far_wp else None)) for k, p in enumerate(way)], name, extra)   # ends at a station
 
 
 def beam_course(name, ttype, tile_id, slanted, before=0.9, after=0.8):
@@ -206,7 +213,19 @@ STEP1 = {
     "log_corridor_walls": lambda: tile("log_corridor_walls", "log_corridors", "log_corridors_L3_v0", 0),
     "log_corridor_rails": lambda: tile("log_corridor_rails", "log_corridors", "log_corridors_L3_v1", 0),
 }
-STEPS = {1: STEP1}
+# ---- step 2: PROPOSED routes (not run until the coordinator confirms the list). Export routes are 5 to 11 m; corridors and
+# dead ends are walked out and back, which gives the turn on the spot and brings them to 13 to 15 m.
+STEP2 = {
+    "street_doorway_out_and_back": lambda: tile("street_doorway_out_and_back", "street_front", "street_front_L4_v0", 0, back=True),
+    "street_out_and_back": lambda: tile("street_out_and_back", "street_front", "street_front_L3_v0", 0, back=True),
+    "corridor_walls_out_and_back": lambda: tile("corridor_walls_out_and_back", "log_corridors", "log_corridors_L3_v0", 0, back=True),
+    "corridor_rails_out_and_back": lambda: tile("corridor_rails_out_and_back", "log_corridors", "log_corridors_L3_v1", 0, back=True),
+    "wedge_field_loop": lambda: tile("wedge_field_loop", "wedges", "wedges_L4_v1", 3),
+    "stairs_U_turn": lambda: tile("stairs_U_turn", "stairs", "stairs_L4_v4", 0),
+    "amphitheatre_loop": lambda: tile("amphitheatre_loop", "stairs", "stairs_L3_v6", 0),
+    "home_dead_end_and_back": lambda: tile("home_dead_end_and_back", "homes", "homes_L3_v0", 2, back=True),
+}
+STEPS = {1: STEP1, 2: STEP2}
 
 
 def load_course(name):

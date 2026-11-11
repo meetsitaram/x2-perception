@@ -150,8 +150,11 @@ stumbles." The success rate is unchanged by this; two numbers are added beside i
   was heading to) and per class.
 - **Clean success** = a success with no side hit (foot, shin or knee; scuffs allowed) on any 4x4, wedge or stair. **Clean
   success rate** = clean successes / trials, with its 95 % Wilson interval.
-- Also reported: side hits per class (foot, of which in swing; shin or knee; scuffs), per trial and per section; summed and
-  peak impulse; peak horizontal force.
+- Also reported: side hits per class (foot, of which in swing; shin or knee; scuffs), per trial and per section.
+- **Force and impulse figures are not quoted for now (coordinator, 2026-11-11):** hits are reported as counts by class. On the
+  height field a foot pinched over an edge, or pinned between a raster face and a wall box, reads contact forces of several
+  kN that are not a net push on the body; until that contact is looked at, peak force, impulse and the impulse term of the
+  penalty are logged (events.csv) but not used in reports, and the stumble penalty is to be read as a weighted hit count.
 - **In the renders:** each side hit is a ball at the contact point with a thin post above it (red 4x4, yellow wedge, cyan
   stair) for at least 0.8 s, and a red banner with the limb, force, impulse, disturbance and penalty; a scuff is a small
   grey ball.
@@ -262,11 +265,17 @@ be stepped over (pelvis path across its centre line), as on the apparatus.
 
 **Step 2: reviewed routes on the map**: a fixed, named subset of the routes the user reviewed (loops with turns, routes
 through the main walk area, a dead end with a turn in place), unblocked ones only (every route in the export passed the route
-check). NOT BUILT YET: the list of which reviewed routes to use is still to be fixed with the coordinator.
+check). PROPOSED, not run until the coordinator confirms (`eval/ladder.py` `STEP2`, pictures in `eval/out/step2_proposal/`):
+`street_out_and_back` (15.5 m), `street_doorway_out_and_back` (13.3 m, through a doorway), `corridor_walls_out_and_back` and
+`corridor_rails_out_and_back` (13.8 m, four logs each way), `wedge_field_loop` (9.4 m round a pinwheel), `stairs_U_turn` (7.4 m,
+up a U stair to 1.8 m), `amphitheatre_loop` (10.7 m round curved steps), `home_dead_end_and_back` (14.5 m, through a doorway into
+a room and back). The export has no closed loops through the home or street tiles and its corridor and room routes are 5 to
+8 m, so those are walked out and back: a 1 s station at the far end, a turn on the spot, and the same way home. All eight
+pass the route check (0.25 m corridor, 0.25 m step); tightest wall clearance 0.27 m.
 
 **Step 3: the two held-out apparatuses** (everything above this section): the result against the 99 % goal.
 
-**Gates (proposed by the eval monitor, not yet confirmed by the user).** A checkpoint moves from step 1 to step 2 when every
+**Gates (proposed by the eval monitor; accepted provisionally by the coordinator on 2026-11-11, to be put to the user).** A checkpoint moves from step 1 to step 2 when every
 step-1 test it is supposed to master has at least 45 of 50 successes (90 %; the interval's lower end is then 79 %) and the
 four flat walking tests have 50 of 50; from step 2 to step 3 when every step-2 route has at least 45 of 50. Below a gate the
 higher step is not run for that checkpoint, with two exceptions: the baseline pair (run on every step once, as the reference),

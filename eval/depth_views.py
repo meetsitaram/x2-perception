@@ -35,6 +35,10 @@ POINTS_OURS = [
     ("02 one metre before the open door", 1.45, 1.18, 0.0, "between waypoints 0 and 1 (door)"),
     ("03 in the doorway", 2.45, 1.18, 0.0, "waypoint 1 (door), in the door plane"),
     ("04 in the slot, facing the front 4x4", 2.769, 0.686, 0.0, "waypoint 2 (door -> 4x4s): the slot is 0.5 m deep, so the toes are close to the beam"),
+    ("04a one metre before the front 4x4, seen through the doorway", 2.17, 1.42, -41.4,
+     "off the route: the route reaches this beam from the 0.5 m slot, so 1.0 m of approach only exists diagonally through the doorway"),
+    ("04b half a metre before the front 4x4, past the doorway", 2.545, 1.085, -41.4,
+     "off the route: on the same diagonal, just inside the door wall"),
     ("05 between the 4x4s, facing the back one", 2.80, 1.60, 17.2, "waypoint 7 (4x4s), heading to waypoint 8"),
     ("06 at the foot of the ramps", 3.34, 1.83, 0.0, "between waypoints 9 and 10 (ramps)"),
     ("07 on the ramps", 4.98, 1.83, 0.0, "waypoint 11 (ramps), on the back hill"),
@@ -207,6 +211,61 @@ def panel(path, title, sub, outside, depth, rgb, note):
     plt.close(fig)
 
 
+def flat_floor_profile(m, d, floor_z, rows):
+    """Depth (along the optical axis) a flat floor at floor_z would give in the centre column, per image row."""
+    cid = m.camera("chest_depth").id
+    R, c = d.cam_xmat[cid].reshape(3, 3), d.cam_xpos[cid]
+    ty = math.tan(math.radians(CAM["fov"][1]) / 2)
+    out = []
+    for r in rows:
+        v = 1.0 - 2.0 * (r + 0.5) / H
+        dw = R @ np.array([0.0, v * ty, -1.0])
+        out.append((floor_z - c[2]) / dw[2] if dw[2] < -1e-6 else np.nan)
+    return np.array(out)
+
+
+def detail(path, title, depth, flat, note):
+    """The same depth with the colour scale stretched to what is in the image, the policy-size view likewise, and the
+    centre-column profile against image row with the flat-floor curve."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import textwrap
+    pv = policy_view(depth)
+    lo, hi = float(np.percentile(depth, 1)), float(min(np.percentile(depth, 99), CAM["far"]))
+    fig, ax = plt.subplots(1, 4, figsize=(16, 4.9), gridspec_kw=dict(width_ratios=[1.45, 0.8, 1.2, 1.2]))
+    im = ax[0].imshow(np.clip(depth, lo, hi), cmap="turbo", vmin=lo, vmax=hi)
+    ax[0].set_title("(b') depth, scale stretched to this image: %.2f to %.2f m" % (lo, hi), fontsize=9)
+    plt.colorbar(im, ax=ax[0], fraction=0.035, pad=0.02).set_label("m")
+    ax[0].axvline(W / 2, color="w", lw=0.6, ls=":")
+    ax[1].imshow(np.clip(pv, lo, hi), cmap="turbo", vmin=lo, vmax=hi)
+    ax[1].set_title("(c') %d rows x %d columns, same scale" % pv.shape, fontsize=9)
+    for a in ax[:2]:
+        a.set_xticks([]); a.set_yticks([])
+    rows = np.arange(H)
+    col = depth[:, W // 2 - 4:W // 2 + 4].mean(1)
+    ax[2].plot(col, rows, "b-", lw=1.4, label="this scene, centre column")
+    ax[2].plot(flat, rows, "k--", lw=1.0, label="flat floor at the toes' height")
+    ax[2].set_ylim(H, 0); ax[2].set_xlim(0.2, min(3.0, np.nanmax(flat[np.isfinite(flat)]) + 0.2))
+    ax[2].set_xlabel("depth (m)"); ax[2].set_ylabel("image row (of %d)" % H); ax[2].legend(fontsize=7); ax[2].grid(alpha=0.3)
+    ax[2].set_title("(e) centre column at full resolution", fontsize=9)
+    prow = ((np.arange(POLICY_RAW[1]) + 0.5) * H / POLICY_RAW[1]).astype(int)
+    pc = pv[:, pv.shape[1] // 2 - 1:pv.shape[1] // 2 + 1].mean(1)
+    pf = np.clip(flat[prow], CAM["near"], CAM["far"])
+    diff = (pf - pc) * 100.0                                 # cm nearer than the flat floor
+    ax[3].barh(np.arange(len(diff)), diff, color=["#d62728" if abs(v) > 2 else "#999999" for v in diff])
+    ax[3].set_ylim(len(diff) - 0.5, -0.5); ax[3].axvline(0, color="k", lw=0.6)
+    ax[3].set_xlabel("cm nearer than a flat floor (centre 2 columns)"); ax[3].set_ylabel("policy image row (of %d)" % len(diff)); ax[3].grid(alpha=0.3)
+    nrow, big = int((np.abs(diff) > 2).sum()), float(np.nanmax(np.abs(diff)))
+    ax[3].set_title("(f) policy size: %d of %d rows off flat by > 2 cm, max %.0f cm" % (nrow, len(diff), big), fontsize=9)
+    fig.suptitle("MuJoCo | X2 chest depth camera, detail | %s | standing pose placed, not a policy" % title, fontsize=11, y=0.995)
+    fig.text(0.5, 0.005, chr(10).join(textwrap.wrap(note, 215)), ha="center", va="bottom", fontsize=8)
+    fig.subplots_adjust(left=0.02, right=0.99, top=0.88, bottom=0.17, wspace=0.22)
+    fig.savefig(path, dpi=100)
+    plt.close(fig)
+    return nrow, big
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apparatus", default="ours")
@@ -259,6 +318,7 @@ def main():
     d = mujoco.MjData(x.model)
     ren = mujoco.Renderer(x.model, H, W, max_geom=20000)
     files = ["00_flat_ground_check.png"]
+    detail_lines = []
     for name, px, py, yawd, where in POINTS_OURS:
         yaw = math.radians(yawd)
         place(x, d, app, px, py, yaw)
@@ -283,6 +343,11 @@ def main():
         fn = name.split(" ", 1)[0] + "_" + name.split(" ", 1)[1].replace(" ", "_").replace(",", "") + ".png"
         panel(out / fn, "our apparatus, point %s" % name, where + " | pelvis (%.2f, %.2f), facing %.0f deg" % (px, py, yawd),
               outside_view(x, d, ren, d.qpos[:3].copy(), yaw, fp), depth, rgb, note)
+        floor_z = float(app.height(*tp[:, :2].mean(0)))
+        nrow, big = detail(out / fn.replace(".png", "_detail.png"), "our apparatus, point %s" % name, depth,
+                           flat_floor_profile(x.model, d, floor_z, np.arange(H)), note)
+        detail_lines.append("%s: at 36 x 32, %d of 36 rows of the centre columns differ from a flat floor by more than 2 cm; the largest difference is %.0f cm." % (
+            fn.replace(".png", "_detail.png"), nrow, big))
         near = float(depth.min())
         lines.append("%s: %s. Pelvis (%.2f, %.2f, %.2f), facing %.0f deg. %s. Depth range in the image %.2f to %.2f m; %.0f %% of the pixels beyond 3 m." % (
             fn, where, px, py, d.qpos[2], yawd, note, near, float(depth.max()), 100 * float((depth > CAM["far"]).mean())))
@@ -320,7 +385,10 @@ preprocessing (blur, normalisation, frame stack) is not applied here.
 ## Files
 
 %s
-""" % ("our" if a.apparatus == "ours" else a.apparatus, W, H, check, "\n".join("- " + ln for ln in lines) + "\n- contact_sheet.png: all of the above, 1600 px wide"))
+""" % ("our" if a.apparatus == "ours" else a.apparatus, W, H, check, "\n".join("- " + ln for ln in lines) + "\n- contact_sheet.png: all of the above, 1600 px wide\n\n## Detail files (`_detail`)\n\n"
+       "Per point: (b') the depth with the colour scale stretched to that image, (c') the 36 x 32 view on the same scale, (e) depth along the centre "
+       "column against image row with the curve a flat floor at the toes' height would give, (f) per policy row, how many centimetres nearer than that "
+       "flat floor the centre two columns read (red: over 2 cm).\n\n" + "\n".join("- " + ln for ln in detail_lines) + "\n"))
     print("written to", out)
 
 
