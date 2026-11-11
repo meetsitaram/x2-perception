@@ -9,6 +9,6 @@
   "id": "baseline",
   "label": "Starting point",
   "value_pct": 7.5,
-  "note": "The 2 November ACP policy pair re-run under today's stricter rule: 15 of 200 on our apparatus (MuJoCo on CPU). Under the looser rule of 2 November it was 13 of 50 (26%), your 'about 25%'."
+  "note": "The 2 November ACP policy pair under today's stricter rule, our apparatus, 200 trials: 15 (7.5%) at best; 4 (2%) with the 2 November goal convention. Under the looser rule of 2 November it was 13 of 50 (26%), your 'about 25%'."
  }
 ]

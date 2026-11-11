@@ -225,7 +225,22 @@ STEP2 = {
     "amphitheatre_loop": lambda: tile("amphitheatre_loop", "stairs", "stairs_L3_v6", 0),
     "home_dead_end_and_back": lambda: tile("home_dead_end_and_back", "homes", "homes_L3_v0", 2, back=True),
 }
-STEPS = {1: STEP1, 2: STEP2}
+FLAT = ("flat_walk", "flat_stop_stand", "flat_turn_in_place", "flat_turn_and_return", "flat_backward", "flat_sideways")
+FLAT_GATE = FLAT[:4]                 # the only hard gate: 50 of 50 on each of these
+STEP1_V0 = STEP1                     # the first version: one tile of the training export per skill (kept for continuity)
+
+
+def _step1():
+    import ladder_synth as LS
+    d = {k: STEP1_V0[k] for k in FLAT}
+    d.update(LS.TESTS)               # five obstacle skills x three levels on held-out built courses
+    return d
+
+
+STEPS = {1: _step1(), 2: STEP2, 10: STEP1_V0} if __name__ != "__main__" else {1: {}, 2: STEP2, 10: STEP1_V0}
+STEP_DIR = {1: "step1", 2: "step2", 10: "step1_v0"}
+SKILLS = ("log", "wedge", "stairs_up", "stairs_down", "corridor")
+PASS = 45                            # of 50: a skill level is passed
 
 
 def load_course(name):
@@ -251,7 +266,7 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
         course = STEPS[step][test]()
         x = X.build(course, adapter.plant(names))
         tr = Hn.Trial(x, course, adapter, x.model.body_mass.copy(), x.model.body_inertia.copy())
-        d = out / ("step%d" % step) / test
+        d = out / STEP_DIR[step] / test
         (d / "traj").mkdir(parents=True, exist_ok=True)
         results, t0 = [], time.time()
         if (d / "summary.json").exists() and not os.environ.get("LADDER_REDO"):
@@ -296,8 +311,6 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
         print("%-20s %3d / %d success (%.0f-%.0f %%), clean %3d, penalty %.2f, waypoints %.1f / %d, %s, %d s" % (
             test, row["success"], row["trials"], 100 * row["ci95"][0], 100 * row["ci95"][1], row["clean"], row["mean_penalty"], row["mean_waypoints"], row["of"],
             row["outcomes"], row["wall_s"]), flush=True)
-        json.dump(dict(label=label, step=step, adapter=adapter.name, checkpoint=str(adapter.checkpoint), protocol=protocol_name, rows=table),
-                  open(out / ("step%d.json" % step), "w"), indent=1)
     return table
 
 
@@ -305,7 +318,7 @@ def collect(out, step):
     """The step's table from the per-test summaries on disk (tests run in several groups), as json and text."""
     rows, head = [], None
     for test in STEPS[step]:
-        f = out / ("step%d" % step) / test / "summary.json"
+        f = out / STEP_DIR[step] / test / "summary.json"
         if not f.exists():
             continue
         s = json.load(open(f))
@@ -318,7 +331,7 @@ def collect(out, step):
     if not rows:
         return rows
     json.dump(dict(label=head.get("label"), plant=head.get("plant"), step=step, on="the training map (not an apparatus result)", adapter=head["adapter"], checkpoint=head["checkpoint"],
-                   protocol=head["protocol"], rows=rows), open(out / ("step%d.json" % step), "w"), indent=1)
+                   protocol=head["protocol"], rows=rows), open(out / (STEP_DIR[step] + ".json"), "w"), indent=1)
     lines = ["%s | step %d, ON THE TRAINING MAP (not an apparatus result) | %s | plant %s | protocol %s" % (
         head.get("label") or head["adapter"], step, head["checkpoint"], head.get("plant"), head["protocol"]),
              "%-22s %-10s %-9s %-12s %-6s %-8s %-10s %-7s %s" % ("test", "success", "rate", "95 % interval", "clean", "penalty", "waypoints", "time", "outcomes / tile")]
@@ -327,11 +340,32 @@ def collect(out, step):
             r["test"], r["success"], r["trials"], 100.0 * r["success"] / r["trials"], 100 * r["ci95"][0], 100 * r["ci95"][1], r["clean"], r["mean_penalty"],
             r["mean_waypoints"], r["of"], ("%.0f s" % r["time_median"]) if r["time_median"] else "-",
             ", ".join("%s %d" % kv for kv in sorted(r["outcomes"].items(), key=lambda kv: -kv[1])), (" | " + r["tile"]) if r["tile"] else ""))
-    open(out / ("step%d.txt" % step), "w").write(chr(10).join(lines) + chr(10))
+    if step == 1:                                           # the skill profile: highest level passed per skill
+        by = {r["test"]: r for r in rows}
+        flat_ok = all(by.get(t, {}).get("success") == by.get(t, {}).get("trials") and by.get(t) for t in FLAT_GATE)
+        lines += ["", "FLAT GATE (50 of 50 on %s): %s" % (", ".join(FLAT_GATE), "PASSED" if flat_ok else "NOT PASSED"), "",
+                  "SKILL PROFILE (a level is passed at %d of 50; levels are tried in order)" % PASS,
+                  "%-12s %-14s %-22s %-22s %-22s" % ("skill", "highest passed", "level 1", "level 2", "level 3 (apparatus size)")]
+        prof = {}
+        for sk in SKILLS:
+            cells, best = [], 0
+            for lv in (1, 2, 3):
+                r = by.get("%s_L%d" % (sk, lv))
+                cells.append("%d / %d (clean %d)" % (r["success"], r["trials"], r["clean"]) if r else "not run")
+                if r and r["success"] * 50 >= PASS * r["trials"] and best == lv - 1:
+                    best = lv
+            prof[sk] = dict(highest_level_passed=best, levels=cells)
+            lines.append("%-12s %-14s %-22s %-22s %-22s" % (sk, "level %d" % best if best else "none", *cells))
+        weakest = min(prof, key=lambda k: (prof[k]["highest_level_passed"], sum(int(c.split(" ")[0]) for c in prof[k]["levels"] if c != "not run")))
+        lines.append("weakest skill: %s" % weakest)
+        j = json.load(open(out / (STEP_DIR[step] + ".json")))
+        j.update(flat_gate_passed=bool(flat_ok), profile=prof, weakest_skill=weakest, pass_mark="%d of 50" % PASS)
+        json.dump(j, open(out / (STEP_DIR[step] + ".json"), "w"), indent=1)
+    open(out / (STEP_DIR[step] + ".txt"), "w").write(chr(10).join(lines) + chr(10))
     return rows
 
 
-if __name__ == "__main__":
+def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--collect", action="store_true", help="only rebuild the step's table from the summaries on disk")
     ap.add_argument("--adapter", default=None)
@@ -348,4 +382,9 @@ if __name__ == "__main__":
     if not a.collect:
         run(a.adapter, a.checkpoint, a.step, a.tests or list(STEPS[a.step]), a.trials, pathlib.Path(a.out), a.protocol, a.label)
     collect(pathlib.Path(a.out), a.step)
-    print(open(pathlib.Path(a.out) / ("step%d.txt" % a.step)).read())
+    print(open(pathlib.Path(a.out) / (STEP_DIR[a.step] + ".txt")).read())
+
+
+if __name__ == "__main__":      # run through the imported module, so ladder_synth and this file share one `ladder`
+    import ladder as _ladder
+    _ladder.main()

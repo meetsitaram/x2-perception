@@ -275,14 +275,37 @@ pass the route check (0.25 m corridor, 0.25 m step); tightest wall clearance 0.2
 
 **Step 3: the two held-out apparatuses** (everything above this section): the result against the 99 % goal.
 
-**Gates (proposed by the eval monitor; accepted provisionally by the coordinator on 2026-11-11, to be put to the user).** A checkpoint moves from step 1 to step 2 when every
-step-1 test it is supposed to master has at least 45 of 50 successes (90 %; the interval's lower end is then 79 %) and the
-four flat walking tests have 50 of 50; from step 2 to step 3 when every step-2 route has at least 45 of 50. Below a gate the
-higher step is not run for that checkpoint, with two exceptions: the baseline pair (run on every step once, as the reference),
-and a run the coordinator asks for. Skills a method does not claim (backward, sideways) are reported but do not gate.
+**Gates and the skill profile (user and coordinator, 2026-11-11).** The user: 50 of 50 on the four flat walking tests is
+"fair"; on one pass mark for every obstacle: "not sure how you evaluate which obstacle is easy to learn". So:
 
-**Known limits of steps 1 and 2 as built:** the tiles are the ones in the training export (the tracks may train on exactly
-these tiles and routes); a held-out set made with other seeds from the same generators is the next thing to add. Meshes
+1. **The flat tests are the only hard gate:** 50 of 50 on `flat_walk`, `flat_stop_stand`, `flat_turn_in_place` and
+   `flat_turn_and_return`. Backward and sideways are reported, not gated.
+2. **Each obstacle skill is its own ladder of three levels on held-out courses** (`eval/ladder_synth.py`, built here, not
+   tiles of the training export), 50 trials each; a level is passed at 45 of 50 and levels count in order:
+
+   | Skill | Level 1 | Level 2 | Level 3 (our apparatus's dimensions, re-arranged) |
+   |---|---|---|---|
+   | `log` | 5 cm beam, square | 8.9 cm beam, 20 degrees skew | 8.9 cm 4x4 reached along a 0.51 m slot behind a wall, a 90 degree turn to cross it, a post beside the far side |
+   | `wedge` | 8 degree hill, crest 0.10 m | 12 degree hill, crest 0.15 m | 2 x 2 pinwheel of 1.22 m cells, 15 degrees, crest 0.16 m, crossed over the 16 cm faces between cells |
+   | `stairs_up` | 4 steps of 10 cm, run 30 cm | 5 steps of 14 cm, run 28 cm | 6 steps of 18.6 cm, run 22 cm, 1.1 m wide between walls |
+   | `stairs_down` | the same flights, from the landing down | | |
+   | `corridor` | 1.3 m wide, 5 m long | 1.0 m wide, two 5 cm logs | 0.87 m wide (the doorway's width), two 8.9 cm logs at 15 degrees |
+
+   The report is a **profile**: the highest level passed per skill, with the success and clean-success counts of all three
+   levels, and the weakest skill named (`<run>/step1.txt` and `.json`).
+3. **Step 2 routes are tagged with the skills and levels they need;** a checkpoint runs the routes whose skills it has
+   passed, so a policy good at stairs but not at wedges still gets its stair routes scored. (Tags: to be added with the
+   confirmed route list.)
+4. **The apparatuses (step 3)** are run when every skill is passed at level 3, and in any case for the best checkpoint of
+   each track once a day, so there is always a current apparatus number.
+5. **Difficulty is measured, not assumed:** `eval/out/profile_table.*` keeps success per skill and level for every checkpoint
+   and track scored, so the order in which each method learns the obstacles shows; each report names the track's weakest skill.
+
+The baseline pair is run through the whole profile as the reference. The first version of step 1 (one tile of the training
+export per skill, the table further up) is kept as `step1_v0` for continuity.
+
+**Known limits of steps 1 and 2 as built:** the step-1 courses are built by hand to the dimensions above, one course per
+skill and level (not a random family of them); step 2 uses tiles of the training export. Meshes
 that are not in the raster (cylinders, stones, bushes) become their bounding boxes. One tile per skill: a test says "this
 log", not "logs in general".
 

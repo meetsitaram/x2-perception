@@ -1,6 +1,6 @@
 # ACP track state
 
-Updated 2026-11-11 22:22 UTC (track agent). **Stage 1 is training** on node acp (run `s1_v1`, 36,000 envs, tmux `acp`); per-iteration `metrics.jsonl` since iteration 1,251; paper eval run at checkpoint 1,250 (86.6 %); first planner trained on the CPU and handed to the eval with the tracker (section 9); backup loop `acp-backup`.
+Updated 2026-11-11 23:45 UTC (track agent). **Stage 1 is training** on node acp (run `s1_v1`, 36,000 envs, tmux `acp`), from checkpoint 2,000 on with the measured gains (plant `mc_20261024`, section 12); paper eval 91.0 % at 2,000; stage-2 code ported and installed (section 10); next automatic pause at checkpoint 2,250 (paper eval and planner rollouts under the new gains).
 
 ## 0. Answer to the question that decides the track
 
@@ -708,3 +708,68 @@ into `eval/plant_report_002000_live_mc_20261024.json`. At checkpoint 2,250 (firs
 paper eval under the new plant and saves rollouts; on the CPU a new planner is trained from them and the eval hand-over is
 regenerated with the new gains in the card (`eval/handover_pair_s1_002250_mc_20261024_planner/`). Planner v1 and the first
 hand-over (vendor gains) are stale from then on.
+
+## 12. Checkpoint 2,000: paper eval, gains switched (2026-11-11 23:37-23:40 UTC)
+
+Pause 23:37:30-23:40:08 (2 min 38 s; heartbeat stated the reason). In it: the staged code was installed (stage-2-capable
+trainer, fixed contact placement metric, plant selection; smoke test passed), the paper eval ran on checkpoint 2,000 under
+the gains it was trained with (`vendor_20260823`), and training resumed from `ckpt_002000.pt` with `ACP_PLANT=mc_20261024`.
+Resume command now: `tmux new -d -s acp "ACP_PLANT=mc_20261024 bash /mnt/filesystem-g4/tracks/acp/code/supervise.sh /mnt/filesystem-g4/tracks/acp/runs/s1_v1 36000 12000"`
+(without `ACP_PLANT` the old gains come back: do not omit it).
+
+**Live read-back after the restart** (`eval/plant_report_002000_live_mc_20261024.{txt,json}`, from the MuJoCo Warp model):
+
+| Joints | kp | kd | armature | effort | action scale |
+|---|---|---|---|---|---|
+| hip pitch | 100 | 4 | 0.0291 | 120 | 0.261 |
+| hip roll, hip yaw | 100 | 3 | 0.0291 | 120 | 0.261 |
+| knee | 150 | 5 | 0.0291 | 120 | 0.261 |
+| ankle pitch | 40 | 3 | 0.0088 | 36 | 0.258 |
+| ankle roll | 30 | 2 | 0.0031 | 24 | 0.485 |
+| waist yaw | 40 | 8 | 0.0291 | 120 | 0.261 |
+| waist pitch, roll | 40 | 5 | 0.0031 | 24 | 0.485 |
+| shoulder pitch / roll / yaw | 30 / 20 / 20 | 1 | 0.0088 / 0.0088 / 0.0031 | 36 / 36 / 24 | 0.258 / 0.258 / 0.485 |
+| elbow, wrist yaw | 50 | 1 | 0.0031 | 24 | 0.485 |
+| wrist pitch, roll | 20 | 1 | 0.0043 | 6 | 0.089 |
+| head yaw / pitch | 3.4 / 10 | 0.11 / 0.8 | 0.0043 | 3 / 1 | 0.039 / 0.009 |
+
+Every joint reads exactly the `mc_20261024` file (ratio 1.00 for kp and kd on all 31); armature, effort, default pose and
+action scale unchanged. Randomisation: kp, kd, armature x U(0.9, 1.1) around these values.
+
+**Paper eval, reference-anchored terrains, oracle contacts, 9,018 episodes each (old gains for both):**
+
+| Set | 1,250 | 2,000 | Change |
+|---|---|---|---|
+| **Pooled** (paper: >= 98.5 % at the end of stage 1) | 86.6 % | **91.0 %** (90.4-91.6) | +4.4 |
+| Pico 2x2 | 98.3 | 100.0 | +1.7 |
+| ramps | 92.7 | 96.8 | +4.1 |
+| 4x4 stepovers | 90.3 | 93.7 | +3.4 |
+| flat locomotion | 93.3 | 92.9 | -0.4 |
+| blocks | 90.6 | 92.0 | +1.4 |
+| stair descents | 63.7 | 91.2 | +27.5 |
+| fitted stair climbs | 87.9 | 88.7 | +0.8 |
+| terrain-park stairs | 88.2 | 87.4 | -0.8 |
+| box and stair chains | 74.3 | 75.9 | +1.6 |
+
+Contact placement error at onset with the fixed metric: 0.166 m pooled (0.11 Pico 2x2 to 0.25 terrain-park stairs); the
+paper shows this only as bars. The stair descents recovered although their references are faulty (hip yaw at the joint
+limit): the policy learned to follow them; the set is still to be replaced. Chains are now the weak set (75.9 %, 24 % ended
+early) and barely moved in 750 iterations; flat, fitted climbs and terrain-park stairs are flat within their intervals.
+Against the switch criterion: pooled 91.0 % (< 95 %), chains 75.9 % (< 85 %), gain 4.4 points over 750 iterations (not a
+plateau yet), so stage 1 continues; the decision is retaken at the next evals under the new gains.
+
+Training metrics at iteration 2,000 (old gains): reward 0.123 of 0.30, base position error 0.123 m, joint error 0.156 rad,
+contact agreement 94.9 %, finish 0.87. Seven iterations after the gains switch (2,007): reward 0.087, joint error 0.171 rad,
+base error 0.150 m: the expected drop; how fast it recovers is the first thing the 2,250 eval shows.
+
+**Planner v2** (hindsight labels from the checkpoint-2,000 rollouts, old gains; CPU job `runs/planner_v2_s1_002000_vendor`,
+hand-over `eval/handover_pair_s1_002000_vendor_planner_v2/` with plant, kp and kd in the card): running at the time of
+writing. It is the last pair on the old gains; the first pair on the new gains comes from the 2,250 pause (armed:
+`eval/handover_pair_s1_002250_mc_20261024_planner/`).
+
+Hand-over cards: `handover_s1_v1_001000` and `handover_pair_s1_001250_planner_v1` now carry `"plant": "vendor_20260823"`
+(the eval monitor's check of the pair passed: planner identical, tracker input within 6e-08, action within 3e-06). The export
+writes the plant name always.
+
+Checkpoints on disk at 23:41: 1,000, 1,500, 1,750, 2,000 (the backup loop prunes to the newest two plus every 1,000); 1,250 survives only as
+`eval/handover_pair_s1_001250_planner_v1/tracker_ckpt_001250.pt`.

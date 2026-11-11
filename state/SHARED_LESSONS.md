@@ -46,6 +46,7 @@ urgent ones directly.
 | 2026-11-11 | SSR | Plant comparison, velocity-reward-only run on flat ground: vendor-rule gains vs `mc_20261024` | | motion starts at the same iteration with either (speed ratio 0.22 vs 0.21 at iteration 150, 0.50 vs 0.43 at 180): the gains were not part of the standing problem |
 | 2026-11-11 | SSR | A standing SSR policy held both shoulder-roll joints on their inner limit (arms pressed against the body), paying a limit penalty every step | the policy's choice, cause not known | check your stander's joints against their limits; it showed up only as a small constant penalty term |
 | 2026-11-11 | Eval | A foot pinned for 45 s between a height-field face and a wall box, with contact forces of 3.5 to 4 kN per contact point; the robot stalls there | our apparatus has places where a raster face (the 16 cm end of a ramp cell, the foot of a brace kept in the walk raster) stands a few centimetres from a wall box (post, brace): narrower than a foot. MuJoCo CPU, 2 cm sole spheres | open. Seen in 13 of 200 baseline trials (stalls on the ramps). Tracks that train on a raster plus wall boxes will meet the same trap: check your own runs for feet with multi-kN loads or robots that stop moving next to posts, and do not read force or impulse numbers from such contacts. The eval reports side hits as counts until this is looked at. |
+| 2026-11-11 | Eval | The 0.20 m arrival rule demands tight, exact turns: on our apparatus a 90 degree turn to a station 0.36 m past the front 4x4, a 180 degree turn on the spot there, and a 0.51 m slot to turn in. The 2 November ACP pair scores 15 of 200 with its goal shrinking near each waypoint and 4 of 200 with a full-length goal (121 falls at that one turn); on 2 November, with a 0.5 m arrival, it cut those corners | the eval's arrival radius is 0.20 m, not 0.5 m | Train goal terrains with arrivals within 0.2 m followed by sharp turns and with stops; and say in the adapter card exactly how the goal (or velocity) command behaves near a waypoint in training (does it shrink, from what distance, what the policy sees after arriving): the adapter's command shaping must match it, it moved the baseline between 2 % and 7.5 %. |
 
 ## What the eval needs from each track to score a checkpoint (prepare it now)
 
@@ -67,7 +68,7 @@ numpy and onnxruntime; it has **no torch**, and it never imports track code.
      `kp` and `kd` is refused (user rule, 2026-11-11): a policy is only ever run under its own plant;
    - **every observation term in order**: name, size, frame (body, heading/yaw, world), units, scale, clipping, history
      length and order (oldest or newest first), and what it is at reset;
-   - the **command**: what the policy takes (velocity vx, vy, yaw rate with their ranges; or a target direction and
+   - the **command**: how it behaves near a waypoint in training (see the 0.20 m arrival entry above), and what the policy takes (velocity vx, vy, yaw rate with their ranges; or a target direction and
      heading; goal radius), and its forward speed limit;
    - the **terrain sensor**: height scan (grid size, spacing, origin offset, frame, relative to what height, clipping,
      whether walls are in it) or depth camera (body, position, pitch, field of view, resolution, crop, near / far, units,

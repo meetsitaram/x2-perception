@@ -44,9 +44,9 @@ class ACPBaseline(Adapter):
         self.planner = FootMlpPlanner(os.path.join(EXPORT, "planner_v2_hist1.npz"), goal_mag=self.goal_mag, floor=0.0)
         # The original switched to the next waypoint at 0.5 m, so on the way to a waypoint that was not a station the goal
         # command always had its full length (0.5); only at stations did it shrink. With the eval's 0.20 m arrival the
-        # distance drops below 0.5 at every waypoint, a command the pair never met there. ACP_GOAL=shrink keeps that
-        # (the first 200-trial run); the default keeps the full length except at stations, as the original effectively did.
-        self.keep_mag = os.environ.get("ACP_GOAL", "keep") != "shrink"
+        # distance drops below 0.5 at every waypoint, a command the pair never met there. Both were run on our apparatus (200 trials each):
+        # shrinking (default) 15 successes, full length except at stations (ACP_GOAL=keep) 4.
+        self.keep_mag = os.environ.get("ACP_GOAL", "shrink") == "keep"    # default shrink: measured better on our apparatus (15 vs 4 of 200)
         self.planner.keep_mag = self.keep_mag
         self.load(os.path.join(EXPORT, "acp3_v2_1000.npz"))
         self.debug = {}

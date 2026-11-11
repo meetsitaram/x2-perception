@@ -4,17 +4,17 @@
   "tracks": {
    "title": "Team status per agent",
    "description": "One row per agent: state, what is running, newest checkpoint, blocker, next step and when it was last recorded.",
-   "blob": "8d8c4ede9f391d3e84373aa6ce36b0d7"
+   "blob": "40248ba7ff81992947f640646b0b7b2d"
   },
   "targets": {
    "title": "Goal and starting point",
    "description": "The apparatus success goal and the starting figure, both set by the user.",
-   "blob": "9752d3e707cfbb15ef62574142e5f51c"
+   "blob": "4138a57ba5045720bb2ed6fe6a8d3006"
   },
   "progress": {
    "title": "Training progress points",
    "description": "Iteration, reward, episode length and terrain level recorded from each run's training log.",
-   "blob": "badd8df9ceababb55d5123ca8cd42d14"
+   "blob": "3ec1e5a6f768a337345e10ab8e3b8f78"
   },
   "apparatus_results": {
    "title": "Apparatus eval runs",

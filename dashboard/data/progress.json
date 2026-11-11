@@ -274,5 +274,29 @@
   "episode_len": null,
   "terrain_level": null,
   "note": "87% of clips finished"
+ },
+ {
+  "id": "acp-2040",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, stage 1",
+  "iteration": 2040,
+  "total": 12000,
+  "reward": 0.103,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "October gains from iteration 2,000; dip after the switch"
+ },
+ {
+  "id": "hiking-v2-249",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 2, chest camera and October gains",
+  "iteration": 249,
+  "total": 30000,
+  "reward": 30.5,
+  "episode_len": 736,
+  "terrain_level": 0.4,
+  "note": "run 2 (from scratch): 2% of commanded speed, standing pattern again"
  }
 ]

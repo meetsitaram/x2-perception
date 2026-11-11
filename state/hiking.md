@@ -165,6 +165,22 @@ Weighted reward per control step (episode sum / episode length), from the per-te
   feet). The 9 deg backward lean of run 1's checkpoint 500 is the policy's choice of stance, not the rest pose.
 - Nothing was changed in the default pose.
 
+### Run 2 signals (trainer's printed means over all 8,192 robots; not a score)
+
+| Iteration | Reward | Episode length | Terrain level | Speed ratio (commanded / actual m/s) | Both feet down | Air-time reward | Wait penalty | Episodes ending in a fall | Style reward |
+|---|---|---|---|---|---|---|---|---|---|
+| 50 | 1.6 | 71 | 0.00 | 0.45 (0.62 / 0.28) | 66% | 0.004 | -0.41 | 100% | 0.36 |
+| 100 | 3.1 | 104 | 0.00 | 0.28 (0.61 / 0.17) | 72% | 0.005 | -0.82 | 100% | 0.41 |
+| 150 | 10.9 | 282 | 0.09 | 0.17 (0.62 / 0.11) | 79% | 0.009 | -2.25 | 87% | 0.44 |
+| 200 | 22.6 | 573 | 0.25 | 0.02 (0.63 / 0.01) | 81% | 0.014 | -6.16 | 58% | 0.47 |
+| 249 | 35.1 | 736 | 0.40 | 0.02 (0.62 / 0.01) | 84% | 0.016 | -8.31 | 35% | 0.50 |
+| G1 at 500 (equal samples to X2 250) | 43.9 | 731 | 1.48 | not logged | not logged | 0.040 | -4.27 | 60% | 0.44 |
+
+**Run 2 is going the same way as run 1: as the robots learn to stay up, forward speed goes to zero** (speed ratio 0.45 at
+iteration 50 while everything falls, 0.02 from iteration 200 on). So the standing is not explained by the old gains, the head
+camera or the standing share of the motion reference alone: all three were changed and the pattern is the same at 250. The early
+"speed" at iterations 50-100 is robots falling forward, not walking. Checkpoint: `runs/x2_parkour_v2/20261111_225809/model_250.pt`.
+
 **Watch in run 2** (`metrics.jsonl`): `Curriculum/walk_monitor/speed_ratio`, `double_support`, `Episode_Reward/rewards_feet_air_time/sum`,
 `rewards_dont_wait/sum`, at 250, 500, 1,000, 2,000. G1 reference at 500 (4,096 robots): air time 0.040, wait penalty -4.3,
 full-length episodes 40%, terrain level 1.48.
