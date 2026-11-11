@@ -50,7 +50,7 @@ for r, name in enumerate([str(n) for n in z["names"]]):
         w = wps[wi]
         tgt = np.array(w[:2])
         dist = float(np.linalg.norm(tgt - d.qpos[:2]))
-        cmd = Command(tgt, float(w[2]), (w[4] if len(w) > 3 else None), False, np.zeros(3), dist, 0.0, wi, len(wps), np.zeros((0, 2)))
+        cmd = Command(tgt, float(w[2]), (w[4] if len(w) > 3 else None), False, np.zeros(3), dist, 0.0, wi, len(wps), np.zeros((0, 2)), len(w) > 3)
         if k == 0:
             ad.reset(view, None)
         ad.act(view, cmd)

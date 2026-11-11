@@ -281,9 +281,7 @@ def collect(out, step):
             r["test"], r["success"], r["trials"], 100.0 * r["success"] / r["trials"], 100 * r["ci95"][0], 100 * r["ci95"][1], r["clean"], r["mean_penalty"],
             r["mean_waypoints"], r["of"], ("%.0f s" % r["time_median"]) if r["time_median"] else "-",
             ", ".join("%s %d" % kv for kv in sorted(r["outcomes"].items(), key=lambda kv: -kv[1])), (" | " + r["tile"]) if r["tile"] else ""))
-    open(out / ("step%d.txt" % step), "w").write("
-".join(lines) + "
-")
+    open(out / ("step%d.txt" % step), "w").write(chr(10).join(lines) + chr(10))
     return rows
 
 
