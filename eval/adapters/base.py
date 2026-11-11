@@ -67,14 +67,11 @@ class View:
         return self.d.xpos[b].copy(), self.d.xquat[b].copy(), self.d.xmat[b].reshape(3, 3).copy()
 
     def body_velocity(self, body="pelvis"):
-        """(linear, angular) velocity in the body's own frame. For the root (pelvis) read straight from the free joint
-        (checked against two tracks' recordings); for other bodies from mj_objectVelocity, which has NOT been checked
-        against a recording yet (it disagreed with the free joint's angular velocity for the pelvis: do not trust it)."""
-        if body == "pelvis":
-            R = self.d.xmat[self._pelvis].reshape(3, 3)
-            return R.T @ self.d.qvel[:3], self.d.qvel[3:6].copy()
+        """(linear, angular) velocity of the body's own frame (its xpos / xmat), in that frame. mjOBJ_XBODY, not mjOBJ_BODY:
+        BODY is the inertial frame, which on the X2 pelvis is offset and rotated from the body frame (it gave a gyro error
+        of up to 2.8 rad/s in the Hiking port and 0.8 rad/s here). For the root this equals the free joint's qvel[3:6]."""
         v6 = np.zeros(6)
-        mujoco.mj_objectVelocity(self.m, self.d, mujoco.mjtObj.mjOBJ_BODY, self.m.body(body).id, v6, 1)
+        mujoco.mj_objectVelocity(self.m, self.d, mujoco.mjtObj.mjOBJ_XBODY, self.m.body(body).id, v6, 1)
         return v6[3:].copy(), v6[:3].copy()
 
     def projected_gravity(self, body="pelvis"):

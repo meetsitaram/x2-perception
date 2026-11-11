@@ -317,7 +317,7 @@ class Trial:
                 # on a tread, a beam top or a ramp surface has a near-vertical normal and is not one.
                 if on_wall or (nz < SIDE_NZ and face):
                     v6 = np.zeros(6)
-                    mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_BODY, body, v6, 0)
+                    mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_XBODY, body, v6, 0)
                     spd = float(math.hypot(v6[3], v6[4]))
                     self._event("foot_side", side, d.time, fn, c.pos, dict(on="wall" if on_wall else "terrain", cls=cls, nz=round(nz, 2),
                                 swing=bool(self.load[body] < STANCE_ON or spd > 0.3), foot_speed=round(spd, 2)), fh)
