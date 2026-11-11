@@ -79,12 +79,52 @@ Updated 2026-11-11 (eval monitor, phase 1 done: desktop CPU only, nothing run on
 - The desktop's Python has mujoco, numpy and onnxruntime, no torch. Installing torch would be a large download (needs the
   user's okay), so policies come as npz or ONNX.
 - No address or login is in any eval file; `eval/node.sh` reads them from the git-ignored `config/nodes.local.json`.
-- When can the first policy be scored: as soon as one track has (a) a checkpoint that walks to a commanded target without a
-  reference clip, (b) its export and adapter card, (c) the obs check. Today none has (a): ACP is in stage 1 (reference
-  tracker, iteration about 1,000 of 12,000), SSR r3 stands still (4 % of commanded speed), Hiking X2 is at iteration 250 of
-  30,000. Hiking's policy (velocity command + depth) will be the first that fits the eval's command as it is; ACP needs its
-  planner (stage 2). From hand-over, the adapter check takes me under an hour and 200 trials about 30 to 60 minutes of one
-  CPU core per apparatus and protocol.
+- When can the first policy be scored: as soon as one track hands over a policy with its export, card and obs check. ACP
+  can be scored from stage 1 on IF a contact source exists for its tracker (its own planner, stage 2; or an interim source);
+  SSR r3 stands still; Hiking X2 is early (iteration 250 of 30,000). From hand-over the adapter check takes me under an
+  hour and 200 trials about 30 to 60 minutes of one CPU core per apparatus and protocol (estimate).
+
+## The 2 November baseline: how it ran, and re-running it under the current rule (2026-11-11)
+
+Correction (user): ACP "has a planner contact point estimator and the tracker or executor ... we already tried acp on our
+apparatus and that's where we got 25%". Source code: `gwbc-v6/scripts/acp/` (same files in `gwbc-supermimic/scripts/acp/`,
+where the checkpoints are); read only.
+
+**How contact targets reached the tracker on the route** (`eval/pico_rollout_planner.py`, run by `eval/crowd/route50.sh`):
+- Every 20 ms the planner (`stage2/planner.py`, MLP 204 -> 512 -> 512; weights `planner_v2_hist1.pt`) gets a 17 x 11 height
+  scan in the heading frame (x -0.3 .. 1.3 m, y +-0.5 m, minus root height), the goal (direction to the active waypoint
+  capped at 0.5, and the heading still to turn, or the station's facing), and 13 numbers of the current state (ankle
+  positions, root height over the ground, velocity, the root's z axis). No reference motion.
+- Per foot it outputs weights over the 187 scan points, an occupancy, a time to contact and "in contact now". The eval
+  decoded with `PLAN_DECODE=mode` (strongest point, refined within 0.11 m), `STEP_MASK=0.03` (no point whose surroundings
+  step by more than 3 cm) and `PLAN_LATCH=0.3` (target frozen in the world from 0.3 s before touchdown).
+- That becomes the tracker's 54-number contact input: nine bodies x (target xyz in the heading frame relative to the root,
+  time / 1.5 s, valid, in contact); only the two feet are filled, the other seven say "none".
+- The tracker (`acp3_v2/ckpt_001000.pt`, SuperMimic policy: encoder 680 -> 32 on a zeroed goal block, decoder on 990 numbers
+  of 10-step proprioception + 63 scan + 54 contacts + 30 goal command) outputs 31 joint targets at 50 Hz.
+- The waypoints were the 22 of `crowd/route_roam_h1.json`, reached within 0.5 m, stations held 1 s; MuJoCo Warp on the GPU,
+  walk raster plus wall boxes, scans on the same raster.
+
+**What a like-for-like re-run needs** (all on the desktop CPU, nothing to download: the `sm` virtual environment already
+has torch for the export):
+1. Export the tracker to npz (done for the planner: `eval/out/baseline_export/planner_v2_hist1.npz`, 2 MB; the tracker is
+   about 9 M weights).
+2. Port the tracker's input to an adapter: the 990-number proprioception (10 steps, term-major, the deploy joint order),
+   the zeroed goal block, the 9 x 7 scan, the 54 contacts (the `FootMlpPlanner` source in `eval/adapters/acp.py` already
+   produces them; `contact_feat = 6`), the 30-number goal command, action order and scale, the `vendor_20260823` plant.
+3. Check it: run the original simulator code on CPU for 50 steps of one robot and require the adapter to reproduce the
+   planner input and output, the tracker input and the action. Without this check the number would not be trustworthy.
+4. Run 200 trials per protocol on our apparatus (and NIST, never measured before) under the current rule.
+- **Feasible on CPU: yes.** My estimate: 3 to 5 hours of work for steps 1 to 3, then about 1 hour of one core per 200 trials
+  (4 runs: two apparatuses x nominal and randomised). Not started; waiting for the coordinator's go.
+- **What it will and will not be:** same policy pair and decode, but MuJoCo on CPU instead of MuJoCo Warp, 2 cm sole
+  spheres, the corrected route (5 waypoints moved), 0.20 m arrival, both 4x4s required, 1 s stand at the end, 180 s, and
+  the stumble score. So the result is "the baseline policy under the current rule", expected to be lower than 26 %; it
+  is not a reproduction of the 13 of 50 run (its raw output is gone and GPU physics is not repeatable). `route50.sh` sets no
+  path lookahead (`ROAM_LOOKAHEAD` defaults to 0), so the goal aimed at the waypoint itself, as the adapter does.
+- Tested so far: the exported planner, on the standing robot at three places of our route, plans both feet 0.2 to 0.4 m
+  ahead on the floor, short of the 4x4, and one foot onto the first stair tread at the stair foot. Not compared with the
+  original code's outputs yet (step 3).
 
 ## Harness (task 4): what was verified
 

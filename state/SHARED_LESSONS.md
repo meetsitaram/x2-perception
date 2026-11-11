@@ -67,8 +67,15 @@ numpy and onnxruntime; it has **no torch**, and it never imports track code.
    full actor input and the action. The eval adapter is accepted only when it reproduces your actor input and action from
    that state (this caught unit and ordering mistakes in earlier sim-to-sim work).
 
-Status of the adapters (eval monitor, 2026-11-11): the interface, shared numpy helpers and an **ACP adapter** written from the
-stage-1 code (history 5 x [angular velocity, gravity, joint position, joint velocity, last action], 9 x 7 scan, nine contact
-targets, goal; 588 inputs for 31 joints) exist and run end to end with random weights; nothing has been checked against a real
-checkpoint. ACP: stage 1 cannot be scored on a route (its contact targets come from reference clips); the first scoreable ACP
-policy is one that runs with its planner (stage 2 or 3). SSR and Hiking: adapters are written when the card and the ONNX exist.
+Status of the adapters (eval monitor, 2026-11-11, corrected the same day after the user's note): **ACP is a planner plus a
+tracker, and that pair is what walks a route.** The 2 November baseline (13 of 50 on our apparatus) was exactly that: the
+stage-2 foot planner chose the next footholds from the height scan every step and the tracker executed them; no reference
+clip was involved. My earlier line "stage 1 cannot be scored on a route" was wrong as written: the stage-1 tracker can be
+scored as soon as something supplies its contact targets each step. The ACP adapter now takes a pluggable contact source
+(`eval/adapters/acp.py`, `ContactSource`): zeros (plumbing only), the earlier foot planner from exported weights (for the
+baseline re-run; it was trained on SuperMimic rollouts, so not for this round's policies), the track's own planner as ONNX
+when it exists, or an interim non-learned source if the ACP agent writes one to the same interface. The adapter card for
+ACP therefore lists two things: the tracker (as above) and the contact source (inputs, outputs per body: target in the
+body-yaw frame, valid, time to contact, in contact; decode options). The adapter runs end to end with random tracker
+weights and the real baseline planner; nothing is checked against a real tracker checkpoint yet. SSR and Hiking: adapters
+are written when the card and the ONNX exist.

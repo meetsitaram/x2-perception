@@ -20,3 +20,7 @@ Read `docs/USER_RULES.md` first; it binds you. You own `docs/EVAL.md` and `/mnt/
   does not show.
 - A success count is only a result with its trial count. Never call a contact "none" unless the feet were checked too.
 - Keep `state/eval.md` current. Every shell command has a timeout; one GPU job per node.
+- History you need (added 2026-11-11): the "about 25%" baseline (13 of 50, 2 November) was the earlier ACP pipeline, a contact
+  planner feeding a tracker, run on our apparatus; its code, planner weights and eval scripts are in
+  `C:\Users\PC\projects\gwbc-v6\scripts\acp\` (read-only). ACP is always scored as planner plus tracker; never report a track as
+  "cannot be scored" without first checking what the user's earlier work did and what the shortest way to a score is.
