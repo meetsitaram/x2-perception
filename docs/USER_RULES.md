@@ -69,3 +69,6 @@ anything else. When the user decides something new, the coordinator adds it here
 
 ## The extended training map (2026-11-11)
 - The user asked "how are all the 3 training agents using our training map that we created recently?" It is meant for all three tracks, not only Hiking. The Hiking agent exports it to `/mnt/filesystem-g4/data/terrains/extended_v1/` in a simulator-neutral form; each track uses it in a later stage within its paper's method (Hiking: extended task after the paper-terrain run; ACP: stage 3; SSR: extra terrain categories once it walks) and writes its plan in its state file. Coordinator's reading of the question; confirm with the user.
+
+## ACP on the apparatus (2026-11-11)
+- The user corrected the claim that ACP's stage-1 tracker cannot be scored on a route: "it has a planner contact point estimator and the tracker or executor .. we already tried acp on our apparatus and that's where we got 25%". ACP is scored as planner plus tracker; do not wait for stage 3. The planner is brought forward, and the eval adapter takes contact targets from a planner.
