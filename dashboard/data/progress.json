@@ -166,5 +166,53 @@
   "episode_len": null,
   "terrain_level": 0.01,
   "note": "covers 4% of commanded speed; standing"
+ },
+ {
+  "id": "acp-1180",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, stage 1",
+  "iteration": 1180,
+  "total": 12000,
+  "reward": 0.11,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "81% of clips finished"
+ },
+ {
+  "id": "ssr-r3-280",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r3",
+  "iteration": 280,
+  "total": 20000,
+  "reward": 1.38,
+  "episode_len": null,
+  "terrain_level": 0.01,
+  "note": "new run r3; covers 5.5% of commanded speed; standing"
+ },
+ {
+  "id": "hiking-250",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking, X2 on the paper's terrains",
+  "iteration": 250,
+  "total": 30000,
+  "reward": 35.6,
+  "episode_len": 734,
+  "terrain_level": 0.31,
+  "note": "4,096 robots; stopped here for the benchmark"
+ },
+ {
+  "id": "hiking-314",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking, X2 on the paper's terrains",
+  "iteration": 314,
+  "total": 30000,
+  "reward": 27.69,
+  "episode_len": 572,
+  "terrain_level": 0.78,
+  "note": "8,192 robots from iteration 250; means still recovering after the restart"
  }
 ]

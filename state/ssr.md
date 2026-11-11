@@ -240,3 +240,121 @@ What the paper specifies for the levers the coordinator listed (checked in the p
 - Command: `cd /mnt/filesystem-g4/tracks/ssr/code && ../env/venv/bin/python scripts/supervise_node.py --name r3 --iters 20000 --num_envs 8192 -- --adv_norm separate --prior_min_speed 0.2 --rsi_min_speed 0.3`
 - Motion sets checked by clip name (desktop): single-part captures only (stairs up/down, ramp, 4x4 and 2x2 crossings, box
   step-ups, flat walking); no clip recorded on a full apparatus route.
+
+## Backup and restore (user rule, 2026-11-11)
+
+Everything a restart needs is written directly on the shared filesystem; training never writes to the node's local disk, so
+there is no copy step that can be forgotten.
+
+| Kind | Where (under `/mnt/filesystem-g4/`) | Written by |
+| --- | --- | --- |
+| Code and configs (with my changes) | `tracks/ssr/code/` | me, by scp; the change log is in this file |
+| Checkpoints | `tracks/ssr/runs/<run>/last.pt` (every 50 iterations, about every 5 min), `prev.pt` (the one before), `ckpt_NNNNNN.pt` every 1,000 | `ssr.train` |
+| Training logs | `tracks/ssr/runs/<run>/log.jsonl` (every 10 iterations), `runs/<run>.log` (process output), `runs/supervisor.log`, `runs/<run>/args.json` | `ssr.train`, supervisor |
+| Benchmarks | `tracks/ssr/runs/bench.sh`, `runs/bench.log` | me |
+| Motion prior | `tracks/ssr/code/data/amp.npz` (63-D frames per terrain set) | built on the desktop by `scripts/build_amp.py` |
+| Motion prior sources (retargeted clips, 85 MB) | `data/motions/ssr_prior_sources/apparatus_build_train/` (6 files) and `.../terrain_park_train_sets/` (6 files), copied from the desktop 2026-11-11 21:40 UTC | me; `build_amp.py` reads them (its two path constants point at the desktop folders and must be changed to these to rebuild on the node) |
+| Terrain | generated at start from `ssr/terrain.py` with the run's seed; nothing to store | |
+| Python environment | `tracks/ssr/env/venv` (also on the shared filesystem) | see below |
+| Only on the node's local disk | the Warp kernel cache (`~/.cache/warp`, rebuilt automatically in about 2 min) and the tmux session | |
+
+Retention: `last.pt` + `prev.pt` (newest two) + one numbered checkpoint per 1,000 iterations. Runs r1-r3 used the earlier
+setting (numbered every 500, no `prev.pt`).
+
+Restore on a fresh node: mount the shared filesystem, then `sudo apt-get install -y python3.12-venv tmux` and, only if
+`tracks/ssr/env/venv` is missing:
+`python3 -m venv env/venv && env/venv/bin/pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128 && env/venv/bin/pip install mujoco==3.17.0 mujoco-warp==3.17.0 warp-lang==1.18.0 numpy==2.5.4 scipy==1.18.1 joblib==1.6.0 onnx==1.23.2 onnxruntime==1.31.1 pyyaml`
+(Python 3.12.3, NVIDIA driver 580.173). Then start the supervisor command of the current run (see Status); it resumes from
+`last.pt`. If `last.pt` does not load, copy `prev.pt` over it.
+
+## The paper's own evaluation, and ours for the X2
+
+What the paper evaluates (Sec. 4, Tables 1-2, Figs. 5-7):
+
+| Item | Paper | Paper's figure for SSR |
+| --- | --- | --- |
+| Success rate (sim) | 1,000 randomised trials per terrain at a 1.0 m/s forward command; success = a 20 s traversal without termination | "near-100 %" at all training difficulties (Fig. 5; a plot, no table) |
+| Safe foothold rate (SFR) | share of footholds with support ratio above 75 % (support ratio = share of the 22.5 x 10 cm sole patch within tolerance of the sole height) | highest of all methods (Fig. 6; no numbers in the text) |
+| Mean support ratio (MSR) | mean support ratio over footholds; first checkpoint reaching 75 % | earliest (Fig. 6) |
+| Average power (W), peak foot contact force (N) | Table 1 | stairs up 381.3 W / 507.7 N; stairs down 342.4 / 519.2; gap 214.4 / 463.4; high platform 253.0 / 480.4 |
+| Training curves | episodic return, share of robots reaching the top terrain level, peak GPU memory (23.7 GB) | Fig. 7c |
+| Symmetry | either-leg-led traversal, shown qualitatively | Fig. 7 |
+| Real robot | 20 trials per terrain | stairs up and down 15/30 cm 20/20; gap 80 cm 19/20; platform 40 cm 20/20; gap 90 cm 17/20; platform 45 cm 19/20; one 1.3 km outdoor walk |
+| Ablations and baselines | NoFoothold, NoImgn, NoSym, InpSym, NoStyle, SglDisc; HPL, PIM | Table 1 and Figs. 5-7 |
+
+Ours: `scripts/paper_eval.py` in the code copy (from the desktop repo) computes, per terrain type at levels 4, 9, 14, 19: the
+paper's survive-20-s rate at 1.0 m/s over 1,000 randomised trials, plus "crossed" (reached the far end, because a standing
+robot also survives 20 s), SFR and MSR at touchdowns, average power, peak foot force, velocity tracking in eight directions
+and two yaw rates, which foot leads, and the gate weights. Command (a GPU job: only when training is stopped):
+`../env/venv/bin/python scripts/paper_eval.py --ckpt ../runs/<run>/last.pt --out ../eval/<run>_<iter>`.
+**Not run yet on this node**: there is no walking checkpoint, and a standing one scores 100 % on the paper's success
+definition, which says nothing. Training itself logs MSR, SFR, power and the top-level share every 10 iterations (legend below).
+
+Cannot be reproduced: gap and discrete-obstacle terrains (not in our terrain set; beams and the flat lane replace them), the
+real-robot trials, the outdoor walk, the DR02 results, the HPL and PIM baselines, and the Fig. 5/6 numbers (plots only).
+Ablations are possible later as extra runs, one GPU job each.
+
+## Training log legend (`runs/<run>/log.jsonl`, one JSON object every 10 iterations; full set from run r4 on)
+
+Per-step means over all robots and the 24 steps of the iteration unless noted. W = the paper's weight (Table 6).
+
+| Name | Meaning | Paper | W |
+| --- | --- | --- | --- |
+| `it`, `dt`, `elapsed_h`, `samples_per_s`, `num_envs`, `gpu_util`, `gpu_mem_mb`, `gpu_gb` | iteration, seconds per iteration, hours, robot-steps per second, robots, GPU utilisation % and memory at log time, peak torch memory | | |
+| `r_l`, `r_f`, `r_s` | the three reward groups per step, unweighted | r^l, r^f, r^s | 1.0, 0.25, 0.2 |
+| `group_weighted` | the same times the group weight | | |
+| `terms` / `terms_raw` | each locomotion term: weighted contribution / value before the weight | Table 6 | |
+| `lin_vel` | exp(-abs(v_xy - cmd)^2 / 0.25) | linear velocity tracking | 1.0 |
+| `ang_vel` | exp(-(yaw rate - cmd)^2 / 0.25) | yaw rate tracking | 0.8 |
+| `orientation` | exp(-abs(g_xy)^2 / 0.01) | orientation | 0.5 |
+| `ang_vel_xy` | exp(-abs(w_xy)^2 / 0.25) | roll/pitch rate | 0.25 |
+| `base_height` | exp(-(h - 0.68)^2 / 0.01) | base height | 0.4 |
+| `action_rate`, `smoothness` | mean squared first / second action difference | action rate, smoothness | -0.12, -0.06 |
+| `dof_vel`, `dof_torque` | mean squared joint velocity / torque over its limit | DoF velocity, torque | -0.96, -0.6 |
+| `dof_dev` | mean absolute joint offset from default | DoF deviation | -1.8 |
+| `dof_pos_lim`, `dof_vel_lim`, `dof_tau_lim` | share of joints beyond position / velocity / torque limit | DoF limits | -1.5, -6, -6 |
+| `stand_still` | joint offset when the command is under 0.15 | stand still | -0.12 |
+| `single_support` | 1 if a single-support step occurred in the last 0.2 s, or the command is under 0.15 | single support | 0.2 |
+| `impact`, `slip` | squared vertical / horizontal foot speed while in contact | impact velocity, contact slippage | -1.3, -0.2 |
+| `air_time` | air time beyond 0.4 s at touchdown | feet air time | -2.0 |
+| `stumble` | horizontal foot force over 3x vertical | feet stumble | -2.0 |
+| `lateral` | exp(min(d_y - 0.22, 0) / 0.03) | feet lateral distance | 0.08 |
+| `air_bonus`, `imitate` | early stepping bonus, clip tracking (both off: always 0) | not in the paper | 0 |
+| `disc.<type>` | per discriminator: `loss`, mean output on data `d_data` and on the policy `d_policy`, gradient penalty, `style_reward` of the robots on that type, their `share` | AMP, r^s | |
+| `d_r`, `d_f` | the same outputs averaged over the five | | |
+| `foothold` | `touchdowns` counted, `msr` mean support ratio and `sfr` share above 75 % at touchdown (not on ramps) | Sec. 4.2 | |
+| `foot_cm`, `foot_nll` | error and loss of the imagined landing | Eq. 1 | |
+| `guide_on` | imagined foothold guidance active (mean level passed 2) | Sec. 3.2 | |
+| `done_share`, `dones_per_iter` | share of episode ends by cause: `tilt`, `low`, `link_force`, `clearance`, `diverged`, `side_obstacle`, `left_tile_side`, `left_tile_back`, `stuck` (off), `reached_end`, `omni_left_tile`, `time_limit` | App. A.7 | |
+| `levels_by_type`, `lvl_mean`, `level_max_share` | curriculum level per terrain type, mean, share of robots at the top level | Fig. 7c | |
+| `gait` (robots commanded 0.3 m/s or more) | `vx_ratio` achieved / commanded speed along the tile, `cmd_speed`, `vx_mps`, `lin_err` (m/s), `yaw_rate_err`, `yaw_rate_cmd` (rad/s), `single` / `double` / `flight` share of steps, `steps_per_s` touchdowns per second, `power_w` sum of abs(torque x joint velocity), `foot_force_max_n` | Table 1 (power, force); commands Table 4 | |
+| `ep_ret`, `ep_len_s`, `n_done` | weighted, dt-scaled return and length of finished episodes | Fig. 7c | |
+| `kl`, `lr`, `pi`, `v`, `std`, `entropy_std`, `adv_sd`, `skipped` | PPO: KL, step size, losses, action std (mean and per joint), weighted advantage spread per critic, skipped updates | Table 9 | |
+| `hb`, `hf`, `np`, `v_est` | encoder losses: base and foot height maps, next proprioception, velocity estimate | Table 9 | 2, 1, 5, 2 |
+| `nan`, `touch`, `stuck` | cumulative diverged worlds, side-obstacle touches, stuck terminations | | |
+
+Gaps: per-episode peak foot force as in Table 1 (the log has the per-step mean of the larger foot force; `paper_eval.py` has
+the peak), success rate per terrain (needs `paper_eval.py`), the VAE KL term (computed, not logged).
+
+## Plan for the extended training map (`/mnt/filesystem-g4/data/terrains/extended_v1/`, exported by the Hiking track)
+
+Not used yet; a gait on the paper-style tiles comes first. How SSR takes it without leaving the paper's method (terrain types,
+each with a discriminator and a gate expert, 20 levels, tiles walked along x under a heading command, an omnidirectional stage):
+
+| Map content | SSR terrain type and motion prior | Notes |
+| --- | --- | --- |
+| Wedges, ramps | `ramp` (the paper's slope), ramp captures | cross-slope wedges need lateral commands: some go on the omnidirectional tile |
+| Stairs, stairs with turns | `stairs`, stair captures | straight flights as tiles; a turn is a landing between two flights walked under a changing heading target, which the paper's heading command already expresses |
+| Straight and slanted 4x4s, log corridors | `beam` (in place of the paper's discrete obstacles), 4x4 / 2x2 crossing captures | corridor walls and rails enter as side obstacles (depth and critic map; touching ends the episode), as now |
+| Platforms, kerbs, home and street steps | `platform`, step-up captures | |
+| Flat corridors, doors, home and street floors | `flat` lane, flat walking | |
+| Dead ends (turn in place), backward and sideways moves | no new type: the omnidirectional stage (base-frame vx, vy, yaw-rate commands, Table 5) on tiles with walls | needs turning and backward/sideways clips in the flat prior; it has 10 % backward frames and few pure turns: to be extended from BONES-SEED |
+
+A new category would be needed only for content with no prior and no analogue among the five (none in the description so far);
+the network has five experts and five discriminators, so a sixth type means widening both.
+
+Needed from the export: (1) one height raster per tile at 2.5 cm or finer with x0, y0 and resolution in metres, walkable surface
+only; (2) a second "vision" raster or boxes for walls, rails and door frames (centre, half-size, yaw), so depth sees them while
+physics stays a height field; (3) per tile: category label, the difficulty parameters to sort tiles into 20 levels, entry and
+exit points with headings, lane width, and tile size if not 8 x 4 m; (4) for routes: waypoint lists with headings, used only in
+the omnidirectional stage; (5) which tiles copy apparatus parts, so they can be listed here; no whole apparatus layout or route.
