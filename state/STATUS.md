@@ -25,3 +25,4 @@ Updated 2026-11-11.
   Earlier ACP and SSR checkpoints that depend on SuperMimic are not reused.
 - 2026-11-11 (user): a station in the eval is a 1 s stand in the arrival disc; button presses do not count toward success ("station is just a 1 s stand - that's good"). Time limit 180 s per trial, confirmed by the user the same day.
 - 2026-11-11 (user): the eval's side-hit / stumble penalty score is for the eval only; it does not have to go into any track's training rewards ("they don't have to go into training - the penalties"). Tracks are not required to add it. Whether the Hiking track's separately planned stumble/edge/clearance training rewards (extended run) stay is the user's call; asked.
+- 2026-11-11 (user): the Hiking track's extended run includes the planned training penalties (stumble, foothold, foot clearance): "INCLUDE THEM". The eval's stumble score itself stays eval-only.

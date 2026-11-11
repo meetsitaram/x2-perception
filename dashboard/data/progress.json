@@ -142,5 +142,29 @@
   "episode_len": 112,
   "terrain_level": 0.0,
   "note": ""
+ },
+ {
+  "id": "acp-940",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, stage 1",
+  "iteration": 940,
+  "total": 12000,
+  "reward": 0.092,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "72% of clips finished"
+ },
+ {
+  "id": "ssr-350",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r2",
+  "iteration": 350,
+  "total": 20000,
+  "reward": 1.713,
+  "episode_len": null,
+  "terrain_level": 0.01,
+  "note": "covers 4% of commanded speed; standing"
  }
 ]

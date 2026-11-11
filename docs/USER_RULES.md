@@ -33,7 +33,7 @@ anything else. When the user decides something new, the coordinator adds it here
 - The NIST route visits the pocket behind the upper 4x4 and ends at the far end of the landing (the user's two marked-up maps).
 - "Add negative score for hitting on the sides of the 4x4 as well as the side of the wedges and stairs which will cause stumbles":
   the eval reports success, clean success (no side hits) and a stumble penalty. **Eval only**: "they don't have to go into
-  training - the penalties". Whether the Hiking track's own planned training penalties stay is open (asked 2026-11-11).
+  training - the penalties". The Hiking track's own planned training penalties for its extended run (stumble, foothold, foot clearance) stay in: "INCLUDE THEM" (2026-11-11).
 
 ## How agents work
 - "Any EULA or other approvals - go ahead and say YES for those when installing." Install-time prompts on the nodes only; not

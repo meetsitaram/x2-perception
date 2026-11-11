@@ -4,7 +4,7 @@
   "tracks": {
    "title": "Team status per agent",
    "description": "One row per agent: state, what is running, newest checkpoint, blocker, next step and when it was last recorded.",
-   "blob": "7e6d3e97436868eab5df7245bb2cf9b0"
+   "blob": "4cdd62b02b8038aef018e83dac880362"
   },
   "targets": {
    "title": "Goal and starting point",
@@ -14,7 +14,7 @@
   "progress": {
    "title": "Training progress points",
    "description": "Iteration, reward, episode length and terrain level recorded from each run's training log.",
-   "blob": "6a40ccd06891b0062ef10a68dfa6de02"
+   "blob": "0e0ed60b2e87dafeb5a9c7f1de43eaed"
   },
   "apparatus_results": {
    "title": "Apparatus eval runs",
@@ -29,7 +29,7 @@
   "details": {
    "title": "What goes into each training",
    "description": "Rewards, terrain, commands and data per track, marked as true to the paper or added.",
-   "blob": "c8dbbf8bd84a5f1b60c8c1b8ea5e3291"
+   "blob": "657f9904334926a19badac22e54aba7b"
   },
   "robot": {
    "title": "Robot, motions and props",
@@ -44,7 +44,7 @@
   "open_items": {
    "title": "Open items",
    "description": "Decisions and blockers and who each waits on.",
-   "blob": "6a00a226d879c1d480820bc26be3a8c3"
+   "blob": "2e7bfde6ce516267357aa49429827ba9"
   },
   "worklog": {
    "title": "Work log",

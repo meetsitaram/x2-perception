@@ -1,13 +1,5 @@
 [
  {
-  "id": "hikingpen",
-  "item": "Hiking track: keep or drop the planned training penalties (stumble, foothold, foot clearance) for its later extended run? The eval stumble score is eval-only.",
-  "who": "You",
-  "who_kind": "you",
-  "status": "Waiting",
-  "status_kind": "waiting"
- },
- {
   "id": "share",
   "item": "New terrain is 18 of 38 columns of the training map; confirm the share",
   "who": "You",

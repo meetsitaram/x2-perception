@@ -200,3 +200,43 @@ reward, so the search never leaves standing.
   uses 4,096.
 - Not done yet, and the real route to using the card: move the depth ray march into a Warp kernel (expected to cut the
   environment step by a third or more) and then re-benchmark.
+
+**r2 result: stands still too.** Stopped at iteration 360 (21:17 UTC). vx 0.38 (it 20), 0.07 (120), 0.04 (210), 0.04 (290),
+0.03 (360); episode length 17.7 s, mean level 0.01, double support 0.88, style reward 0.35. Raising the motion prior's share
+alone does not start a gait. `runs/r2/last.pt` = iteration 350.
+
+**Finding (21:15 UTC): the motion prior itself contains standing.** Measured on `data/amp.npz` (desktop, CPU):
+
+| Set | Seconds | Frames with planar speed under 0.1 m/s | Standing (also joints still) | Median forward speed |
+| --- | --- | --- | --- | --- |
+| ramp | 564 | 21.7 % | 15.4 % | 0.21 m/s |
+| stairs | 1241 | 24.8 % | 20.4 % | 0.24 m/s |
+| beam | 605 | 21.5 % | 15.1 % | 0.14 m/s |
+| platform | 922 | 30.9 % | 24.3 % | 0.19 m/s |
+| flat | 406 | 25.9 % | 17.7 % | 0.09 m/s |
+
+Two consequences, both pushing towards standing: (1) the discriminators are shown standing as reference motion, so a standing
+robot keeps a style reward of about 0.35 instead of about 0; (2) the walking starts draw from the flat set and set the commanded
+speed to the frame's forward speed, so half of all walking episodes were commanded at a median 0.09 m/s, below the 0.15 m/s
+zero-command threshold under which the paper's rewards pay for standing. The paper's prior is traversal clips (71 clips, 521 s)
+used with commands U(0, 1.2) m/s.
+
+What the paper specifies for the levers the coordinator listed (checked in the paper text, 2026-11-11):
+
+| Lever | Paper | Here before r3 |
+| --- | --- | --- |
+| Motion prior weight | style group 0.2 (Table 6); how the three advantages are combined is not stated | 0.2; joint (r1) and per-critic (r2) normalisation both stand |
+| Reference windows | 5 frames x 63-D from traversal clips; nothing on standing frames | 15-24 % standing frames |
+| Start state | not stated | default pose, half from "walking" frames (which were often standing) |
+| Commands | forward U(0, 1.2) m/s (slopes U(-1, 1)), heading range per terrain; no minimum speed, no command curriculum, no resampling rule | same, except walking starts overrode the speed with the frame's |
+| Early penalty schedule | none | none (dropped) |
+| Termination for not moving | none (time limit, leaving the tile, link contact force, severe tilt, foot below ground on gaps) | none (dropped) |
+
+### Run `r3` (started 2026-11-11 21:18 UTC): moving frames only in the prior and in the walking starts
+
+- r2 plus `--prior_min_speed 0.2` (discriminator reference windows need a mean planar speed of 0.2 m/s or more: 55-64 % of
+  windows kept per set) and `--rsi_min_speed 0.3` (walking starts only from frames moving forward at 0.3 m/s or more: 41 % of
+  the flat frames). No new reward, no new termination. Fresh start, 8,192 robots.
+- Command: `cd /mnt/filesystem-g4/tracks/ssr/code && ../env/venv/bin/python scripts/supervise_node.py --name r3 --iters 20000 --num_envs 8192 -- --adv_norm separate --prior_min_speed 0.2 --rsi_min_speed 0.3`
+- Motion sets checked by clip name (desktop): single-part captures only (stairs up/down, ramp, 4x4 and 2x2 crossings, box
+  step-ups, flat walking); no clip recorded on a full apparatus route.
