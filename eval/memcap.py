@@ -10,11 +10,14 @@ import ctypes
 import os
 import sys
 
-import psutil
+try:
+    import psutil
+except ImportError:                 # environments without psutil: the cap still applies, the free-memory check is skipped
+    psutil = None
 
 
-def guard(cap_gb=6.0, need_free_gb=16.0):
-    free = psutil.virtual_memory().available / 2 ** 30
+def guard(cap_gb=6.0, need_free_gb=16.0, low_priority=False):
+    free = psutil.virtual_memory().available / 2 ** 30 if psutil else float('inf')
     if free < need_free_gb:
         sys.exit(f'memcap: only {free:.1f} GB free (need {need_free_gb:.0f}); not starting')
     cap = int(cap_gb * 2 ** 30)
@@ -50,4 +53,5 @@ def guard(cap_gb=6.0, need_free_gb=16.0):
     if not ok:
         sys.exit(f'memcap: could not set the {cap_gb} GB cap (error {ctypes.get_last_error()}); not starting')
     guard.job = job                                   # keep the handle alive
-    print(f'memcap: {cap_gb:.0f} GB cap, {free:.0f} GB free', flush=True)
+    k32.SetPriorityClass(ctypes.c_void_p(k32.GetCurrentProcess()), 0x4000 if low_priority else 0x20)   # below normal
+    print(f'memcap: {cap_gb:.0f} GB cap, {free:.0f} GB free' + (', low priority' if low_priority else ''), flush=True)

@@ -140,7 +140,8 @@ class Trial:
         yaw = math.radians(syaw + r["dyaw_deg"])
         d.qpos[:3] = [sx + r["dx"], sy + r["dy"], 1.0]
         d.qpos[3:7] = [math.cos(yaw / 2), 0, 0, math.sin(yaw / 2)]
-        d.qpos[x.qadr] = x.plant["default_q"]
+        sq = getattr(self.adapter, "start_q", None)           # an adapter may ask for the pose its policy's runs start in
+        d.qpos[x.qadr] = sq(x.joint_names) if sq else x.plant["default_q"]
         mujoco.mj_forward(m, d)
         gap = min(self._sole_gap(b) for b in x.foot_ids)   # drop until the lowest sole point is 2 mm above its ground
         d.qpos[2] -= gap - 0.002
@@ -628,9 +629,12 @@ def main():
     ap.add_argument("--kinematic", action="store_true")
     ap.add_argument("--out", required=True)
     ap.add_argument("--keep-traj", choices=["picked", "all"], default="picked")
+    ap.add_argument("--wall-limit", type=float, default=0.0, help="s: stop starting trials after this long, keep what is done in "
+                    "partial.json and exit with code 3; run the same command again to continue")
+    ap.add_argument("--label", default=None, help="a line for the summary and render labels (what this run is)")
     a = ap.parse_args()
     import memcap
-    memcap.guard(cap_gb=6, need_free_gb=12)
+    memcap.guard(cap_gb=6, need_free_gb=12, low_priority=True)
     out = pathlib.Path(a.out)
     app = None if a.apparatus == "flat" else Apparatus(a.apparatus)
     if a.kinematic:
@@ -642,15 +646,33 @@ def main():
     protocol = RANDOM if a.protocol == "randomised" else NOMINAL
     (out / "traj").mkdir(parents=True, exist_ok=True)
     results, t0 = [], time.time()
+    part = out / "partial.json"
+    if part.exists():                                       # continue an interrupted run: same seeds, same definition
+        results = json.load(open(part))
+        print("continuing: %d trials already done" % len(results), flush=True)
+    have = {r["seed"] for r in results}
     for i in range(a.trials):
         seed = a.seed0 + i
+        if seed in have:
+            continue
+        if a.wall_limit and time.time() - t0 > a.wall_limit:
+            json.dump(results, open(str(part) + ".tmp", "w"))
+            os.replace(str(part) + ".tmp", part)
+            print("wall limit: %d of %d trials done, run again to continue" % (len(results), a.trials), flush=True)
+            sys.exit(3)
         r = trial.run(seed, protocol, a.seconds, record=True, stand_only=a.stand)
         trial.save_traj(out / "traj" / ("%d.npz" % seed))
         results.append(r)
+        if len(results) % 5 == 0:
+            json.dump(results, open(str(part) + ".tmp", "w"))
+            os.replace(str(part) + ".tmp", part)
         print("trial %d seed %d: %s, %d / %d waypoints, %.1f s, steps %d (edge %d), foot side %d, shin/knee %d, wall time %.0f s" % (
             i, seed, r["reason"], r["waypoints"], r["of"], r["sim_time"], r["contacts"]["steps"], r["contacts"]["edge_landings"],
             r["contacts"]["foot_side_contacts"], r["contacts"]["shin"] + r["contacts"]["knee"], time.time() - t0), flush=True)
-    meta = dict(apparatus=a.apparatus, route=(app.route["name"] if app else None), simulator="MuJoCo %s (CPU), dt %.4f s" % (mujoco.__version__, X.SIM_DT),
+    results.sort(key=lambda r: r["seed"])
+    if part.exists():
+        os.remove(part)
+    meta = dict(label=a.label, apparatus=a.apparatus, route=(app.route["name"] if app else None), simulator="MuJoCo %s (CPU), dt %.4f s" % (mujoco.__version__, X.SIM_DT),
                 adapter=adapter.name, checkpoint=str(adapter.checkpoint), observes=adapter.observes, control_dt=adapter.control_dt,
                 protocol=a.protocol if not a.stand else "standing check (zero command)", seeds=[a.seed0, a.seed0 + a.trials - 1],
                 time_limit=a.seconds, sections=(app.sections if app else []),

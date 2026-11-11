@@ -125,6 +125,8 @@ class Adapter:
         """Optional dict with any of kp, kd, effort, armature, default_q as (31,) arrays in `joint_names` order."""
         return None
 
+    # optional: def start_q(self, joint_names) -> (31,) joint positions the trial starts in (default: the plant's default pose)
+
     def reset(self, view: View, rng: np.random.Generator):
         pass
 

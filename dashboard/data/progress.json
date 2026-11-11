@@ -214,5 +214,17 @@
   "episode_len": 572,
   "terrain_level": 0.78,
   "note": "8,192 robots from iteration 250; means still recovering after the restart"
+ },
+ {
+  "id": "acp-1390",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, stage 1",
+  "iteration": 1390,
+  "total": 12000,
+  "reward": 0.115,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "83% of clips finished"
  }
 ]

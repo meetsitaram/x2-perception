@@ -122,6 +122,19 @@ has torch for the export):
   the stumble score. So the result is "the baseline policy under the current rule", expected to be lower than 26 %; it
   is not a reproduction of the 13 of 50 run (its raw output is gone and GPU physics is not repeatable). `route50.sh` sets no
   path lookahead (`ROAM_LOOKAHEAD` defaults to 0), so the goal aimed at the waypoint itself, as the adapter does.
+- **Go given by the coordinator (2026-11-11); steps 1 to 3 done.** Adapter `eval/adapters/acp_baseline.py`; export and
+  recording `eval/tools/baseline_dump.py` (run in the `sm` environment on CPU, CUDA hidden, Warp device "cpu"); check
+  `eval/tools/baseline_check.py`; result `eval/out/baseline_export/check_result.txt`.
+- **Step 3 result: PASS.** The original rollout code ran 50 steps from two start states on our apparatus (route start; 0.4 m
+  short of the front 4x4 with a station waypoint). From each recorded state the adapter recomputed the planner's contact
+  input, the 1,817-number tracker input and the action: largest difference 3.6e-06 (route start) and 7.1e-06 (before the
+  4x4) in both the tracker input and the action; 0 of 900 planner valid / in-contact flags differ in each; default pose and
+  action scale agree to 3e-08. One real mismatch found and fixed first: the original terrain code never returns a height
+  below its floor (0); our raster has -0.108 m outside the deck, which moved a planned foothold by up to 9 mm near the lane
+  edge. Not covered by the check: waypoint switching and holds (the harness's, under the current rule) and the physics.
+- The trials start in the original's start pose (first frame of the route reference; adapter hook `start_q`), at the eval's
+  start position and heading. Runs: `bash eval/run_baseline.sh ours|nist nominal|randomised 200` (one core, low priority,
+  6 GB cap, 9-minute slices that continue where they stopped); results in `eval/out/baseline_20261102/<apparatus>_<protocol>/`.
 - Tested so far: the exported planner, on the standing robot at three places of our route, plans both feet 0.2 to 0.4 m
   ahead on the floor, short of the 4x4, and one foot onto the first stair tread at the stair foot. Not compared with the
   original code's outputs yet (step 3).

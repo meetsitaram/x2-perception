@@ -1,6 +1,6 @@
 # ACP track state
 
-Updated 2026-11-11 21:27 UTC (track agent). **Stage 1 is training** on node acp: run `s1_v1`, tmux session `acp`, 36,000 envs since iteration 750; backup loop in tmux session `acp-backup`; see section 4.
+Updated 2026-11-11 22:15 UTC (track agent). **Stage 1 is training** on node acp (run `s1_v1`, 36,000 envs, tmux `acp`); per-iteration `metrics.jsonl` since iteration 1,251; paper eval run at checkpoint 1,250 (86.6 %); first planner trained on the CPU and handed to the eval with the tracker (section 9); backup loop `acp-backup`.
 
 ## 0. Answer to the question that decides the track
 
@@ -369,7 +369,7 @@ Results (filled in as checkpoints are evaluated; paper figure beside ours):
 
 | Checkpoint | Category | Our success (95 % interval), episodes | Paper | Our contact placement error | Paper |
 |---|---|---|---|---|---|
-| (pending: first run at the next checkpoint pause) | dense foot-only, reference-anchored | | >= 98.5 % (stage 1, every category) | | bars only (Fig. 7C) |
+| `s1_v1` 1,250 (stage 1, in training) | dense foot-only, reference-anchored | 86.6 % (85.9-87.3), 9,018 episodes; per set in section 9 | >= 98.5 % (stage 1, every category) | not valid yet (see section 9) | bars only (Fig. 7C) |
 
 ## 7. Log legend (`runs/<run>/metrics.jsonl`, one JSON row per PPO iteration, on the shared filesystem)
 
@@ -450,3 +450,117 @@ What I need from the export:
    (position, heading, standing height above ground), and for routes the ordered waypoints with heading and a flag for
    in-place turn / backward / sideways segments; which side is open (so goals are not placed inside or against obstacles).
 5. A README with units, frames (x forward, z up, metres), the source commit and which apparatus parts each tile copies.
+
+## 9. Planner + tracker: how the earlier run did it, what is ported, the path to an apparatus score
+
+Correction recorded (user, 2026-11-11): ACP is a planner (contact point estimator) plus a tracker (executor); the tracker is
+scoreable on a route as soon as something gives it contact targets. The earlier pipeline had all three stages and scored
+13 of 50 (26 %) on our apparatus on 2026-11-02.
+
+### How the 2 November run produced contact targets on the apparatus
+
+- **Planner:** the feet-only MLP of `gwbc-v6/scripts/acp/stage2/planner.py` (the paper's MLP baseline, Table S3, sized to our
+  inputs). Input: 17 x 11 height scan in the heading frame (x -0.3..1.3 m, y +-0.5 m, minus root height), the 4-number goal
+  command, and one step of "history" (both ankles, root height over ground, root velocity, gravity: 13 numbers; root velocity
+  is privileged). Output per foot: weights over the 187 scan points, occupancy, time to contact, contact now.
+- **Trained on:** hindsight labels (`stage2/planner_data.py`, the paper's rule) from rollouts of the SuperMimic stage-1
+  tracker `acp1_v4_gst` checkpoint 1000 on the clip sets (`stage2/collect_v4.sh`).
+- **Weights:** `gwbc-supermimic/logs_sm/acp_artifacts/planner/planner_v2_hist1.pt` (also `planner_v1*.pt`, `planner_v2.pt`).
+  The tracker was `gwbc-supermimic/logs_sm/acp3_v2/ckpt_001000.pt` (stage 3, planner frozen). Not in `loco-manip-apparatus`
+  (its `build/planner/heatmap.pt` and `regress.pt` are an older, separate footstep planner of 2026-10-27 that the route run
+  did not use).
+- **On the route:** `eval/pico_rollout_planner.py` (launched by `eval/crowd/route50.sh`): every control step it builds the
+  planner input from the simulated robot, decodes the planner with three inference-only fixes (`PLAN_DECODE=mode`: choose the
+  strongest scan point instead of the weighted mean; `STEP_MASK=0.03`: drop candidates on edges; `PLAN_LATCH=0.3`: hold the
+  target near touchdown), and feeds the feet targets to the tracker. Goals: the 22 hand-placed waypoints of
+  `loco-manip-apparatus/sim/x2_route.py` ROUTES['mobility'] with 1 s station holds; physics: walk raster + 344 wall boxes.
+- **SuperMimic-derived, so not allowed in this round's training:** both networks' weights (the tracker was trained by the
+  SuperMimic trainer; the planner on SuperMimic rollouts), the rollout files, the `acp_*_contacts.pkl` labels. **Method-neutral
+  and reused:** the planner architecture and loss, the hindsight labelling rule, the decode fixes, the route and eval logic,
+  the stage-3 terrain generators.
+
+### Port status of the existing stage 2 and stage 3 code (this round's tree: `tracks/acp/code`)
+
+| Piece (gwbc-v6) | Status | Where now |
+|---|---|---|
+| `stage2/planner_data.py` hindsight labels | ported (same rule; vectorised; nine bodies; from this round's rollouts) | `acp/planner.py label` |
+| `stage2/planner.py` MLP planner + Gaussian-over-scan-points loss | ported to the paper's interface (nine bodies, tracker's own 5-step history, no privileged velocity, scan centred on the base, top-1 decode) | `acp/planner.py` `MlpPlanner` |
+| attention planner (Table S3) | new (did not exist before); 802,353 parameters (paper: 786,993 for the G1's sizes) | `acp/planner.py` `AttnPlanner` |
+| `stage2/collect_v4.sh` rollout collection | replaced: the paper-eval rollouts are saved (`*_rollouts.pt`) | `tools/paper_eval.py` |
+| `eval/pico_rollout_planner.py` closed loop | reference-terrain closed loop ported (`tools/pair_eval.py`, CPU); the route part is the eval monitor's job with the hand-over below | |
+| decode fixes (choose / edge mask / latch) | choose = the paper's top-1 decode, built in; edge mask and latch NOT ported (eval-side options; see below) | |
+| `supermimic/planner_contacts.py` eta schedules, co-training of the tracker on planner contacts | to port into `acp/env.py` + `acp/train.py` (planner in the loop, eta_obs / eta_rew, `track_planned_contact`): after stage 1 | not started |
+| `stage3/terrain_gen.py`, `stair_world.py`, `supermimic/goal.py`, curriculum in `sim.py` | reusable after removing the SuperMimic relaxations (sigmoid indicators, reward scale 0.125, detached goal rewards); second critic and online planner updates are new | not started |
+
+### Shortest path to a scoreable pair, and what is honest to call it
+
+1. **Now (22:15 UTC): tracker `s1_v1` checkpoint 1,250 + planner v1** (MLP and attention), both trained only on this round's
+   data: the planner on hindsight labels from 2,587 successful rollouts of that same checkpoint (413,298 samples). This is the
+   paper's stage-2 planner at its start: **the tracker has not yet been trained on planner contacts**, on goals other than
+   "the reference 0.5-1.5 s ahead", on walls or rails, or on turning in place; it has seen only training-terrain rollouts.
+   Label for any number from it: "interim: stage-1 tracker + first planner, no co-training, no stage 3".
+   The retrained feet-only MLP planner is a legitimate early pairing: the paper trains exactly this MLP as its baseline with
+   the same supervision (Fig. 7B, 7D), and reports it below the attention planner mainly on sparse and distractor terrain.
+2. **About 23:25 UTC: tracker checkpoint 2,000 + planner v2** relabelled from its rollouts (the 3-minute paper-eval pause
+   collects them; label + train on the CPU takes about 10 minutes).
+3. **After stage 1 ends: the paper's stage 2** (tracker co-trained on planner contacts, eta schedules) and **stage 3** (goal
+   terrains incl. the extended map, walls, in-place turns, online planner updates). Estimate: code about half a day; training
+   as the paper's ratios suggest about 1.5-2 days on this one card. This is the pair that should be compared with 13 of 50.
+
+### Interim, eval-only contact sources on the route (must not feed training)
+
+- The paper has no non-learned contact estimator: its planner is always the learned one. So the paper-conform interim is the
+  pair above (1), not a hand-made source.
+- A geometric foothold picker is feasible on the eval side (e.g. next foothold = the flat scan point nearest to a nominal
+  step ahead along the goal direction, alternating feet, held until touchdown), about 2-3 hours of eval-adapter work. I do not
+  recommend it over (1): the tracker would get targets with a timing and gait it never saw, and the result would measure the
+  picker. If wanted, it must be labelled "interim, geometric contact source, eval only".
+- The earlier SuperMimic-based planner (`planner_v2_hist1.pt`) as an eval-only comparison: technically feasible in about
+  2 hours (it needs its own inputs incl. root velocity, and its outputs reduced to the 27 target coordinates), but it was
+  trained on another tracker's gait, so a low score would not say much. Not used anywhere in training. The coordinator puts
+  that choice to the user.
+- Two of the earlier inference fixes (edge mask, target latch) raised the earlier route score from 0/6 to 2/6 and are pure
+  decoding; the eval may apply them to this planner's outputs as labelled options. They are not in the ONNX.
+
+### Hand-over to the eval monitor
+
+- `tracks/acp/eval/handover_s1_v1_001000/` (plumbing proof, from `ckpt_001000`): `actor.npz` (588-512-256-128-31, via the
+  eval's `export_actor.py`), `adapter_card.json` (every observation term in order incl. the nine contact targets' definition
+  and frame, joints, gains, scan grid, goal command), `obs_check.npz` (50 steps, one robot, MuJoCo Warp on the CPU, with the
+  clip's prop boxes), `meta.json`.
+- `tracks/acp/eval/handover_pair_s1_001250_planner_v1/`: the same four files for checkpoint 1,250, `planner_mlp.onnx` and
+  `planner_attn.onnx` (inputs `proprio_history` 495 = the tracker's history block, `goal_command` 3, `scan_17x11` 187 = terrain
+  height minus root height on a 17 x 11 grid at 0.1 m, x -0.8..+0.8, y -0.5..+0.5 in the body-yaw frame, index ix * 11 + iy;
+  outputs `contact_targets` 9 x 3 in the body-yaw frame relative to the root, zero where occupancy <= 0.5, and `occupancy` 9;
+  the 27 numbers go straight into the tracker's contact-target slot), and per planner a folder with `obs_check_pair.npz`
+  (50 planner-driven steps) and `pair_eval_cpu.json`.
+
+### Results so far (track reports, not the apparatus score)
+
+Paper evaluation, reference-anchored terrains, `s1_v1` checkpoint 1,250 (9,018 episodes, noise and randomisation off,
+oracle contacts; file `tracks/acp/eval/paper_eval/s1_v1_001250.json`):
+
+| Set | Success (Wilson 95 %) | Ended early |
+|---|---|---|
+| Pooled "dense foot-only" | **86.6 %** (85.9-87.3), paper: >= 98.5 % at the end of stage 1 | 13.4 % |
+| Pico 2x2 | 98.3 % (97.3-98.9) | 1.7 % |
+| flat locomotion | 93.3 % (91.6-94.7) | 6.7 % |
+| ramps | 92.7 % (90.9-94.2) | 7.3 % |
+| blocks | 90.6 % (88.7-92.3) | 9.4 % |
+| 4x4 stepovers | 90.3 % (88.3-92.0) | 9.7 % |
+| terrain-park stairs | 88.2 % (86.1-90.1) | 11.8 % |
+| fitted stair climbs | 87.9 % (85.8-89.8) | 12.1 % |
+| box and stair chains | 74.3 % (71.5-76.9) | 25.8 % |
+| stair descents | 63.7 % (60.7-66.6) | 36.3 % |
+
+The contact placement error in that file (0.37 m) and in `metrics.jsonl` (`err/contact_placement_at_onset_m`, 0.49 m) is
+**not valid yet**: the reference's target for a foot switches to the following step at the reference's own touchdown, so a
+robot that lands one frame late is compared with the next step's target (about a step length away). To fix at the next
+pause: compare with the target that was commanded before the switch.
+
+Planner v1 on held-out episodes (a tenth of the rollouts): MLP target error median 6.0 cm, 90th percentile 17.5 cm, feet
+occupancy accuracy 90.0 % (760,932 parameters, 2.7 minutes on the CPU). Attention planner and the planner-driven closed loop
+on the reference terrains (CPU, 108 episodes): see `handover_pair_s1_001250_planner_v1/*/pair_eval_cpu.json` (pending at the
+time of writing).
+
+Pauses of stage 1 so far: 20:40-20:51 (GPU benchmark), 21:54:37-21:57:21 (logging switch + paper eval, 2 min 44 s).

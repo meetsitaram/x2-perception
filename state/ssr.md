@@ -358,3 +358,27 @@ only; (2) a second "vision" raster or boxes for walls, rails and door frames (ce
 physics stays a height field; (3) per tile: category label, the difficulty parameters to sort tiles into 20 levels, entry and
 exit points with headings, lane width, and tile size if not 8 x 4 m; (4) for routes: waypoint lists with headings, used only in
 the omnidirectional stage; (5) which tiles copy apparatus parts, so they can be listed here; no whole apparatus layout or route.
+
+## Standing-still diagnosis log (one line per run; `vx` = achieved / commanded speed of robots told to walk 0.3 m/s or more)
+
+| Run | Change from the run before | Iterations | vx curve | Other | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| r1 | paper settings, joint advantage normalisation, 4,096 robots | 440 | 0.38 (20), 0.00 (100), 0.03 (200), 0.03 (300), 0.03 (440) | double support 0.88, level 0.00, style 0.26 | stands |
+| r2 | + per-critic advantage normalisation (style 14 % of the gradient); 8,192 robots from iteration 50 | 360 | 0.38 (20), 0.07 (120), 0.04 (210), 0.04 (290), 0.03 (360) | double support 0.88, style 0.35 | stands |
+| r3 | + standing windows removed from the prior, walking starts only from frames at 0.3 m/s or more | 310 | 0.37 (30), 0.05 (90), 0.04 (150), 0.06 (200), 0.07 (270), 0.07 (300) | double support 0.82, single 0.17, style 0.33 | stands (slightly more foot activity) |
+| r4 | + style weight 1.0 | 20 | not long enough to read | | stopped at 20 for the coordinator's bisect; to be repeated in step 2 |
+| d1 | bisect step 1: flat tile only, only `lin_vel` and `ang_vel` rewards, style weight 0, joint normalisation; domain randomisation, walking starts and terminations unchanged | running | see Status | | |
+
+What the standing policy's reward breakdown shows (r3, iteration 180, weighted per step): lin_vel 0.39 of 1.0, ang_vel 0.32 of
+0.8, orientation 0.44 of 0.5, ang_vel_xy 0.09 of 0.25, base_height 0.36 of 0.4, single_support 0.14 of 0.2, action_rate -0.13,
+smoothness -0.17, dof_dev -0.17, everything else under 0.03. Two things stand out: (1) the robot gives up 0.6 in velocity
+tracking by not walking; (2) the action noise (std 0.73, not shrinking) shakes the robot enough to cost about 0.5 in yaw-rate
+tracking, 0.16 in roll/pitch rate and 0.30 in the two smoothness terms: about 1.0 per step is lost to exploration noise, and the
+feet chatter (5 touchdowns per second per robot while "standing"). The PPO step size keeps collapsing to 1e-5 with KL at
+0.017-0.025.
+
+Plumbing checked by reading the code (2026-11-11): the command is the world-x speed expressed in the base frame
+(`cos(yaw) v, -sin(yaw) v`), base velocity is rotated into the base frame before comparison, the tracking kernels are
+exp(-err^2 / 0.25) as in Table 7, MuJoCo free-joint angular velocity is already body-frame. PD gains, armature, effort limits,
+default pose and action scale (0.25 x effort / kp) are the same vendor plant the Hiking track's X2 task uses (10 Hz natural
+frequency, damping ratio 2: hip and knee kp 115, ankle pitch 35, ankle roll 12.4).

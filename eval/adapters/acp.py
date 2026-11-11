@@ -70,7 +70,9 @@ class FootMlpPlanner(ContactSource):
     candidate whose surroundings, +-6 cm, step by more than this), `latch` (a target is frozen in the world once its
     touchdown is within this many seconds). NOT yet checked against the original code's outputs."""
 
-    def __init__(self, npz, decode="mode", step_mask=0.03, latch=0.3, goal_mag=0.5, dt=0.02):
+    def __init__(self, npz, decode="mode", step_mask=0.03, latch=0.3, goal_mag=0.5, dt=0.02, floor=None):
+        self.floor = floor               # the original terrain code never returns less than its floor (0): the ground below
+        #                                  the deck around our apparatus (-0.108 m in the raster) read as 0 there
         z = np.load(npz, allow_pickle=True)
         self.name = "foot MLP planner: %s (decode %s, step mask %.2f, latch %.1f s)" % (str(z["source"]) if "source" in z else npz, decode, step_mask, latch)
         self.w = [(np.asarray(z["body_0_weight"], float), np.asarray(z["body_0_bias"], float)), (np.asarray(z["body_2_weight"], float), np.asarray(z["body_2_bias"], float))]
@@ -91,7 +93,8 @@ class FootMlpPlanner(ContactSource):
         yaw = heading_of(R)
         c, s_ = math.cos(yaw), math.sin(yaw)
         W = to_world(self.pts, p[:2], yaw)
-        scan = view.height_scan(W) - p[2]
+        hs = (lambda q: np.maximum(view.height_scan(q), self.floor)) if self.floor is not None else view.height_scan
+        scan = hs(W) - p[2]
         d = bounded_goal(cmd.target_xy, p[:2], yaw, 1.0)
         n = float(np.linalg.norm(d))
         if self.goal_mag > 0 and n > self.goal_mag:
@@ -104,7 +107,7 @@ class FootMlpPlanner(ContactSource):
         rel = A[:, :2] - p[:2]
         hx, hy = c * rel[:, 0] + s_ * rel[:, 1], -s_ * rel[:, 0] + c * rel[:, 1]
         v = view.d.qvel[:3]
-        feat = np.concatenate(([hx[0], hy[0], hx[1], hy[1]], A[:, 2] - p[2], [p[2] - float(view.height_scan(p[None, :2])[0])],
+        feat = np.concatenate(([hx[0], hy[0], hx[1], hy[1]], A[:, 2] - p[2], [p[2] - float(hs(p[None, :2])[0])],
                                [c * v[0] + s_ * v[1], -s_ * v[0] + c * v[1], v[2]], R[2, :]))
         h = (np.concatenate((scan, goal, feat)) - self.mu) / self.sd
         for w, b in self.w:
@@ -114,7 +117,7 @@ class FootMlpPlanner(ContactSource):
         sig = lambda x: 1.0 / (1.0 + np.exp(-x))  # noqa: E731
         if self.mask > 0:                                   # foothold scoring on the scanned terrain
             off = np.array([[0, 0], [0.06, 0], [-0.06, 0], [0, 0.06], [0, -0.06]])
-            hh = np.stack([view.height_scan(W + np.array([c * o_[0] - s_ * o_[1], s_ * o_[0] + c * o_[1]])) for o_ in off], 1)
+            hh = np.stack([hs(W + np.array([c * o_[0] - s_ * o_[1], s_ * o_[0] + c * o_[1]])) for o_ in off], 1)
             ok = (hh.max(1) - hh.min(1)) <= self.mask
             if ok.any():
                 logits = np.where(ok[None], logits, -1e9)
