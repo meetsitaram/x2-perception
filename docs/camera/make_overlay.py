@@ -58,9 +58,13 @@ def main(src, dst):
     # measured on the tape (zero at the toe line)
     line(0.985, yel, "0 m: toe tips (bottom edge)")
     line(0.54, yel, "about 0.55 m: rug inner border")
-    line(0.27, yel, "0.96-1.00 m: concrete strip")
+    # the two marks the user circled on the tape (2026-11-11): 3 ft and 110 cm. Rows placed between the
+    # visible rug edge (0.95 m) and blue-rug edge (1.00 m) with the fitted pose.
+    line(frac_from_top(0.914), yel, "0.91 m (3 ft mark): end of striped band")
+    line(0.268, yel, "1.00 m: concrete strip / blue rug edge")
+    line(frac_from_top(1.10), yel, "1.10 m (110 cm mark): on the blue rug")
     # from the fitted pose
-    for dist in (0.25, 0.75, 1.25, 1.5, 1.75):
+    for dist in (0.25, 0.75, 1.3, 1.5, 1.75):
         fr = frac_from_top(dist)
         if 0.0 < fr < 1.0:
             line(fr, cyan, f"{dist:.2f} m (model)", dash=True)

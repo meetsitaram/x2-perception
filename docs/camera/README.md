@@ -13,13 +13,19 @@ stream's field of view (87 x 58 degrees), so the frame shows what depth covers. 
 |---|---|---|
 | Bottom edge | 0 m, the robot's own toe tips | seen in the frame |
 | Rug inner border | about 0.55 m | the user's tape on the floor (read from a photo, +-5 cm) |
-| Concrete strip | 0.96-1.00 m, at about 27% of the image height from the top | the user's tape |
+| End of the striped band | 0.91 m (the 3 ft mark the user circled), about 30% from the top | the user's tape |
+| Concrete strip / blue rug edge | 0.96-1.00 m, at about 27% of the image height from the top | the user's tape |
+| On the blue rug | 1.10 m (the 110 cm mark the user circled), about 22% from the top | the user's tape |
 | Top edge | about 1.9 m | fitted camera pose |
 | Dashed lines | 0.25 to 1.75 m | fitted camera pose |
 
 Fitted pose (the coordinator's estimate, to be replaced by measured values): camera 0.90 m above the floor, lens 0.12 m behind
 the toe tips, optical axis 53 degrees below horizontal. With it the 1.0 m strip falls at 26.5% from the top and the rug border
 at 50%; the photo shows about 27% and about 52-54%.
+
+The tape lies on the floor straight ahead of the robot with its zero between the feet at the toe line. The user circled
+two marks on it as references: 3 ft (0.914 m), just before the far edge of the first rug, and 110 cm, about 10 cm into the
+blue rug.
 
 ## How the tracks use it
 
