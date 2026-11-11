@@ -72,3 +72,6 @@ anything else. When the user decides something new, the coordinator adds it here
 
 ## ACP on the apparatus (2026-11-11)
 - The user corrected the claim that ACP's stage-1 tracker cannot be scored on a route: "it has a planner contact point estimator and the tracker or executor .. we already tried acp on our apparatus and that's where we got 25%". ACP is scored as planner plus tracker; do not wait for stage 3. The planner is brought forward, and the eval adapter takes contact targets from a planner.
+
+## Eval ladder (2026-11-11)
+- The user: "Eval shouldn't go straight to the apparatus for evals, and instead do simpler tests on our terrain map with some of the routes we reviewed earlier." Checkpoints are scored in steps: (1) simple tests on tiles of the extended terrain map (flat command following incl. turn in place, backward and sideways; one 4x4 log; slanted 4x4; wedges; stairs; a log corridor), (2) some of the routes on the map that the user reviewed (loops with turns, routes through the main walk area), (3) only then the two held-out apparatuses, which stay the final result. Each step is reported per section with trial counts, so it is visible what a policy can and cannot do before it meets the apparatus.

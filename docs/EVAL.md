@@ -230,3 +230,10 @@ it will be once an adapter for `acp3_v2` exists (it needs the gwbc-supermimic co
   at the landing's far end.
 
 No open questions at the moment.
+
+## Eval ladder (user, 2026-11-11)
+"Eval shouldn't go straight to the apparatus for evals, and instead do simpler tests on our terrain map with some of the routes we reviewed earlier." Every checkpoint is scored bottom-up; a higher step is run only when the step below is mostly passed (the monitor sets and states the gate), and the report always shows all steps reached.
+1. **Skills on single tiles** of the extended map (`/mnt/filesystem-g4/data/terrains/extended_v1/`): flat (walk, stop and stand, turn in place, backward, sideways), one 4x4 log, slanted 4x4, wedges, stairs up and down, log corridor with walls or rails.
+2. **Reviewed routes** on the map: a fixed, named subset of the routes the user reviewed (loops with turns, routes through the main walk area, a dead end with a turn in place), unblocked ones only.
+3. **The two held-out apparatuses** (the rules above): the final result against the 99% goal.
+Same arrival radius, stumble score and logs on every step. The map is training terrain for the tracks, so steps 1 and 2 use held-out seeds and a fixed route list, and are reported as "on the training map", never as the apparatus result.
