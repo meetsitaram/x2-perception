@@ -16,7 +16,54 @@ urgent ones directly.
 | 2026-11-11 | Hiking | A folder named `instinctlab` in the working directory shadowed the installed package | Python import order | renamed the folder; do not run Python from a folder that contains a package-named folder |
 | 2026-11-11 | Hiking | The shared filesystem takes about 17 ms per small file | network filesystem | keep Python environments on the node's local disk; keep code, data, checkpoints and logs on the shared filesystem |
 | 2026-11-11 | SSR | From-scratch training settles into standing still within a few hundred iterations (4% of commanded speed, both feet down 87% of the time) | not yet established; the same failure the earlier X2 runs had | open; being diagnosed against the paper's settings. Other tracks: watch the same signal (commanded vs actual speed, double-support share) early in your own runs. |
-| 2026-11-11 | Eval | The X2 MJCF's 5 mm sole spheres gave tilted contact normals and false stubs on a height field | sphere much smaller than the 2 cm raster cells | 2 cm sole spheres in the eval model. Tracks that train on height fields with the stock MJCF should check their foot contacts. |
-| 2026-11-11 | Eval | The X2's foot (24 cm) is longer than our apparatus' stair tread (22 cm) | geometry | a foot fully on a tread touches the next riser or overhangs; relevant to every track's stair behaviour |
-| 2026-11-11 | Eval | NIST wall boxes built per mesh piece closed the doorway; the door leaf was missing from the physics | MuJoCo's default box per mesh piece; jointed bodies skipped | boxes fitted to vertices; leaf added at its open pose. Use the files in `data/apparatus/`, do not rebuild them. |
+| 2026-11-11 | Eval | The X2 MJCF's 5 mm sole spheres gave tilted contact normals on a flat height field in MuJoCo (CPU): 27 % of standing contacts off vertical, down to |normal z| 0.70, 0.43 at an impact, read as false stubs | sphere much smaller than the 2 cm raster cells | the eval model uses 2 cm sole spheres with the same lowest point (15 % off vertical, never below 0.92), and a stub also needs a real face in the raster. Not checked in MuJoCo Warp or Isaac: tracks that train on height fields with the stock MJCF should look at their own foot-contact normals. ssr-x2 already enlarges them. |
+| 2026-11-11 | Eval | The X2's foot (24 cm with the eval's sole spheres, 22.5 cm sole) is longer than our apparatus' stair tread (22 cm; risers 18.6 cm). NIST's treads are 22 to 26 cm, risers 20 to 21 cm | geometry | on ours a foot fully on a tread touches the next riser (a scored side hit if it presses with 20 N or 0.5 N s) or overhangs the heel (an edge landing). Stair treads as short as 22 cm occur on both apparatuses; with a 24 cm foot, heel overhang is the only way to avoid touching the next riser. |
+| 2026-11-11 | Eval | NIST wall boxes built from MuJoCo's own box per mesh piece closed the doorway and put the landing deck over the floor; the open door leaf was missing from the physics | a triangle's box in its inertia frame is far larger than the panel; my box collection skipped jointed bodies | boxes fitted to the vertices; the leaf added as one box at its open pose (94.5 deg). Use the files in `data/apparatus/` (they are for the eval and for copying single parts, not whole layouts, into training); do not rebuild them. |
 | 2026-11-11 | Coordinator | Node check script failed on Windows with "identity file not accessible" | Python printed CRLF line ends into a shell loop | strip `\r` (`tr -d '\r'`) from anything Python prints for bash on the desktop |
+| 2026-11-11 | ACP | Correction to my "height field collision overflow (>= 50)" entry: more likely the foot collision box than fallen robots | the X2 foot box (22 x 13 cm) over 4 cm cells spans about 48 height-field prisms, over 50 once the foot is yawed; over 2 cm cells always | not confirmed by a test. Contacts beyond 50 per geom are dropped. Prefer boxes for steps, coarse rasters only for smooth ground; do not put a large flat collision geom on a fine raster. |
+| 2026-11-11 | ACP | Eval's sole-sphere finding, checked against my setup | I train with the stock MJCF (5 mm sole spheres) but stairs, 4x4s and blocks are boxes, not a raster; only the ramp set is on a height field (4 cm cells) | not re-measured on the raster. On boxes the contact read-out is right: 389 N total on a 39 kg robot, 95.4% agreement with reference contact labels. Open: check ramp foot contacts for tilted normals before stage 3 uses rasters. |
+| 2026-11-11 | ACP | Stair descents are the weak clip set (finish 0.10 when every other set is 0.67-0.96) | not established; consistent with Eval's note that the X2 foot (24 cm) is longer than the treads (23-29 cm in my descent set): a descending foot must overhang or toe the riser | open; to look at failures after iteration 2,000 |
+| 2026-11-11 | ACP | Reading solver contact forces in MuJoCo Warp without touch sensors | no per-body contact force array is filled by default | sum `efc.force` over each contact's `efc_address` rows (pyramidal cone: the sum is the normal force), use `contact.frame[:, 0]` as the normal, mask entries beyond `nacon`, scatter by world and body. Verified against robot weight. |
+| 2026-11-11 | ACP | `pkill -f <pattern>` over SSH killed my own remote shell | the pattern was also in the SSH command line | match by PID, or put the pattern in a variable the command line does not contain |
+| 2026-11-11 | ACP | A reset curriculum that advances on "episode not terminated" raced ahead of tracking quality (start phase 0.9 -> 0.03 in 1,000 iterations while joint error stayed 0.17 rad) | my early-termination threshold is loose (0.5 m; the paper gives none) | open; watch error terms, not the curriculum, as the progress signal |
+| 2026-11-11 | ACP | Per-clip prop boxes: every distinct box size becomes a slot in every simulated world | shared model across worlds | quantise box sizes before use; one clip set with 239 sizes was left out for this reason |
+| 2026-11-11 | ACP | A reference set penalised by its own joint-limit term | soft limits at 95% of the joint range are violated by the retargeted clips themselves | soft limits set to the full MJCF range |
+| 2026-11-11 | Eval | Our walk raster keeps the feet of diagonal braces and the bulb box as spikes up to 0.5 m in the floor (351 cells), next to the same parts as wall boxes | the raster only removes cells above 0.5 m | left as is (it is what earlier runs were scored on). A policy's height scan or depth sees these spikes near the 4x4s and the ramps: copy such clutter into training terrains if you copy those parts. |
+| 2026-11-11 | Eval | Tight places on the eval routes | geometry | ours: a 0.51 m slot between the door wall and the front 4x4 (the robot turns in it), doorway 0.87 m, a 0.37 m gap between the two 4x4s that must NOT be used (both beams have to be stepped over, else the trial fails). NIST: doorway 0.85 m with an 8 cm threshold, V of 4x4s 10 cm tall met at 62 to 90 degrees, a sloping panel 1.32 m above the deck over the pocket behind the upper 4x4 (the X2 stands about 1.3 m), 0.8 m lane partitions. Turning on the spot and walking through 0.85 m openings are needed on both. |
+| 2026-11-11 | Eval | What the eval commands | definition | a waypoint (0.20 m arrival disc), then the next; at 11 (NIST) or 5 (ours) stations a 1 s stand. The harness offers the waypoint position and heading, and a velocity command (forward up to the track's limit, yaw up to 1 rad/s, turn on the spot beyond 60 deg, zero while holding). A policy must be able to stop, stand 1 s, turn in place and start again; legs between waypoints are 0.2 to 1.9 m. |
+| 2026-11-11 | Eval | Side hits are scored (eval only) | user request | a foot, shin or knee against the side of a 4x4, a wedge face or a stair riser with 20 N or 0.5 N s costs 0.1 to 1.0 and spoils "clean success". Details in `docs/EVAL.md`. |
+
+## What the eval needs from each track to score a checkpoint (prepare it now)
+
+Put these in `/mnt/filesystem-g4/tracks/<track>/eval/` (your own tree) and say so in your state file. The eval runs on CPU with
+numpy and onnxruntime; it has **no torch**, and it never imports track code.
+
+1. **The policy as a file the eval can run:** a plain MLP as `.npz` (`/mnt/filesystem-g4/eval/code/tools/export_actor.py`, run in
+   your environment) or anything else (CNN, GRU, several networks, estimator + actor, planner + tracker) as `.onnx` with fixed
+   input sizes, batch 1, the deterministic action (the mean), observation normalisation either inside the graph or exported
+   beside it. Recurrent state as explicit inputs and outputs.
+2. **An adapter card, `adapter_card.json`,** with:
+   - `checkpoint`, `iteration`, `stage`, and the training code commit or snapshot folder;
+   - `control_dt` (s) and the physics step and decimation you trained with;
+   - `joint_names`: the order your joint observations and actions use (the eval's order is the MJCF's 31 hinges);
+     `commanded_joints` if you command fewer, and what the others are held at;
+   - `default_q`, `action_scale` (per joint), action clipping, and whether targets are `default + scale * action`;
+   - `kp`, `kd`, effort limits and armature per joint as trained (and any actuator delay the policy expects);
+   - **every observation term in order**: name, size, frame (body, heading/yaw, world), units, scale, clipping, history
+     length and order (oldest or newest first), and what it is at reset;
+   - the **command**: what the policy takes (velocity vx, vy, yaw rate with their ranges; or a target direction and
+     heading; goal radius), and its forward speed limit;
+   - the **terrain sensor**: height scan (grid size, spacing, origin offset, frame, relative to what height, clipping,
+     whether walls are in it) or depth camera (body, position, pitch, field of view, resolution, crop, near / far, units,
+     normalisation, frame stacking and skip, delay, self-occlusion model, any filtering);
+   - anything privileged the actor was given in training that the eval must not supply.
+3. **One recorded step for checking:** `obs_check.npz` with, for 50 consecutive steps of one robot in your simulator, the
+   simulator state (root pose and velocity, joint positions and velocities), the command, the raw sensor image or scan, the
+   full actor input and the action. The eval adapter is accepted only when it reproduces your actor input and action from
+   that state (this caught unit and ordering mistakes in earlier sim-to-sim work).
+
+Status of the adapters (eval monitor, 2026-11-11): the interface, shared numpy helpers and an **ACP adapter** written from the
+stage-1 code (history 5 x [angular velocity, gravity, joint position, joint velocity, last action], 9 x 7 scan, nine contact
+targets, goal; 588 inputs for 31 joints) exist and run end to end with random weights; nothing has been checked against a real
+checkpoint. ACP: stage 1 cannot be scored on a route (its contact targets come from reference clips); the first scoreable ACP
+policy is one that runs with its planner (stage 2 or 3). SSR and Hiking: adapters are written when the card and the ONNX exist.

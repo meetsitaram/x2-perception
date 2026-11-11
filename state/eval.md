@@ -67,6 +67,25 @@ Updated 2026-11-11 (eval monitor, phase 1 done: desktop CPU only, nothing run on
 - The floor stays a height field; no explicit box geoms were added (the normals separate faces from walking surfaces).
 - Marked render: `eval/out/selftest_sidehit/renders/legs_seed0_t1-2.mp4` (self-test, not a policy).
 
+## Adapters and logs (2026-11-11, after the user's transparency and sharing rules)
+
+- Logs: every run folder gets `trials.csv` and `events.csv` beside `summary.json` and `results.json`; legend in `docs/EVAL.md`
+  ("Logs of every eval run"). Run folders for real checkpoints: `/mnt/filesystem-g4/eval/<track>/<checkpoint>/<apparatus>_<protocol>/`.
+- `eval/adapters/common.py` (numpy MLP, normaliser, history, heading-frame scan grid, bounded goal), `eval/adapters/acp.py`
+  (from the ACP stage-1 code in `tracks/acp/runs/s1_v1/code_snapshot`), `eval/tools/export_actor.py` (a track runs it; needs torch).
+  Tested only with random weights (`eval/out/_acp_plumbing`): shapes and plumbing, not behaviour.
+- What each track must hand over is written in `state/SHARED_LESSONS.md` ("What the eval needs from each track"): the policy
+  as npz or ONNX, an adapter card, and a 50-step `obs_check.npz` the adapter must reproduce.
+- The desktop's Python has mujoco, numpy and onnxruntime, no torch. Installing torch would be a large download (needs the
+  user's okay), so policies come as npz or ONNX.
+- No address or login is in any eval file; `eval/node.sh` reads them from the git-ignored `config/nodes.local.json`.
+- When can the first policy be scored: as soon as one track has (a) a checkpoint that walks to a commanded target without a
+  reference clip, (b) its export and adapter card, (c) the obs check. Today none has (a): ACP is in stage 1 (reference
+  tracker, iteration about 1,000 of 12,000), SSR r3 stands still (4 % of commanded speed), Hiking X2 is at iteration 250 of
+  30,000. Hiking's policy (velocity command + depth) will be the first that fits the eval's command as it is; ACP needs its
+  planner (stage 2). From hand-over, the adapter check takes me under an hour and 200 trials about 30 to 60 minutes of one
+  CPU core per apparatus and protocol.
+
 ## Harness (task 4): what was verified
 
 - Model: X2 loads on both apparatuses; 20 s of simulation takes about 2 s on one core.

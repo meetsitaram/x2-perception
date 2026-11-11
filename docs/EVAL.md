@@ -168,6 +168,50 @@ stumbles." The success rate is unchanged by this; two numbers are added beside i
   1.0 each). Set down on a 4x4's top, a ramp's slope, a stair tread and flat deck: no hit and no scuff. Not yet verified
   with a walking policy: the tests place and slide the robot, they do not swing a leg.
 
+## Logs of every eval run (user, 2026-11-11: "enough logs ... so we have more transparency")
+
+Each run folder on the shared filesystem (`/mnt/filesystem-g4/eval/<track>/<checkpoint>/<apparatus>_<protocol>/`) holds, beside
+`summary.json` (the table row, with every constant of the definition) and `results.json` (everything, per trial):
+
+**`trials.csv`, one row per trial**
+
+| Column | Meaning |
+|---|---|
+| `seed` | the trial's seed (1000 + i); fixes start pose, friction, mass, payload, pushes |
+| `outcome` | `success`, `fall: ...`, `left the course`, `time limit`, `stalled`, or `went round a 4x4: ...` |
+| `success`, `clean` | 1 / 0; clean = success with no side hit on a 4x4, wedge or stair |
+| `time_s`, `sim_time_s` | time the last waypoint was reached (or the trial ended); simulated time in total |
+| `waypoints`, `of`, `last_waypoint` | waypoints reached, out of how many, and the name of the last one reached |
+| `stopped_heading_to`, `stopped_section` | for a failure: the waypoint it was heading to and that waypoint's section |
+| `sections_completed` | the sections whose waypoints were all reached |
+| `beams_crossed` | per 4x4, how many times the pelvis path crossed its centre line within its length |
+| `side_hits`, `side_hits_4x4`, `side_hits_wedge`, `side_hits_stair`, `scuffs` | counted events (foot, shin or knee) in total and per class; events under the hit threshold |
+| `stumble_penalty` | sum of the trial's event penalties |
+| `summed_impulse_Ns`, `peak_impulse_Ns`, `peak_force_N` | horizontal impulse over all side hits; the largest single one; the largest horizontal force |
+| `landings`, `edge_landings` | touchdowns counted, and those on an edge |
+| `foot_side_all` | every foot-side contact event, walls and unscored faces included |
+| `shin`, `knee`, `thigh`, `arm`, `trunk`, `head` | contact events of those parts with the floor or a wall |
+| `start_dx`, `start_dy`, `start_dyaw_deg`, `friction`, `mass_scale`, `torso_payload_kg` | the trial's randomisation |
+| `final_x`, `final_y`, `final_pelvis_z` | where the pelvis was when the trial ended |
+
+**`events.csv`, one row per contact event** (every side hit and scuff, every other foot-side, shin, knee, thigh, arm, trunk and
+head contact, and edge landings as kind `edge_landing`; sorted by time within a trial)
+
+| Column | Meaning |
+|---|---|
+| `seed`, `t_s`, `dur_s` | trial, start of the contact episode, its length |
+| `kind`, `side`, `on` | `foot_side`, `shin`, `knee`, `thigh`, `arm`, `trunk`, `head`, `edge_landing`; left / right; `terrain` or `wall` |
+| `class` | `4x4`, `wedge`, `stair`, `other`, `wall`, or empty when the floor has no face there |
+| `hit`, `penalty` | 1 = side hit, 0 = scuff, empty = not a scored event; its penalty |
+| `peak_horizontal_N`, `impulse_Ns`, `peak_normal_N` | peak horizontal force, horizontal impulse, peak normal force of the episode |
+| `normal_z`, `in_swing`, `foot_speed` | for foot contacts: |normal z| at the start, whether the foot was in swing, its horizontal speed (m/s) |
+| `pelvis_dv`, `pelvis_dtilt_deg`, `push_in_window` | largest change of the pelvis' horizontal velocity and tilt within 0.3 s; 1 if a protocol push fell in that window |
+| `x`, `y`, `z` | contact point |
+| `heading_to_waypoint`, `section` | the waypoint the robot was heading to, and its section |
+
+The tracks also report their papers' own evaluations (each paper's success criteria as the paper defines them). Those are
+track reports; they are kept apart from these common apparatus numbers and never mixed into one table with them.
+
 ## Baseline
 
 The user's "around 25 %" matches one written result: **13 of 50 (26 %)**, ACP stage-3 policy `acp3_v2` (checkpoint 1000, planner

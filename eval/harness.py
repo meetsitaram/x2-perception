@@ -444,7 +444,7 @@ class Trial:
                           foot_side_contacts=len(stubs), foot_side_in_swing=sum(e["swing"] for e in stubs),
                           shin=kinds.get("shin", 0), knee=kinds.get("knee", 0), thigh=kinds.get("thigh", 0), arm=kinds.get("arm", 0),
                           trunk=kinds.get("trunk", 0), head=kinds.get("head", 0)),
-            events=self.events[:400], edge_steps=[s for s in steps if s["edge"]][:200],
+            events=self.events[:2000], events_dropped=max(0, len(self.events) - 2000), edge_steps=[s for s in steps if s["edge"]][:500],
             final=dict(xy=[round(float(d.qpos[0]), 3), round(float(d.qpos[1]), 3)], pelvis_z=round(float(d.qpos[2]), 3)))
         return res
 
@@ -513,6 +513,47 @@ def summarise(results, meta):
                               foot_side_in_swing=tot("foot_side_in_swing"), shin=tot("shin"), knee=tot("knee"), thigh=tot("thigh"),
                               arm=tot("arm"), trunk=tot("trunk"), head=tot("head"), by_section=by_sec,
                               per_trial=dict(foot_side=round(tot("foot_side_contacts") / max(n, 1), 2), shin_knee=round((tot("shin") + tot("knee")) / max(n, 1), 2))))
+
+
+TRIAL_COLS = ["seed", "outcome", "success", "clean", "time_s", "sim_time_s", "waypoints", "of", "last_waypoint", "stopped_heading_to",
+              "stopped_section", "sections_completed", "beams_crossed", "side_hits", "side_hits_4x4", "side_hits_wedge", "side_hits_stair",
+              "scuffs", "stumble_penalty", "summed_impulse_Ns", "peak_impulse_Ns", "peak_force_N", "landings", "edge_landings",
+              "foot_side_all", "shin", "knee", "thigh", "arm", "trunk", "head", "start_dx", "start_dy", "start_dyaw_deg", "friction",
+              "mass_scale", "torso_payload_kg", "final_x", "final_y", "final_pelvis_z"]
+EVENT_COLS = ["seed", "t_s", "dur_s", "kind", "side", "on", "class", "hit", "penalty", "peak_horizontal_N", "impulse_Ns", "peak_normal_N",
+              "normal_z", "in_swing", "foot_speed", "pelvis_dv", "pelvis_dtilt_deg", "push_in_window", "x", "y", "z", "heading_to_waypoint", "section"]
+
+
+def write_logs(out, results, wps):
+    """trials.csv (one row per trial) and events.csv (one row per contact event: every side hit and scuff, every other
+    foot-side, shin, knee, thigh, arm, trunk and head contact; edge landings as kind "edge_landing"). Legend: docs/EVAL.md."""
+    import csv
+    with open(out / "trials.csv", "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(TRIAL_COLS)
+        for r in results:
+            h, c, rd = r["side_hits"], r["contacts"], r["random"]
+            w.writerow([r["seed"], r["reason"], int(r["success"]), int(r["clean"]), r["time"], r["sim_time"], r["waypoints"], r["of"],
+                        wps[r["waypoints"] - 1]["name"] if r["waypoints"] else "", r["stopped_heading_to"] or "", r["stopped_section"] or "",
+                        " ".join(k for k, v in r["sections"].items() if v["completed"]),
+                        " ".join("%s:%d" % (k.replace(" ", "_"), len(v)) for k, v in r["beams_crossed"].items()), r["side_hit_count"],
+                        *[h[k]["foot"] + h[k]["shin_knee"] for k in CLASSES], sum(h[k]["scuffs"] for k in CLASSES), r["stumble_penalty"],
+                        round(sum(h[k]["impulse"] for k in CLASSES), 3), max(h[k]["peak_impulse"] for k in CLASSES), max(h[k]["peak_force"] for k in CLASSES),
+                        c["steps"], c["edge_landings"], c["foot_side_contacts"], c["shin"], c["knee"], c["thigh"], c["arm"], c["trunk"], c["head"],
+                        round(rd["dx"], 3), round(rd["dy"], 3), round(rd["dyaw_deg"], 2), round(rd["friction"], 3), round(rd["mass_scale"], 3),
+                        round(rd["torso_payload"], 2), *r["final"]["xy"], r["final"]["pelvis_z"]])
+    with open(out / "events.csv", "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(EVENT_COLS)
+        for r in results:
+            sec = r["waypoint_sections"]
+            rows = [[r["seed"], e["t"], e["dur"], e["kind"], e["side"], e.get("on", ""), e.get("cls") or "", int(e["hit"]) if "hit" in e else "",
+                     e.get("penalty", ""), e["peak_h"], e["impulse"], e["force"], e.get("nz", ""), int(e["swing"]) if "swing" in e else "",
+                     e.get("foot_speed", ""), e["dv"], e["dtilt"], int(e["pushed"]), e["xy"][0], e["xy"][1], e["z"],
+                     wps[e["wp"]]["name"] if e["wp"] < len(wps) else "", sec[e["wp"]] if e["wp"] < len(sec) else ""] for e in r["events"]]
+            rows += [[r["seed"], e["t"], "", "edge_landing", "", "terrain", "", "", "", "", "", "", "", "", "", "", "", "", e["xy"][0], e["xy"][1], "",
+                      wps[e["wp"]]["name"] if e["wp"] < len(wps) else "", sec[e["wp"]] if e["wp"] < len(sec) else ""] for e in r["edge_steps"]]
+            w.writerows(sorted(rows, key=lambda x: x[1]))
 
 
 def pick_renders(results):
@@ -626,6 +667,7 @@ def main():
                 os.remove(out / "traj" / ("%d.npz" % r["seed"]))
     json.dump(results, open(out / "results.json", "w"), indent=1)
     json.dump(s, open(out / "summary.json", "w"), indent=1)
+    write_logs(out, results, app.waypoints if app else [])
     print("%s on %s: success %d / %d (%.1f %%, 95 %% CI %.1f-%.1f %%); clean success %d / %d (%.1f %%); mean stumble penalty %.2f; side hits per trial %.2f; outcomes %s; renders %s" % (
         adapter.name, a.apparatus, s["successes"], s["trials"], 100 * s["success_rate"], 100 * s["ci95"][0], 100 * s["ci95"][1],
         s["clean_successes"], s["trials"], 100 * s["clean_success_rate"], s["mean_stumble_penalty"], s["side_hits"]["per_trial"], s["outcomes"], s["renders"]))

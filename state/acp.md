@@ -325,3 +325,128 @@ repository. Not exhaustive.
 3. Then stage 3 goal terrains with walls, in-place turns and the re-arranged apparatus parts.
 
 Blockers: none.
+## 6. The paper's own evaluation, and ours of it on the X2
+
+What the paper evaluates (Results 0.3 "Simulation-based Evaluations", Figure 7, supplementary "Evaluation Details"):
+
+- **Terrain groups:** (1) reference-anchored: "The same 123 reference configurations used for training"; (2) goal-reaching: the
+  32 stage-3 configurations at difficulty levels sampled from the training range; (3) unseen: compositions (two goal-reaching
+  terrains in sequence), distractors (extra obstacles around the support area), roughness (bumps of 5-15 cm); plus eight
+  curated composite courses (Figure S1). Groups 1 and 2 each have four categories: dense foot-only, sparse foot-only, dense
+  whole-body, sparse whole-body.
+- **Success:** "success requires reaching within 0.5 m of the active goal horizontally; for sitting, standing, and get-up
+  transitions, the criterion is instead a vertical error below 0.1 m." Composite courses also require the target height and
+  staying in the lane and out of the pit. Invalid policy outputs count as failures.
+- **Trials:** 3,000 episodes per method and category over three seeds; 1,000 per radar axis and per composite course.
+- **Second metric:** contact placement error = "the Euclidean distance between commanded and realized contact positions at
+  contact onset, averaged over valid contact events".
+- **Intervals:** Wilson 95 % for success, episode-clustered 95 % for contact error.
+- **Conditions:** "Sensor noise, physics randomization, and action delay are disabled".
+- **Comparisons:** stage-1 tracker with contacts only vs contacts + reference kinematics (Fig. 7A); attention vs MLP planner
+  (7B, 7D); stage 2 vs stage 3 (7C); MGMT baseline (7E); a qualitative table against PHP and LLP (Table 1).
+- **Numbers the paper states in text** (the rest are bars in Figure 7): stage-1 contacts-only tracker "at least 98.5% success
+  in every category" on reference-anchored terrains; stage 3 vs stage 2 on sparse whole-body goal terrains +54.8 points;
+  composite courses 92.5 % average vs 58.8 % for MGMT. Data length in Table 1: 13.2 min (ours: 196.7 min).
+
+Our build for the X2: `code/tools/paper_eval.py CKPT OUT.json [episodes per set per seed]`, results in
+`/mnt/filesystem-g4/tracks/acp/eval/paper_eval/`. Reference-anchored group, stage 1: every clip set, 334 episodes per set
+per seed x 3 seeds (9,018 episodes, about 1,000 per set), each from the start of a 10 s segment with the oracle contacts,
+deterministic actions, noise / randomisation / delay off. Success = not ended early AND within 0.5 m (horizontal) of the goal
+= the reference root at the end of the segment. Reports per set and pooled as the paper's "dense foot-only" category: success
+with Wilson 95 % interval, share ended early, contact placement error at onset with a 95 % interval over episode means. It
+needs the GPU, so it runs only while training is paused at a checkpoint (a few minutes) or between stages: one GPU job at a
+time. It is a track report, not the team's apparatus score.
+
+Cannot be reproduced now, and why: the sparse foot-only, dense whole-body and sparse whole-body categories (no X2 reference
+data for stepping stones, beams, box climbs, get-ups, ladders, vaults; several are whole-body skills the X2 data never had);
+the goal-reaching and unseen groups and the composite courses (they need stage 3 and its terrain suite; planned with our
+terrain families, so the numbers will be for our suite, not the paper's 32 configurations); the MGMT baseline and the
+MLP-planner and kinematics-conditioned ablations (extra training runs; not planned unless asked); real-robot results.
+Stricter than the paper in one point: an episode that ends early under my failure conditions fails even if it was within
+0.5 m of the goal (the paper does not say how early terminations are counted).
+
+Results (filled in as checkpoints are evaluated; paper figure beside ours):
+
+| Checkpoint | Category | Our success (95 % interval), episodes | Paper | Our contact placement error | Paper |
+|---|---|---|---|---|---|
+| (pending: first run at the next checkpoint pause) | dense foot-only, reference-anchored | | >= 98.5 % (stage 1, every category) | | bars only (Fig. 7C) |
+
+## 7. Log legend (`runs/<run>/metrics.jsonl`, one JSON row per PPO iteration, on the shared filesystem)
+
+`log.jsonl` (every 10 iterations, older and shorter) and `train.out` (console) are kept as before. `metrics.jsonl` starts at
+the iteration of the logging restart; earlier iterations exist only in `log.jsonl` (raw term values, no termination causes).
+Every value is a mean over all environments and the 24 steps of the iteration unless said.
+
+| Name | What it measures | Paper (Table 3 unless said) | Weight |
+|---|---|---|---|
+| `raw/track_base_pos` | exp(-chi_mov |r - r*|^2 / 0.5^2 - theta_e^2 / 1^2), base position and orientation vs reference | track_base_pos | 3.0 |
+| `raw/track_base_vel` | exp(-|v - v*|^2 / 1^2 - |w - w*|^2 / 3^2) | track_base_vel | 1.0 |
+| `raw/track_joint_pos` | exp(-|q - q*|^2 / 2^2), 31 joints | track_joint_pos | 2.5 |
+| `raw/track_joint_vel` | exp(-|qd - qd*|^2 / 10^2) | track_joint_vel | 0.5 |
+| `raw/track_contact_label` | mean over 9 bodies of c_meas (2 c_ref - 1) | track_contact_label | 5.0 |
+| `raw/track_contact_pos_base` | exp(-sum_b |p_exec,B - p_ref,B|^2 / 1^2) | track_contact_pos_base | 2.0 |
+| `raw/track_contact_pos_global` | exp(-chi_mov sum_b |p_exec,W - p_ref,W|^2 / 1^2) | track_contact_pos_global | 1.0 |
+| `raw/action_rate` | |a_t - a_t-1|^2 | action_rate | -0.1 |
+| `raw/action_rate_2nd` | |a_t - 2 a_t-1 + a_t-2|^2 | action_rate_2nd | -0.05 |
+| `raw/joint_torque` | sum_j tau_applied^2 | joint_torque | -1e-5 |
+| `raw/torque_limits` | sum_j |tau_computed - tau_applied| | torque_limits | -1e-3 |
+| `raw/dof_pos_limits` | sum_j joint-range violation (rad), capped at 30 | dof_pos_limits | -10 |
+| `raw/dof_vel_limits` | sum_j min(1, [|qd| - 0.9 qd_max]+) | dof_vel_limits | -1 |
+| `raw/contact_acc` | sum_b |acceleration of the contact point|, capped at 1e4 | contact_acc (style) | -0.01 |
+| `weighted/<term>` | dt x weight x raw = that term's share of the per-step reward (dt = 0.02 s) | "per-step reward is dt sum w_i r_i" | |
+| `reward_per_step`, `reward_max_per_step` | sum of the weighted terms; the value if every positive term were 1 (0.30) | | |
+| `err/base_pos_m`, `err/base_rot_rad` | |r - r*|, theta_e | Table 2 symbols r_b, theta_e | |
+| `err/joint_pos_rad_mean_abs` | mean |q - q*| per joint | | |
+| `err/contact_pos_base_m` | mean per-body |p_exec,B - p_ref,B| | | |
+| `err/contact_placement_at_onset_m`, `contact_onsets` | distance between the commanded target and the contact point when a measured contact starts; how many such events | Results 0.3 "Contact placement error" (Fig. 7C, 7D) | |
+| `contact/label_agreement` | share of body-steps where measured contact equals the reference label | | |
+| `contact/feet_ref_frac`, `contact/feet_measured_frac` | share of foot-steps in contact, reference vs measured (double-support check) | | |
+| `speed/base_xy_mps`, `speed/ref_xy_mps` | actual vs reference horizontal base speed (standing-still check from the shared lessons) | | |
+| `episodes`, `end/finished_phase099` | episodes ended this iteration; share that reached phase 0.99 of the clip without failing | Table S4 "Completion threshold 0.99" | |
+| `end/timeout_before_phase099` | share cut at the clip end below phase 0.99 (should be 0) | | |
+| `end/term_base_pos_gt_0.5m`, `end/term_base_rot_gt_1rad`, `end/term_diverged` | share ended early by each cause: base > 0.5 m from the reference, orientation > 1 rad off, physics diverged | "configured failure conditions" (not given in the paper; ours) | |
+| `csi/phase_mean`, `_p10`, `_p50`, `_p90` | Curriculum State Initialization start phase over environments (0.9 at the start, 0 = clip start) | Table S4 "Stage-1 initialization curriculum" | |
+| `finish/<set>`, `episodes/<set>` | finish share and episode count per clip set | | |
+| `ppo/lr`, `ppo/kl`, `ppo/value_loss`, `ppo/policy_loss`, `ppo/action_std`, `ppo/value_mean`, `ppo/return_mean` | optimiser state | Table S6 (KL-adaptive rate, target KL 0.02) | |
+| `iter_s`, `env_steps`, `env_steps_per_s`, `gpu_util_pct`, `gpu_mem_gb`, `envs` | throughput and GPU use (GPU read every 10 iterations) | | |
+
+Paper terms not logged yet: the stage-2 and stage-3 terms (`track_planned_contact`, `move2goal`, `standatgoal`,
+`flat_orientation`, `stumbling`, `slippage`, `ang_vel_xy`, eta_obs, eta_rew, the planner's affordance and occupancy losses,
+the stage-3 terrain levels and replay-buffer sizes): they do not exist in stage 1 and get the same treatment when those
+stages are written. Per-body contact placement error and per-category success are in the paper-eval output, not in the
+per-iteration log. Success with noise and randomisation off is only in the paper eval (training metrics include them).
+
+## 8. Plan for the user's extended training map (`/mnt/filesystem-g4/data/terrains/extended_v1/`, exported by the Hiking track)
+
+Not used yet (2026-11-11). How it fits the paper's method, stage by stage:
+
+- **Stage 1 (now): not used.** Stage 1 needs a reference clip aligned to its terrain; the extended tiles have none, so stage 1
+  stays on the clip-aligned props. Exception worth doing later: tiles for which we have matching captures (stairs, wedges,
+  4x4s) could host those clips, which is what the terrain-park sets already do.
+- **Stage 2: only indirectly.** The paper's stage 2 runs "on the same reference-motion terrains" and takes its hindsight
+  labels from successful reference-following rollouts. Hindsight labels can come from the extended map only from rollouts
+  that succeed there, i.e. goal-reaching rollouts, and those exist from stage 3 on. So: no extended tiles in stage 2.
+- **Stage 3: this is where it goes.** The extended tiles and their checked routes become goal-reaching terrains beside the
+  paper's families (stairs, walled stairs, platforms, slopes, gaps, beams, pallets, stones), with the paper's goal rewards,
+  second critic, 10-level curriculum and the online planner updates: every successful rollout on an extended tile enters the
+  planner's hindsight buffer (partitioned per tile, as the paper does), which is how the planner learns contacts next to
+  walls, rails and in corridors. The route waypoints give goal sequences, including the dead ends (turn in place), backward
+  and sideways moves: goals with a heading different from the travel direction, which the paper's goal command (direction +
+  relative heading) already expresses and the earlier X2 work never trained.
+- **Held-out rule:** tiles must be re-arranged parts, never the whole apparatus or NIST layout or their routes; I list the
+  tiles I use here when I use them.
+
+What I need from the export:
+1. Per tile: a height raster (`x0`, `y0`, `res`, `grid` in metres, as the apparatus rasters) with **tall geometry removed**
+   (walls, rails, posts, door frames), and those as a separate list of oriented boxes (`center`, `half`, `quat` wxyz): a
+   MuJoCo height field pushes a body that touches a tall column upward (the "catapult" of the earlier work).
+2. A second raster or flag for **what the robot should see**: tall geometry included, so the height scan shows walls while
+   the physics uses the boxes.
+3. Tiles small: MuJoCo Warp degraded on a 30 m height field and crashed at 60 m in the earlier work, and a foot-sized box
+   over 2 cm cells overflows its 50-collision limit. Tiles of about 8-10 m, cell size 4 cm or coarser where the surface is
+   smooth, or the tile's steps given as boxes (preferred for stairs and 4x4s: exact edges, no raster stair-casing). Few
+   distinct box sizes (every distinct size is a slot in every world).
+4. Tile metadata: family, difficulty level 0-9 (or the parameters to derive one), spawn pose(s) on flat ground, goal patches
+   (position, heading, standing height above ground), and for routes the ordered waypoints with heading and a flag for
+   in-place turn / backward / sideways segments; which side is open (so goals are not placed inside or against obstacles).
+5. A README with units, frames (x forward, z up, metres), the source commit and which apparatus parts each tile copies.
