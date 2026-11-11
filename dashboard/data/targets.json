@@ -1,0 +1,14 @@
+[
+ {
+  "id": "goal",
+  "label": "Goal",
+  "value_pct": 99,
+  "note": "Success on both held-out apparatuses, set by you on 2026-11-11"
+ },
+ {
+  "id": "baseline",
+  "label": "Starting point",
+  "value_pct": 25,
+  "note": "Your figure for the apparatus walk before this work; the eval monitor will re-measure it under the common eval"
+ }
+]

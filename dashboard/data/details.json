@@ -1,0 +1,156 @@
+[
+ {
+  "id": "h1",
+  "track": "Hiking",
+  "area": "Rewards",
+  "item": "Paper's reward set: velocity tracking, alive, edge-landing penalty (weight -4), contact penalty (-1, feet excluded)",
+  "origin": "True to paper",
+  "origin_kind": "paper",
+  "decided": "",
+  "status": "In the G1 reproduction",
+  "status_kind": "done"
+ },
+ {
+  "id": "h2",
+  "track": "Hiking",
+  "area": "Rewards",
+  "item": "Stumble penalty: sideways foot force larger than vertical, speed-gated (after SOLO, SSR, TACT-ful)",
+  "origin": "Added, from other papers",
+  "origin_kind": "papers",
+  "decided": "",
+  "status": "Planned",
+  "status_kind": "planned"
+ },
+ {
+  "id": "h3",
+  "track": "Hiking",
+  "area": "Rewards",
+  "item": "Foothold penalty for height steps over 5 cm under a planted foot (after SOLO); landing-spot scoring (after SSR)",
+  "origin": "Added, from other papers",
+  "origin_kind": "papers",
+  "decided": "",
+  "status": "Planned",
+  "status_kind": "planned"
+ },
+ {
+  "id": "h4",
+  "track": "Hiking",
+  "area": "Rewards",
+  "item": "Swing-foot clearance, 6 cm over the terrain (after TACT-ful)",
+  "origin": "Added, from other papers",
+  "origin_kind": "papers",
+  "decided": "",
+  "status": "Planned",
+  "status_kind": "planned"
+ },
+ {
+  "id": "h5",
+  "track": "Hiking",
+  "area": "Rewards",
+  "item": "Knee and shin contact cost graded by force and duration; brushes stay cheap so recovery is learnable; 10% of robots exempt from contact terminations",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "",
+  "status": "Planned",
+  "status_kind": "planned"
+ },
+ {
+  "id": "h6",
+  "track": "Hiking",
+  "area": "Terrain",
+  "item": "Paper's 20 terrain columns (rough, gaps, stairs, boxes, slopes)",
+  "origin": "True to paper",
+  "origin_kind": "paper",
+  "decided": "",
+  "status": "In the G1 reproduction",
+  "status_kind": "done"
+ },
+ {
+  "id": "h7",
+  "track": "Hiking",
+  "area": "Terrain",
+  "item": "18 new columns: beams and slanted 4x4s, beam fields, blocks, wedges with rails and brace stands, tight spots, log corridors, homes, street front, stairs (straight, L, U, amphitheatre)",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "",
+  "status": "Preview built; not ported to the simulator",
+  "status_kind": "partial"
+ },
+ {
+  "id": "h8",
+  "track": "Hiking",
+  "area": "Commands",
+  "item": "Forward speed plus turn toward a target",
+  "origin": "True to paper",
+  "origin_kind": "paper",
+  "decided": "",
+  "status": "In the G1 reproduction",
+  "status_kind": "done"
+ },
+ {
+  "id": "h9",
+  "track": "Hiking",
+  "area": "Commands",
+  "item": "Waypoint routes through each section's main walk area; backward, sideways and turn-in-place commands; dead-end spawns",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "",
+  "status": "Planned; 61 of 327 preview routes still blocked",
+  "status_kind": "planned"
+ },
+ {
+  "id": "h10",
+  "track": "Hiking",
+  "area": "Style data",
+  "item": "Paper's released motion file, about 380 s, for the style reward",
+  "origin": "True to paper",
+  "origin_kind": "paper",
+  "decided": "",
+  "status": "In the G1 reproduction",
+  "status_kind": "done"
+ },
+ {
+  "id": "h11",
+  "track": "Hiking",
+  "area": "Style data",
+  "item": "Our Pico captures: 67 min of general walking and 26 min on props",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "",
+  "status": "Planned; needs retargeting",
+  "status_kind": "planned"
+ },
+ {
+  "id": "h12",
+  "track": "Hiking",
+  "area": "Speed",
+  "item": "Two training speedups (distribution validation off, motion reference cache): 6.2 s to about 5 s per iteration",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "",
+  "status": "Done on the G1",
+  "status_kind": "done"
+ },
+ {
+  "id": "a1",
+  "track": "ACP",
+  "area": "Method",
+  "item": "Follow the paper's own RL method this round. The earlier X2 setup in gwbc-v6 ran on the SuperMimic tracker, which is not used.",
+  "origin": "True to paper",
+  "origin_kind": "paper",
+  "decided": "Your decision, 2026-11-11",
+  "status": "Pipeline to be written down from the paper before training",
+  "status_kind": "planned"
+ },
+ {
+  "id": "s1",
+  "track": "SSR",
+  "area": "Method",
+  "item": "Follow the paper's own RL method this round. The earlier ssr-x2 runs started the actor from a SuperMimic fit, which is dropped; other deviations (simulator, camera, motion data) to be listed.",
+  "origin": "True to paper",
+  "origin_kind": "paper",
+  "decided": "Your decision, 2026-11-11",
+  "status": "Risk: with rewards alone the robot stood still in earlier runs",
+  "status_kind": "risk"
+ }
+]

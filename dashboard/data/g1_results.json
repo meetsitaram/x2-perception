@@ -1,0 +1,82 @@
+[
+ {
+  "id": "g1",
+  "terrain": "Stairs down",
+  "checkpoint": "15k",
+  "success_pct": 99.9,
+  "paper_success_pct": 99.95,
+  "time_s": 4.8,
+  "paper_time_s": 5.15,
+  "robots": 1000
+ },
+ {
+  "id": "g2",
+  "terrain": "Stairs up",
+  "checkpoint": "15k",
+  "success_pct": 100.0,
+  "paper_success_pct": 100.0,
+  "time_s": 6.3,
+  "paper_time_s": 5.36,
+  "robots": 1000
+ },
+ {
+  "id": "g3",
+  "terrain": "Platform down",
+  "checkpoint": "15k",
+  "success_pct": 99.9,
+  "paper_success_pct": 100.0,
+  "time_s": 5.2,
+  "paper_time_s": 5.63,
+  "robots": 1000
+ },
+ {
+  "id": "g4",
+  "terrain": "Platform up",
+  "checkpoint": "15k",
+  "success_pct": 99.7,
+  "paper_success_pct": 100.0,
+  "time_s": 5.6,
+  "paper_time_s": 5.6,
+  "robots": 1000
+ },
+ {
+  "id": "g5",
+  "terrain": "Rough",
+  "checkpoint": "10k",
+  "success_pct": 100.0,
+  "paper_success_pct": 100.0,
+  "time_s": 4.4,
+  "paper_time_s": 5.4,
+  "robots": 1000
+ },
+ {
+  "id": "g6",
+  "terrain": "Ramp",
+  "checkpoint": "10k",
+  "success_pct": 96.0,
+  "paper_success_pct": 100.0,
+  "time_s": 8.3,
+  "paper_time_s": 5.84,
+  "robots": 1000
+ },
+ {
+  "id": "g7",
+  "terrain": "Small boxes",
+  "checkpoint": "10k",
+  "success_pct": 67.9,
+  "paper_success_pct": 99.09,
+  "time_s": 6.4,
+  "paper_time_s": 8.03,
+  "robots": 1000
+ },
+ {
+  "id": "g8",
+  "terrain": "Large boxes",
+  "checkpoint": "10k",
+  "success_pct": 53.3,
+  "paper_success_pct": 100.0,
+  "time_s": 5.4,
+  "paper_time_s": 5.91,
+  "robots": 1000
+ }
+]

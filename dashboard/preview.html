@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- Local preview of index.html with a stand-in for the dashboard's `dash` API. Not published.
+     Run `python -m http.server 8765` in this folder and open http://localhost:8765/preview.html
+     Add ?light to preview with a light viewer theme around the page, ?sample to add made-up X2 runs and apparatus scores (to test the charts only). -->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Preview</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  html, body { margin: 0; background: #fff; font-family: system-ui, sans-serif; }
+  :root { --font-anthropic-sans: system-ui, sans-serif; --font-anthropic-serif: Georgia, serif; }
+</style></head>
+<body><div id="dash-root"></div>
+<script>
+(async () => {
+  const ids = ['tracks', 'targets', 'progress', 'apparatus_results', 'g1_results', 'details', 'robot', 'renders', 'open_items', 'worklog', 'eval_rules'];
+  const store = {};
+  for (const id of ids) store[id] = await (await fetch('data/' + id + '.json')).json();
+  store.renders.forEach((r) => { r.url = 'images/' + r.id + '.jpg'; });
+  if (location.search.includes('sample')) {
+    for (let i = 1; i <= 12; i++) store.progress.push({ id: 'acp-' + i, run: 'acp', robot: 'X2', track: 'ACP', iteration: i * 500, total: 10000, reward: 10 + 6 * Math.sqrt(i) , episode_len: 300 + 40 * i, terrain_level: i < 4 ? null : 1 + i / 5, note: i === 6 ? 'made-up note' : '' });
+    store.tracks[0].state = 'Training'; store.tracks[0].state_kind = 'training';
+    store.apparatus_results.push(
+      { id: 'e1', date: '2026-11-12', track: 'ACP', checkpoint: 'model_4000', apparatus: 'ours', simulator: 'MuJoCo', trials: 200, success_pct: 41.5, door_pct: 99, stepovers_pct: 70, ramps_pct: 80, stairs_pct: 60, note: 'made up' },
+      { id: 'e2', date: '2026-11-13', track: 'ACP', checkpoint: 'model_6000', apparatus: 'ours', simulator: 'MuJoCo', trials: 200, success_pct: 62, door_pct: 99, stepovers_pct: 80, ramps_pct: 85, stairs_pct: 75, note: '' },
+      { id: 'e3', date: '2026-11-13', track: 'ACP', checkpoint: 'model_6000', apparatus: 'nist', simulator: 'MuJoCo', trials: 200, success_pct: 97.5, note: '' },
+      { id: 'e4', date: '2026-11-13', track: 'Hiking', checkpoint: 'model_2000', apparatus: 'ours', simulator: 'Isaac', trials: 200, success_pct: 12, note: '' });
+  }
+  const calcs = {}, draws = {}, onData = [];
+  const cache = {};
+  window.dash = {
+    colors: ['#6cb0ff', '#f2a65a', '#5fd4a6'],
+    data(id) {
+      if (store[id]) return { status: 'ok', data: store[id] };
+      if (calcs[id]) { if (!(id in cache)) cache[id] = calcs[id].fn(...calcs[id].inputs.map((i) => dash.data(i).data || [])); return { status: 'ok', data: cache[id] }; }
+      return { status: 'missing', data: [] };
+    },
+    calc(id, def) { calcs[id] = def; },
+    draw(name, fn) { if (fn) draws[name] = fn; else run(name); },
+    onData(fn) { onData.push(fn); fn(); },
+    setLink(n) { history.replaceState(null, '', '#' + n); },
+    params: () => ({}), setParams() {}, resetParams() {}, refresh() {}, loader() {},
+  };
+  const run = (only) => document.querySelectorAll('[data-draw]').forEach((el) => {
+    if (only && el.dataset.draw !== only) return;
+    if (el.closest('[hidden]')) return;
+    const f = draws[el.dataset.draw]; if (f) f(el); else console.warn('no drawing', el.dataset.draw);
+  });
+  const all = () => { onData.forEach((f) => f()); run(); };
+  const html = await (await fetch('index.html')).text();
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const rootEl = document.getElementById('dash-root');
+  const scripts = [...doc.querySelectorAll('script')]; scripts.forEach((s) => s.remove());
+  rootEl.append(...doc.head.childNodes, ...doc.body.childNodes);
+  if (!location.search.includes('light')) document.body.style.background = '#0d1117';
+  scripts.forEach((s) => { new Function(s.textContent)(); });
+  all();
+  new MutationObserver(() => { clearTimeout(window.__t); window.__t = setTimeout(all, 30); }).observe(rootEl, { attributes: true, attributeFilter: ['hidden'], subtree: true });
+  let lw = innerWidth; addEventListener('resize', () => { if (innerWidth !== lw) { lw = innerWidth; all(); } });
+})();
+</script></body></html>

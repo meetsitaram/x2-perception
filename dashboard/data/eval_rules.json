@@ -1,0 +1,51 @@
+[
+ {
+  "id": "robot",
+  "rule": "Robot",
+  "text": "AgiBot X2 Ultra, the same model files for every track.",
+  "status": "Set",
+  "status_kind": "done"
+ },
+ {
+  "id": "courses",
+  "rule": "Courses",
+  "text": "Two apparatuses: ours (the IEEE loco-manipulation apparatus, from the CAD) and the NIST one. Neither goes into training as a whole; only separate, re-arranged parts may.",
+  "status": "NIST files still being collected",
+  "status_kind": "partial"
+ },
+ {
+  "id": "route",
+  "rule": "Route on ours",
+  "text": "Door, 4x4 stepovers, buttons 1-2, crossing ramps, buttons 3-4, wall, stairs, landing, button 5.",
+  "status": "Set",
+  "status_kind": "done"
+ },
+ {
+  "id": "trial",
+  "rule": "Trial",
+  "text": "One robot, one attempt at the whole route, commands produced from the waypoints only. No reference motion replay.",
+  "status": "Set",
+  "status_kind": "done"
+ },
+ {
+  "id": "success",
+  "rule": "Success",
+  "text": "Reaches the last waypoint within the time limit without a fall and without leaving the course. Also reported per section (door, 4x4s, ramps, stairs), with time and foot-contact quality.",
+  "status": "Time limit and button rule open",
+  "status_kind": "waiting"
+ },
+ {
+  "id": "size",
+  "rule": "Size",
+  "text": "At least 200 trials per checkpoint with randomised start pose and physics, same seeds for every track. A 99% claim needs at least 500 trials; the final claim uses 1,000.",
+  "status": "Set",
+  "status_kind": "done"
+ },
+ {
+  "id": "sims",
+  "rule": "Simulators",
+  "text": "Each track's training simulator plus MuJoCo as the common cross-check. A number counts only if it holds in MuJoCo too.",
+  "status": "Set",
+  "status_kind": "done"
+ }
+]

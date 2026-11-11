@@ -1,0 +1,60 @@
+{
+ "artifact": "https://claude.ai/artifact/JaZDeLFXXN28HLMd1Sia3V",
+ "datasets": {
+  "tracks": {
+   "title": "Team status per agent",
+   "description": "One row per agent: state, what is running, newest checkpoint, blocker, next step and when it was last recorded.",
+   "blob": "7e6d3e97436868eab5df7245bb2cf9b0"
+  },
+  "targets": {
+   "title": "Goal and starting point",
+   "description": "The apparatus success goal and the starting figure, both set by the user.",
+   "blob": "f6d2684c6233f69d3578883f087fea1b"
+  },
+  "progress": {
+   "title": "Training progress points",
+   "description": "Iteration, reward, episode length and terrain level recorded from each run's training log.",
+   "blob": "6a40ccd06891b0062ef10a68dfa6de02"
+  },
+  "apparatus_results": {
+   "title": "Apparatus eval runs",
+   "description": "One row per eval run of a checkpoint on an apparatus by the eval monitor. Empty until the first run.",
+   "blob": "8d9f48b817ed8489ba18b1658226c121"
+  },
+  "g1_results": {
+   "title": "G1 reproduction vs the paper",
+   "description": "Success and time to target per terrain for the G1 reproduction of Hiking in the Wild, with the paper's figures.",
+   "blob": "0e18cb3e35a8a8f444ca6df75df24a82"
+  },
+  "details": {
+   "title": "What goes into each training",
+   "description": "Rewards, terrain, commands and data per track, marked as true to the paper or added.",
+   "blob": "c8dbbf8bd84a5f1b60c8c1b8ea5e3291"
+  },
+  "robot": {
+   "title": "Robot, motions and props",
+   "description": "X2 inputs: retargeted motion sets, props and camera, with their state.",
+   "blob": "8747862d774e680d319b02725f2117cb"
+  },
+  "renders": {
+   "title": "Renders for review",
+   "description": "Pictures shown in the galleries, with where each comes from and its credit.",
+   "blob": "f922338e6ae9aa88d6b0c9f46e8cdc1a"
+  },
+  "open_items": {
+   "title": "Open items",
+   "description": "Decisions and blockers and who each waits on.",
+   "blob": "6a00a226d879c1d480820bc26be3a8c3"
+  },
+  "worklog": {
+   "title": "Work log",
+   "description": "What has been done and where the files are.",
+   "blob": "3d20f44ef9639421e25cf1a2bcb66866"
+  },
+  "eval_rules": {
+   "title": "Common eval definition",
+   "description": "How an apparatus trial is run and scored, with what is still open.",
+   "blob": "c6d3ea3018b4f5720893b0da7d49659d"
+  }
+ }
+}

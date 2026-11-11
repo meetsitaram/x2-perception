@@ -1,0 +1,66 @@
+[
+ {
+  "id": "r1",
+  "area": "Robot",
+  "item": "AgiBot X2 Ultra, the only robot for this round; one set of model files for all three tracks",
+  "amount": "",
+  "status": "To copy to the shared filesystem",
+  "status_kind": "todo"
+ },
+ {
+  "id": "r2",
+  "area": "Retargeted motion",
+  "item": "Pico general walking, 85 segments, about 67 min: already retargeted to the X2 at 50 fps",
+  "amount": "about 67 min",
+  "status": "Exists locally (gwbc-v6); not yet reviewed here",
+  "status_kind": "ready"
+ },
+ {
+  "id": "r3",
+  "area": "Retargeted motion",
+  "item": "Pico prop captures (terrain-park), 187 takes, about 26 min: every take retargeted to the X2",
+  "amount": "about 26 min",
+  "status": "Exists locally; contact quality still being iterated",
+  "status_kind": "partial"
+ },
+ {
+  "id": "r4",
+  "area": "Retargeted motion",
+  "item": "Bones-SEED human motion retargeted to the X2: about 13,000 locomotion clips, 3,700 prop clips, 139 stair climbs",
+  "amount": "about 16,800 clips",
+  "status": "Exists locally; Bones Studio credit required on shown results",
+  "status_kind": "ready"
+ },
+ {
+  "id": "r5",
+  "area": "Retargeted motion",
+  "item": "Backward and sideways walking clips for the X2",
+  "amount": "",
+  "status": "Not found yet; captures to be scanned",
+  "status_kind": "missing"
+ },
+ {
+  "id": "r6",
+  "area": "Props",
+  "item": "Fitted props from the captures: 4x4 beam, 4x4 T, two-step stair at two places, folding ramp onto a step, sloped driveway",
+  "amount": "",
+  "status": "Fitted as boxes and slopes; not yet in a training map",
+  "status_kind": "partial"
+ },
+ {
+  "id": "r7",
+  "area": "Props",
+  "item": "Parts of our apparatus and the NIST apparatus (4x4 stepover, crossing-ramp cell, stair flight, rail, brace stand) as separate randomised pieces",
+  "amount": "",
+  "status": "Allowed in training maps; whole layouts held out for the eval",
+  "status_kind": "ready"
+ },
+ {
+  "id": "r8",
+  "area": "Camera",
+  "item": "X2 depth camera pose per track (head camera 40 degrees down; SSR also tried a chest camera)",
+  "amount": "",
+  "status": "To confirm per track",
+  "status_kind": "todo"
+ }
+]

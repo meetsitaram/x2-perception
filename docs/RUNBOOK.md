@@ -1,0 +1,37 @@
+# Runbook: restart the team from scratch
+
+Use this when the session that ran the agents is gone. Training itself keeps running on the nodes (tmux, supervisors); only the
+agents that watch and steer it are lost.
+
+## 1. Become the coordinator
+1. Open a Claude Code session in `C:\Users\PC\projects\perception-agents` (it reads `CLAUDE.md`).
+2. Read, in this order: `docs/USER_RULES.md`, `state/STATUS.md`, `docs/EVAL.md`, `docs/TRACK_RULES.md`, `config/nodes.json`.
+3. `bash scripts/node_check.sh` (GPU use, disk, shared filesystem), then read the heartbeats:
+   `ssh -i ~/.ssh/nebius_corpus -o IdentitiesOnly=yes <user>@<ip> 'cat /mnt/filesystem-g4/status/*.json; tmux ls'`.
+4. Read each `state/<track>.md`: it has what is running, the newest checkpoint and the exact resume and stop commands.
+5. A copy of this repo is on the shared filesystem at `/mnt/filesystem-g4/perception-agents` in case the desktop copy is lost.
+
+## 2. Start the agents again
+Start one agent per role (in Claude Code: the Agent tool, general-purpose, same model as the coordinator, in the background; or
+one session per role). Give each this prompt, with its own track filled in:
+
+> You are the `<acp | ssr | hiking>` track agent of the perception-agents team (or: the eval monitor). Read, in this order, and
+> follow: `docs/USER_RULES.md`, your brief `.claude/agents/<role>.md`, `docs/TRACK_RULES.md`, `docs/SHARED_FS.md`, `docs/EVAL.md`,
+> `config/nodes.json`, `state/STATUS.md`, and your own `state/<role>.md`. You are resuming, not starting: your state file says what
+> is already running on your node and how to resume it; check the node and the heartbeat before changing anything, and do not
+> restart a healthy run. Your node is `<ip>` only (`ssh -i ~/.ssh/nebius_corpus -o IdentitiesOnly=yes -o BatchMode=yes
+> <user>@<ip>`); never touch the other nodes or another track's tree. Keep your state file current, do not wait for answers,
+> and report to the coordinator in a few lines with numbers, what you verified and what you did not.
+
+The eval monitor runs on the desktop CPU (MuJoCo), reads the nodes' `status/` and `runs/` folders only, and uses a node's GPU only
+when that track's supervisor has paused for it.
+
+## 3. Keep the user's view current
+- Dashboard: https://claude.ai/artifact/JaZDeLFXXN28HLMd1Sia3V ; update steps in `dashboard/README.md`. Local page (in this repo: `dashboard/preview.html`, reading `dashboard/data/*.json` and `dashboard/images/`):
+  double-click `scripts\serve_dashboard.bat` (or `bash scripts/serve_dashboard.sh`) and open `http://localhost:8765/preview.html`.
+- After every agent report: update `state/STATUS.md`, the dashboard data, and `docs/USER_RULES.md` if the user decided something.
+- Before any result goes to the user: the checks under "What is shown to the user" in `docs/USER_RULES.md`.
+
+## 4. Scoring a checkpoint
+`docs/EVAL.md` is the definition; the harness is in `eval/` (`state/eval.md` says what it can do and which adapters exist). A
+number is a result only when the eval monitor produced it with the common eval, with its trial count.

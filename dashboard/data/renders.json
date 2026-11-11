@@ -1,0 +1,122 @@
+[
+ {
+  "id": "map_new_section",
+  "group": "map",
+  "title": "Extended training map, new section",
+  "caption": "The 18 new columns with the commanded routes in red: beams, blocks, wedges, tight spots, log corridors, homes, street front and stairs. Rows are difficulty.",
+  "label": "Preview from the generator scripts, not from a simulator",
+  "credit": "",
+  "featured": true,
+  "url": "/_blob/cacc3716686066bc198a84301ab2fae7",
+  "w": 1600,
+  "h": 867
+ },
+ {
+  "id": "map_whole_field",
+  "group": "map",
+  "title": "Whole training field",
+  "caption": "The paper's 20 terrain columns (grey, front) with the 18 new columns behind them.",
+  "label": "Preview from the generator scripts, not from a simulator",
+  "credit": "",
+  "featured": false,
+  "url": "/_blob/bec70ccb5348be20c5c87722950d8786",
+  "w": 1600,
+  "h": 800
+ },
+ {
+  "id": "terrain_beams_blocks",
+  "group": "map",
+  "title": "Beams, blocks, wedges, tight spots",
+  "caption": "Each new terrain type at easy, medium and hard. The figure is a size stand-in.",
+  "label": "Preview from the generator scripts, not from a simulator",
+  "credit": "",
+  "featured": false,
+  "url": "/_blob/7afa09ef5bfb69fe954779d99065504f",
+  "w": 1269,
+  "h": 1600
+ },
+ {
+  "id": "terrain_stairs",
+  "group": "map",
+  "title": "Stairs with routes",
+  "caption": "Straight, L-shaped, U switchback and amphitheatre stairs at easy, medium and hard, with the commanded routes.",
+  "label": "Preview from the generator scripts, not from a simulator",
+  "credit": "",
+  "featured": true,
+  "url": "/_blob/9fc3fa95a51317ace6263d6c5d815fb2",
+  "w": 1592,
+  "h": 1600
+ },
+ {
+  "id": "terrain_wedges",
+  "group": "map",
+  "title": "Wedges with routes",
+  "caption": "Long ramps with side rails, crossing-ramp pinwheels and brace stands, with routes through the main walk area.",
+  "label": "Preview from the generator scripts, not from a simulator",
+  "credit": "",
+  "featured": false,
+  "url": "/_blob/f154d4996bc78f8ae4495c9e84f5fb2a",
+  "w": 1592,
+  "h": 1600
+ },
+ {
+  "id": "terrain_log_corridors",
+  "group": "map",
+  "title": "Log corridors",
+  "caption": "Corridors with logs across them; walls, rails or posts at the sides. A clear path always exists along the centre.",
+  "label": "Preview from the generator scripts, not from a simulator",
+  "credit": "",
+  "featured": false,
+  "url": "/_blob/734531e73c58af18c5727a138a40be4a",
+  "w": 1254,
+  "h": 1600
+ },
+ {
+  "id": "terrain_homes",
+  "group": "map",
+  "title": "Homes",
+  "caption": "Indoor rooms with doorways, clutter and steps, at easy, medium and hard.",
+  "label": "Preview from the generator scripts, not from a simulator",
+  "credit": "",
+  "featured": false,
+  "url": "/_blob/a4b4be65dd6c49091455c0527e97fed4",
+  "w": 1600,
+  "h": 1227
+ },
+ {
+  "id": "terrain_street",
+  "group": "map",
+  "title": "Street front",
+  "caption": "Street, curb, sidewalk slabs, driveway and lawn, at easy, medium and hard.",
+  "label": "Preview from the generator scripts, not from a simulator",
+  "credit": "",
+  "featured": false,
+  "url": "/_blob/e96efb8014f1e8a7bcee458220f610c0",
+  "w": 1600,
+  "h": 1227
+ },
+ {
+  "id": "g1_stepover_legs",
+  "group": "robot",
+  "title": "G1 stepping over the 4x4s of our apparatus",
+  "caption": "Unitree G1, checkpoint 17,500, legs close-up, single runs at half speed. Floor and beams drawn from the CAD; walls hidden but in the physics. Toes stub the beams and feet land on their edges.",
+  "label": "MuJoCo, not the training simulator",
+  "credit": "Motion data: Bones Studio",
+  "featured": true,
+  "url": "/_blob/398fe4e49a39242ea00dcc3fa368ad2f",
+  "w": 1600,
+  "h": 1350
+ },
+ {
+  "id": "g1_paper_terrains",
+  "group": "robot",
+  "title": "G1 on the paper's terrains",
+  "caption": "Unitree G1, checkpoint 17,500, walking to the red target on boxes, platforms, slopes, rough ground and stairs.",
+  "label": "MuJoCo, not the training simulator",
+  "credit": "Motion data: Bones Studio",
+  "featured": false,
+  "url": "/_blob/4f782c8328532223592f1032cfe1ce36",
+  "w": 1067,
+  "h": 1600
+ }
+]

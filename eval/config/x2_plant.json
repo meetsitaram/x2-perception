@@ -1,0 +1,52 @@
+{
+ "name": "vendor_20260823",
+ "source": "ssr-x2/config/robot_plant/x2_ultra.yaml (the X2 deploy plant; kp = armature * (2 pi f)^2, kd = 2 zeta armature (2 pi f))",
+ "note": "Keys are substrings of the joint name; the first match wins, so order matters.",
+ "natural_freq_hz": 10.0,
+ "damping_ratio": 2.0,
+ "armature": {
+  "hip": 0.02907981,
+  "knee": 0.02907981,
+  "waist_yaw": 0.02907981,
+  "waist_pitch": 0.003132992,
+  "waist_roll": 0.003132992,
+  "ankle_pitch": 0.00884,
+  "ankle_roll": 0.003132992,
+  "shoulder_pitch": 0.00884,
+  "shoulder_roll": 0.00884,
+  "shoulder_yaw": 0.003132992,
+  "elbow": 0.003132992,
+  "wrist_yaw": 0.003132992,
+  "wrist_pitch": 0.00425,
+  "wrist_roll": 0.00425,
+  "head": 0.00425
+ },
+ "effort": {
+  "hip": 120.0,
+  "knee": 120.0,
+  "waist_yaw": 120.0,
+  "waist_pitch": 24.0,
+  "waist_roll": 24.0,
+  "ankle_pitch": 36.0,
+  "ankle_roll": 24.0,
+  "shoulder_pitch": 36.0,
+  "shoulder_roll": 36.0,
+  "shoulder_yaw": 24.0,
+  "elbow": 24.0,
+  "wrist_yaw": 24.0,
+  "wrist_pitch": 6.0,
+  "wrist_roll": 6.0,
+  "head_yaw": 2.6,
+  "head_pitch": 0.6
+ },
+ "default_joint_pos": {
+  "left_shoulder_roll": 0.2,
+  "right_shoulder_roll": -0.2,
+  "left_shoulder_pitch": 0.2,
+  "right_shoulder_pitch": 0.2,
+  "hip_pitch": -0.312,
+  "knee": 0.669,
+  "ankle_pitch": -0.363,
+  "elbow": -0.6
+ }
+}

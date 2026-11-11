@@ -1,0 +1,74 @@
+[
+ {
+  "id": "w9",
+  "n": 9,
+  "date": "2026-11-11",
+  "area": "Team",
+  "what": "Four agents started: ACP, SSR and Hiking tracks each on their own node, and the eval monitor on the desktop CPU",
+  "where": "nodes acp, ssr and hiking; shared filesystem /mnt/filesystem-g4"
+ },
+ {
+  "id": "w8",
+  "n": 8,
+  "date": "2026-11-11",
+  "area": "Nodes",
+  "what": "Three nodes reachable (RTX PRO 6000 96 GB, 24 CPUs, 214 GB RAM each); shared 500 GB filesystem laid out; hiking code and team files copied there",
+  "where": "perception-agents/config/nodes.json"
+ },
+ {
+  "id": "w6",
+  "n": 6,
+  "date": "2026-11-11",
+  "area": "Apparatus test",
+  "what": "G1 checkpoint 17,500 crossed the 4x4s, wedges and stairs of our apparatus in MuJoCo (single runs); toes stub and feet land on beam edges",
+  "where": "hiking-in-the-wild/review/sim2sim"
+ },
+ {
+  "id": "w5",
+  "n": 5,
+  "date": "2026-11-11",
+  "area": "Rewards",
+  "what": "Survey of 22 papers for stumble, edge, clearance and leg-contact terms; plan written",
+  "where": "hiking-in-the-wild/docs/TODO_extended_training.md"
+ },
+ {
+  "id": "w4",
+  "n": 4,
+  "date": "2026-11-11",
+  "area": "Terrain map",
+  "what": "Extended training map preview: paper's 20 columns plus 18 new (beams, blocks, wedges, tight spots, log corridors, homes, street front, stairs) with turning routes",
+  "where": "hiking-in-the-wild/review/new_terrains"
+ },
+ {
+  "id": "w3",
+  "n": 3,
+  "date": "2026-11-11",
+  "area": "Hiking (G1)",
+  "what": "Code committed on branch g1-20k-and-extended-terrain and bundled for the nodes",
+  "where": "hiking-in-the-wild; perception-agents/hiking-in-the-wild.bundle"
+ },
+ {
+  "id": "w2",
+  "n": 2,
+  "date": "2026-11-11",
+  "area": "Hiking (G1)",
+  "what": "Local G1 training paused at checkpoint 20,000 of 30,000 (reward 108.9, terrain level 6.18)",
+  "where": "hiking-in-the-wild, model_20000"
+ },
+ {
+  "id": "w1",
+  "n": 1,
+  "date": "2026-11-11",
+  "area": "Team",
+  "what": "Team repo perception-agents created: five roles, isolation rules, common eval, status files",
+  "where": "C:/Users/PC/projects/perception-agents"
+ },
+ {
+  "id": "w7",
+  "n": 7,
+  "date": "2026-11-10",
+  "area": "Hiking (G1)",
+  "what": "Isaac eval at 15k: stairs and platforms 99.7-100% (1,000 robots each)",
+  "where": "hiking-in-the-wild/review/eval/stairs_15000.json"
+ }
+]

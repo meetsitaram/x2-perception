@@ -1,0 +1,42 @@
+[
+ {
+  "id": "hikingpen",
+  "item": "Hiking track: keep or drop the planned training penalties (stumble, foothold, foot clearance) for its later extended run? The eval stumble score is eval-only.",
+  "who": "You",
+  "who_kind": "you",
+  "status": "Waiting",
+  "status_kind": "waiting"
+ },
+ {
+  "id": "share",
+  "item": "New terrain is 18 of 38 columns of the training map; confirm the share",
+  "who": "You",
+  "who_kind": "you",
+  "status": "Waiting",
+  "status_kind": "waiting"
+ },
+ {
+  "id": "routes",
+  "item": "61 of 327 commanded routes still blocked in the terrain preview (mostly street front)",
+  "who": "Coordinator",
+  "who_kind": "agent",
+  "status": "In progress",
+  "status_kind": "progress"
+ },
+ {
+  "id": "motions",
+  "item": "Retarget Pico prop captures to the robots; scan for backward and sideways walking",
+  "who": "Hiking track",
+  "who_kind": "agent",
+  "status": "Not started",
+  "status_kind": "todo"
+ },
+ {
+  "id": "g1",
+  "item": "Local G1 reproduction paused at checkpoint 20,000 of 30,000; resume or leave",
+  "who": "You",
+  "who_kind": "you",
+  "status": "Paused",
+  "status_kind": "paused"
+ }
+]
