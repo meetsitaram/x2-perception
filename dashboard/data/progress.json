@@ -262,5 +262,17 @@
   "episode_len": 637,
   "terrain_level": 0.87,
   "note": "run v1; to be replaced by run v2"
+ },
+ {
+  "id": "acp-1840",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, stage 1",
+  "iteration": 1840,
+  "total": 12000,
+  "reward": 0.121,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "87% of clips finished"
  }
 ]

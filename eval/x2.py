@@ -90,7 +90,7 @@ def _group_of(body_name: str):
 
 
 def build(app=None, plant_override: dict | None = None, friction: float = 1.0, render_size=(1280, 720),
-          wall_alpha: float = 1.0) -> X2:
+          wall_alpha: float = 1.0, cameras: list | None = None) -> X2:
     """app: apparatus.Apparatus or None (flat plane). plant_override: any of kp, kd, effort, armature, default_q (31,)."""
     rd = robot_dir()
     spec = mujoco.MjSpec.from_file(str(rd / "mjcf" / "x2_ultra.xml"))
@@ -155,6 +155,12 @@ def build(app=None, plant_override: dict | None = None, friction: float = 1.0, r
     spec.visual.quality.shadowsize = 4096
     spec.worldbody.add_light(name="sun", pos=[0, 0, 10], dir=[0.3, 0.2, -1], diffuse=[0.5, 0.5, 0.5], castshadow=True,
                              type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL)
+    for c in cameras or []:                                 # fixed cameras on robot bodies (dict: name, body, pos, xyaxes, fovy)
+        cam = spec.body(c["body"]).add_camera(name=c["name"], pos=c["pos"], fovy=c["fovy"])
+        xa, ya = np.array(c["xyaxes"][:3], float), np.array(c["xyaxes"][3:], float)   # camera x (right) and y (up) in the body frame
+        q = np.zeros(4)
+        mujoco.mju_mat2Quat(q, np.stack((xa, ya, np.cross(xa, ya)), 1).ravel())    # MuJoCo cameras look along -z
+        cam.quat = q
     m = spec.compile()
     jid = [mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, n) for n in names]
     x = X2(m, names, plant, np.array([m.jnt_qposadr[i] for i in jid]), np.array([m.jnt_dofadr[i] for i in jid]),

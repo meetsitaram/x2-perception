@@ -495,40 +495,98 @@ a stiffness table. Training randomises kp and kd by x0.9-1.1 and motor strength 
 ## Cameras
 
 User decision 2026-11-11 (final): a RealSense D435-class depth camera on the chest, centred, pitched down, as in the reference
-frame `docs/camera/chest_realsense_depth_reference.jpg`. Option `--camera chest_rs`, used from run r5 on. `head`, `chest`
-(the old 75 deg option) and `torso60` remain selectable.
+frame `docs/camera/chest_realsense_depth_reference.jpg`; lens height "somewhere in between" 0.92 and 1.05 m. Option
+`--camera chest_rs`, used from run r5 on. `head`, `chest` (the old 75 deg option) and `torso60` remain selectable.
 
-Pose and optics of `chest_rs` (in `ssr/x2.py`, `CAMERAS`): parent body `torso_link`, position (-0.026, 0, 0.125) m in that
-body (x forward, y left, z up), rotated about the body's y axis so the optical axis is 53.5 deg below horizontal when the torso
-is upright; field of view 87 deg horizontal x 58 deg vertical (the D435 depth field), sampled on a regular 36 x 36
-tangent-plane grid (so pixels are wider than tall), no crop; depth = distance along the optical axis, clamped to 0.1-3.0 m and
-scaled to 0-1; limbs rendered as spheres (self-occlusion), noise on self-occluded pixels and +-1 cm / +-1 deg pose and field
-of view randomisation in training. The mount point is solved from the coordinator's landmarks, not from CAD: it is to be
-replaced by the Hiking track's value when `state/hiking.md` has it.
+**Pose and optics of `chest_rs` as r5 uses it** (`ssr/x2.py`, `CAMERAS`): parent body `torso_link`, position
+(0.126, 0, 0.16) m in that body (x forward, y left, z up): 3 cm in front of the chest shell (shell front at x = 0.096 m,
+Hiking track's mesh measurement), lens 0.98 m above the floor at the upright reset pose; rotated about the body's y axis so
+the optical axis is 59.5 deg below horizontal when the torso is upright; field of view 87 deg horizontal x 58 deg vertical
+(the D435 depth field), sampled on a regular 36 x 36 tangent-plane grid (pixels wider than tall), no crop; depth = distance
+along the optical axis, clamped to 0.1-3.0 m and scaled to 0-1; limbs rendered as spheres; N(0, 0.1 m) noise on self-occluded
+pixels. **Mount randomisation, fixed per episode** (user, 2026-11-11): forward +-2 cm, lateral +-1 cm, height +-5 cm,
+pitch +-4 deg, roll and yaw +-2 deg; field of view +-1 deg. (Other cameras keep the paper's +-1 cm, +-1 deg.)
 
-Acceptance check (base upright at the reset pose, flat ground, real rays from the ray march; frame with the lines drawn:
-`state/ssr_chest_rs_camera_check.png`, also in `renders/camera_check/` on the shared filesystem): toe line at 96.0 % of the
-image height from the top (just inside the bottom edge), 0.55 m line at 49.5 % (reference about 52 %), 1.0 m line at 27.1 %
-(reference 27 % +-3).
+Acceptance check (base upright at the reset pose, flat ground, rows computed from the real rays; frame with the lines drawn:
+`state/ssr_chest_rs_camera_check.png`, also `renders/camera_check/` on the shared filesystem): 0.55 m line at 51.5 % of the
+image height from the top (reference about 52 %), 1.0 m line at 25.4 % (reference 27 % +-3). **The toe line falls 3 % below
+the bottom edge** (ground is seen from 0.03 m ahead of the toe tips): with the lens on the shell surface it sits directly above
+the toes, and a tilt that brought the toe line inside (61 deg) would push the 1.0 m line to 23 %. The toes enter the image
+when a foot swings forward (legs cover 1 % of the image standing, 5 % mid-stride).
 
-All options, same pose, plant `mc_20261024`, distances from the front edge of the soles (`eval/model_mc_20261024.json`;
+All options, same pose, plant `mc_20261024`, distances from the front edge of the soles (`eval/model_mc_20261024*.json`;
 frames for flat ground, a 4x4 at 1.5 m and at 0.3 m, a stair foot at 0.3 m, and a kinematic mid-stride pose, as upscaled PNG
-and raw 36 x 36 arrays, in `renders/camera_check/`; computed on the CPU so training was not interrupted):
+and raw 36 x 36 arrays, in `renders/camera_check/`; computed on the CPU so training is not interrupted):
 
-| Option | Mount (in parent body) | Axis below horizontal | Field of view | Range | Height | Ground seen | Width at 0.5 m | Legs in image (standing / mid-stride) |
+| Option | Mount (in parent body) | Axis below horizontal | Field of view | Range | Lens height | Ground seen | Width at 0.5 m | Legs in image (standing / mid-stride) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `chest_rs` (r5 on) | `torso_link` (-0.026, 0, 0.125) | 53.5 deg | 87 x 58 deg | 0.1-3.0 m | 0.95 m | -0.02 to 1.85 m | 2.15 m | 8.6 % / 7.6 % |
+| `chest_rs` (r5 on) | `torso_link` (0.126, 0, 0.16) | 59.5 deg | 87 x 58 deg | 0.1-3.0 m | 0.98 m | 0.03 to 1.61 m | 2.08 m | 1.1 % / 5.1 % |
 | `head` (r1-r4, d1-d4) | `head_pitch_link` (0.0576, 0, -0.0484) | 40 deg | 54.9 deg square | 0.1-2.0 m | 1.17 m | 0.44 to 1.55 m | 1.23 m | 3.2 % |
 | `chest` | `torso_link` (0.155, 0, 0.20) | 75 deg | 54.9 deg square | 0.1-2.0 m | 1.02 m | -0.19 to 0.94 m | 1.13 m | 14.7 % / 13.0 % |
 | `torso60` | `torso_link` (0.0488, 0, 0.4378) | 60 deg | 64 deg square | 0.1-3.0 m | 1.26 m | -0.11 to 2.21 m | 1.71 m | 6.3 % / 5.4 % |
 
-Notes: (1) `chest_rs` reaches 1.85 m, not the 2 m of the earlier spec; that is what the reference frame's pose gives.
-(2) With zero actions the robot does not hold the reset pose: within 0.5 s it settles leaning back about 7.6 deg (plant
-`mc_20261024`), which moves the `chest_rs` view to 0.13-2.7 m; a trained policy stands upright (orientation reward 0.498 of
-0.5), so the table uses the upright pose. (3) At 36 x 36 a 4x4 at 1.5 m is one to two pixel rows. (4) The paper's waist
-camera pose and field of view are not given in the paper, so its footprint cannot be computed; whether `chest_rs` is better or
-worse for SSR than the paper's mount can only be measured by a head-to-head run once the robot walks (planned: same seed, 1,000
-iterations each, compare support ratio at touchdown and terrain level).
+Notes: (1) `chest_rs` reaches 1.61 m ahead, less than the 2 m the user first asked for; the reference frame's landmarks fix
+that. (2) An earlier solve of mine, (-0.026, 0, 0.125) at 53.5 deg, met all three landmarks but lay 12 cm inside the chest
+shell; it was never used in a run. (3) At 36 x 36 a 4x4 at 1.5 m is one to two pixel rows; four rows would need about
+72 rows of vertical resolution (4x the pixels: the CNN's first layer and the ray march cost about 4x; to be measured).
+(4) The paper's waist camera pose and field of view are not in the paper, so its footprint cannot be computed; a head-to-head
+run (same seed, 1,000 iterations each) is planned once the robot walks.
+
+## Checks made before r5 (2026-11-11, 23:07-23:20 UTC, all on the CPU)
+
+**The prior's speed against the commands.** Commands are U(0, 1.2) m/s forward (the paper's Table 4); among walkers above
+the 0.15 threshold the median is 0.68 m/s, 38 % are above 0.8 and 19 % above 1.0. Window mean planar speed of the reference
+motion as fed to each discriminator (5-frame windows):
+
+| Set | r3 / r4: `amp.npz`, moving windows only | r5: `amp_v2.npz`, moving windows, speed-balanced sampling |
+| --- | --- | --- |
+| flat | 228 s; p10 0.26, p50 0.56, p90 0.84; 13.5 % above 0.8 | 656 s; p10 0.28, p50 0.57, p90 0.88; 18.7 % above 0.8 |
+| ramp | 357 s; p50 0.40, p90 0.75; 7.6 % above 0.8 | p50 0.48, p90 0.85; 12.7 % |
+| stairs | 771 s; p50 0.41, p90 0.63; 2.4 % | p50 0.45, p90 0.72; 4.7 % |
+| beam | 387 s; p50 0.46, p90 0.71; 5.2 % | p50 0.50, p90 0.78; 8.4 % |
+| platform | 510 s; p50 0.44, p90 0.68; 3.4 % | p50 0.48, p90 0.75; 5.9 % |
+
+- Before any filter the flat set's median forward speed was 0.09 m/s (43 % of its frames under 0.2 m/s).
+- `amp_v2.npz` (`scripts/build_flat_v2.py`): the flat set rebuilt from all 107 selected flat clips (999 s; the first build
+  stopped at 406 s of randomly chosen clips), other sets unchanged. `--prior_balance` samples reference windows with equal
+  mass per 0.2 m/s speed bin, no window weighted more than 5x uniform.
+- What cannot be fixed by selection: the source has little fast walking. Of 999 s of flat clips, 68 s are at 0.8-1.0 m/s and
+  25 s above 1.0. The Hiking track's cleaned file (same sources) has median 0.53 m/s, so swapping to it would not change
+  this. The prior therefore covers about 0.25-0.9 m/s and the commands reach 1.2: for the top third of commands the style
+  reward and the velocity reward pull apart. Kept the paper's command range in r5 (one change at a time); if r5 walks but
+  tracks fast commands poorly (`lin_err` by speed), cap the command at 1.0 m/s and list it as a deviation.
+
+**The "lean".** Corrected: it is not a lean. CPU MuJoCo, flat floor, the training model build, both plants
+(`scripts/lean_check.py`, `eval/lean_check_*.json`):
+- At the default pose the centre of mass is 3.4 cm ahead of the ankles and 0.4 cm behind the centre of the sole patch
+  (+-11.25 cm): statically well placed, pelvis and torso upright, no joint within 0.02 rad of a limit.
+- With zero actions (PD targets = default pose) the robot rocks back 0.2 deg (mc) to 1.8 deg (vendor) in the first 0.5 s and
+  then **falls forward within about 1.5 s**, under both plants; the Hiking track sees the same in MuJoCo and Isaac. My
+  "settles 7.6 deg back" was one frame of that motion read as a resting pose.
+- Why: the ankle pitch stiffness (2 x 40 N.m/rad with mc, 2 x 35 with vendor) is below the body's toppling stiffness
+  (m g h, about 35 kg x 9.81 x 0.65 m = 223 N.m/rad), so no fixed target holds the robot; the ankles carried 10 N.m each and
+  were 21 deg off target when it went over. Adding the gravity-sag offset to the targets does not help (it still falls,
+  iterated three times). Standing on the X2 with these gains is an active balancing task for the policy.
+- Consequence for the standing problem: it does not make the first step more costly as such, but it means "stand safely" is
+  itself the first skill PPO has to find, and every early gait attempt is made by a robot that falls in about a second
+  without feedback. It fits what the runs show (episodes of 1.2 s for the first 60-100 iterations, then standing).
+
+**The two joints past their limits** (CPU probe of the r3 standing policy): both shoulder-roll joints sit on their inner
+limit (+-0.061 rad, 0.26 rad from the default +-0.2), past it 94 % of the time: the policy holds the arms pressed in against
+the body. No bug in the limit check; it costs the stander 0.14 per step in `dof_pos_lim` and some `dof_dev`. Not understood
+why it prefers that; to watch in r5.
+
+**d3 (plant only changed from d1):** vx 0.56 (0), 0.45 (60), 0.18 (100), 0.21 (150), 0.43 (180); d1 at the same iterations:
+0.55, 0.47, about 0.2, 0.22, 0.50. The measured gains do not change how motion starts; the vendor-rule gains were not part of
+the standing problem. (Final numbers at iteration 300 are in `runs/d3/log.jsonl`.)
+
+**Fallback order if r5 is under vx 0.2 at iteration 500** (coordinator, 2026-11-11): no more runs on weights alone.
+1. Staged reward schedule, already in the code (`--stage_a 250 --stage_b 750`): until iteration 250 only the tracking and
+   posture terms (`lin_vel, ang_vel, orientation, ang_vel_xy, base_height, lateral, dof_dev, stand_still`, the set d2 moved
+   with) and no style reward; from 250 to 750 the remaining Table 6 terms and the style weight ramp linearly to full. A
+   deviation from the paper (which describes no schedule); the final rewards are the paper's. Logged as `stage_ramp`.
+2. With it, a lower entropy coefficient (`--ent 0.002`; paper 0.005): the action noise alone costs the stander about 0.5 per
+   step and the shuffler more.
 
 ## Status (2026-11-11 23:15 UTC): what runs, what is queued, how to continue
 
@@ -547,11 +605,11 @@ On the node now, in this order, one GPU job at a time:
    advantage normalisation, moving-only prior and walking starts, style weight 1.0, plant `mc_20261024`, camera `chest_rs`,
    8,192 robots. Pass: vx at least 0.3, single support at least 0.3 and air times over 0.1 s by iteration 500, mean terrain
    level rising by 1,000. **If it is under vx 0.2 at iteration 500, stop it** (`touch runs/STOP`) and go to plan step 3 in
-   the root-cause section (start from a moving policy, switch the remaining terms on over 500 iterations).
+   the root-cause section, as written under "Fallback order" above: restart as `r6` with the same flags plus `--stage_a 250 --stage_b 750 --ent 0.002`.
 
 The queue is `runs/queue2.sh`, running in tmux session `ssrq` (not `ssr`). Its exact commands:
 - `../env/venv/bin/python scripts/supervise_node.py --name d4 --iters 300 --num_envs 8192 -- --flat_only --w_style 0 --prior_min_speed 0.2 --rsi_min_speed 0.3 --plant mc_20261024 --camera head`
-- `../env/venv/bin/python scripts/supervise_node.py --name r5 --iters 20000 --num_envs 8192 -- --adv_norm separate --prior_min_speed 0.2 --rsi_min_speed 0.3 --w_style 1.0 --plant mc_20261024 --camera chest_rs`
+- `../env/venv/bin/python scripts/supervise_node.py --name r5 --iters 20000 --num_envs 8192 -- --adv_norm separate --prior_min_speed 0.2 --rsi_min_speed 0.3 --w_style 1.0 --plant mc_20261024 --camera chest_rs --amp_file data/amp_v2.npz --prior_balance` (this line is now in `runs/queue3.sh`, tmux session `ssrq3`, which waits for d4 to end; `queue2.sh` stops after d4 because `runs/QUEUE_STOP` is set. Stop r5 before it starts: `touch runs/QUEUE3_STOP`.)
 
 Stop everything: `touch /mnt/filesystem-g4/tracks/ssr/runs/QUEUE_STOP /mnt/filesystem-g4/tracks/ssr/runs/STOP` (the queue
 checks `QUEUE_STOP` between jobs; `STOP` ends the running supervised job). Resume a run: start its command again in tmux from

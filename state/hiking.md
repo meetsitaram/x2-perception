@@ -49,7 +49,13 @@ Updated 2026-11-11 23:10 UTC (Hiking track agent). Node `hiking`; address and lo
 - The SSR track's estimate for the same camera: `torso_link` (-0.026, 0, 0.125), 53.5 deg (toe line 96%, 0.55 m at 49.5%, 1.0 m
   at 27.1%, -0.02 to 1.85 m). At that height (0.92 m) the mesh puts the chest shell front at x = +0.096 m, so that point is
   12 cm inside the torso; the two poses differ by 16 cm forward, 13 cm in height and 8 deg. One of them must be adopted by both.
-- Not done: random mount offsets per robot (the released code has none); an Isaac-rendered frame at the chest pose (the frames
+- Mount randomisation (user: the real lens height is "somewhere in between"): per robot, redrawn at each episode reset, height
+  -10.5 to +5 cm (0.95 to 1.105 m), forward +-2 cm, pitch +-4 deg, roll and yaw +-2 deg (`X2_CAMERA_MOUNT_RANGES`, InstinctLab's
+  `randomize_camera_offsets`). **Written but OFF in the running process**: it has never run in Isaac, and an unattended
+  auto-resume must not pick up untested code. Turn it on at the next watched restart:
+  `HIKING_X2_CAM_RAND=1 bash code/x2_port/start_x2_parkour_v2.sh` and watch the first iterations. Until then run 2 trains with
+  the fixed pose. Not yet in the adapter card.
+- Not done: an Isaac-rendered frame at the chest pose (the frames
   dumped by the pre-launch check are from the superseded brow-height pose and are marked SUPERSEDED in `runs/_smoke_v2/`).
 - Row order (checked on run 1's Isaac recording): row 0 is the top of the image (far), the last row is nearest the feet.
 
@@ -448,7 +454,14 @@ Plan: a small monitor term for per-type terrain level, actual vs commanded speed
 1. Run 2 signals at 250, 500, 1,000 and 2,000 iterations (see "Watch in run 2").
 2. Make `export_for_eval.py` and the MuJoCo port take the camera mount and gains from the task (they still describe run 1's head camera and armature-rule gains): needed before any run-2 checkpoint is exported or rendered.
 3. Paper table only when a checkpoint walks, in pauses under 10 minutes. Street-front generator fix for `extended_v1` (19 of 90 routes kept).
-4. Extended task as a second task name (`Instinct-Parkour-Extended-Amp-X2-v0`): **not started**. Needed: an Isaac terrain
+4. Extended task as a second task name (`Instinct-Parkour-Extended-Amp-X2-v0`): **first version written, never run in Isaac**
+   (`code/x2_port/files_instinctlab/tasks/parkour/config/x2/extended.py`). It has: the paper's 20 terrain columns plus 12 new ones
+   (one per exported tile type, two for stairs, two velocity-command columns), tile meshes built from the set's boxes and meshes
+   (builder tested on the CPU for all nine types: 96 to 9,260 faces a tile, inside 8 x 8 m); velocity-mode commands forward
+   -0.4..0.8, sideways +-0.3 m/s, turn +-1 rad/s; `feet_stumble` (weight -2.0) and `foot_clearance` (-0.5) beside the paper's edge
+   term. Missing: the set's checked routes as spawn/target pairs (targets are sampled flat patches; spawn yaw not applied),
+   backward and sideways clips in the motion reference, graded knee and shin costs. Before any training:
+   `check_x2_env.py --task Instinct-Parkour-Extended-Amp-X2-v0` in a pause. What was planned originally: Needed: an Isaac terrain
    importer for `extended_v1` tiles beside the paper's nine types, route spawns and targets, backward and sideways commands with
    matching motion clips, the stumble, foothold and clearance terms (the user: "INCLUDE THEM"). Start only after the paper-terrain run has a checkpoint that walks the paper's terrains.
 
