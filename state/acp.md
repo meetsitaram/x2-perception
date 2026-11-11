@@ -1,6 +1,6 @@
 # ACP track state
 
-Updated 2026-11-11 22:15 UTC (track agent). **Stage 1 is training** on node acp (run `s1_v1`, 36,000 envs, tmux `acp`); per-iteration `metrics.jsonl` since iteration 1,251; paper eval run at checkpoint 1,250 (86.6 %); first planner trained on the CPU and handed to the eval with the tracker (section 9); backup loop `acp-backup`.
+Updated 2026-11-11 22:22 UTC (track agent). **Stage 1 is training** on node acp (run `s1_v1`, 36,000 envs, tmux `acp`); per-iteration `metrics.jsonl` since iteration 1,251; paper eval run at checkpoint 1,250 (86.6 %); first planner trained on the CPU and handed to the eval with the tracker (section 9); backup loop `acp-backup`.
 
 ## 0. Answer to the question that decides the track
 
@@ -494,7 +494,7 @@ scoreable on a route as soon as something gives it contact targets. The earlier 
 
 ### Shortest path to a scoreable pair, and what is honest to call it
 
-1. **Now (22:15 UTC): tracker `s1_v1` checkpoint 1,250 + planner v1** (MLP and attention), both trained only on this round's
+1. **Now (22:20 UTC, MLP planner only; the attention planner is not ready): tracker `s1_v1` checkpoint 1,250 + planner v1** (MLP and attention), both trained only on this round's
    data: the planner on hindsight labels from 2,587 successful rollouts of that same checkpoint (413,298 samples). This is the
    paper's stage-2 planner at its start: **the tracker has not yet been trained on planner contacts**, on goals other than
    "the reference 0.5-1.5 s ahead", on walls or rails, or on turning in place; it has seen only training-terrain rollouts.
@@ -559,8 +559,13 @@ robot that lands one frame late is compared with the next step's target (about a
 pause: compare with the target that was commanded before the switch.
 
 Planner v1 on held-out episodes (a tenth of the rollouts): MLP target error median 6.0 cm, 90th percentile 17.5 cm, feet
-occupancy accuracy 90.0 % (760,932 parameters, 2.7 minutes on the CPU). Attention planner and the planner-driven closed loop
-on the reference terrains (CPU, 108 episodes): see `handover_pair_s1_001250_planner_v1/*/pair_eval_cpu.json` (pending at the
-time of writing).
+occupancy accuracy 90.0 % (760,932 parameters, 2.7 minutes on the CPU). Planner-driven closed loop on the reference terrains
+(CPU, 108 episodes, 12 per set, same clips and starts; `handover_pair_s1_001250_planner_v1/mlp/pair_eval_cpu.json`): tracker 1,250
+with oracle contacts 93.5 % (87.2-96.8), with the MLP planner's contacts **46.3 %** (37.2-55.7). Read with care: the tracker has
+never trained on planner contacts, and this check still ends an episode when the robot is 0.5 m from the reference, which
+punishes a planner-driven robot for being early or late (the earlier work's "descent collapse" lesson); a goal-based
+failure rule is needed before stage 2 numbers mean much. The attention planner is still training on the CPU (2.8 min per
+epoch; after 5 of 30 epochs its target error is 31 cm against the MLP's 6 cm at 30, so it is not handed over yet;
+`runs/planner_v1/train.out`). The 1e-4 learning rate is the paper's; it may simply need many more updates than 30 epochs.
 
 Pauses of stage 1 so far: 20:40-20:51 (GPU benchmark), 21:54:37-21:57:21 (logging switch + paper eval, 2 min 44 s).

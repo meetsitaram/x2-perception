@@ -1,6 +1,6 @@
 # hiking state
 
-Updated 2026-11-11 22:00 UTC (Hiking track agent). Node `hiking`; address and login are in `config/nodes.local.json`.
+Updated 2026-11-11 22:25 UTC (Hiking track agent). Node `hiking`; address and login are in `config/nodes.local.json`.
 
 ## What is running
 
@@ -15,8 +15,8 @@ Updated 2026-11-11 22:00 UTC (Hiking track agent). Node `hiking`; address and lo
 - Newest checkpoint: `checkpoint` in the heartbeat. `model_250.pt` is the only one I have exported so far.
 - History of stops: 20:55-21:22 robot-count benchmark (27 min, too long; limit is now 10 min); 21:26-21:36 restart to apply the
   torso-orientation term and the new supervisor (resumed from `model_250`, about 20 iterations redone).
-- Queued on the node (tmux `evalwait`): at checkpoint 500 a plumbing test of the paper eval (one terrain, 200 robots, at most
-  480 s), then training restarts by itself. Result folder `tracks/hiking/eval/paper_eval/x2_parkour_v1_500/`.
+- 22:13-22:18 (291 s): paper-eval plumbing test at checkpoint 500, training restarted by itself from `model_500`.
+- Nothing else is queued on the node.
 
 ## Early signals (trainer's own printed means; not a score)
 
@@ -28,12 +28,21 @@ Updated 2026-11-11 22:00 UTC (Hiking track agent). Node `hiking`; address and lo
 | 200 | 4,096 | 34.0 | 728 | 0.16 | 0.30 | 57% |
 | 249 | 4,096 | 41.6 | 832 | 0.30 | 0.29 | 39% |
 | 364 (after two resumes) | 8,192 | 44.5 | 850 | 0.75 | n/a | n/a |
+| 499 | 8,192 | 58.4 | 1,000 | 1.00 | 0.29 | 11% |
 
 - The G1 reproduction's log at the same iterations (desktop run, 4,096 robots): 250: reward 31.9, length 645, level 0.55,
   tracking 0.35; 500: 43.9, 731, 1.48; 1,000: 44.5, 687, 2.06; 3,000: 46.3, 727, 1.93. The X2 curve has the same shape so far.
 - After each resume the printed means dip (reward 4.5, length 129) and recover within about 110 iterations (statistics restart,
   robots re-spread over terrain rows). Terrain level right after a resume is not comparable with before it.
-- Not measured yet: actual forward speed against the command, double-support share, any video. "Walks" is not established;
+- **Warning sign at iteration 500: the robots stay up but do not walk.** Paper-eval test on Stair Up (200 robots, 15 s): 0 of 200
+  reached the target 3.7 m away, 198 were still standing at the time limit, 2 fell. Robot 0 was commanded 0.74 m/s and moved
+  0.07 m in its first second. In the training log at 499: 89% of episodes run the full 20 s, the `dont_wait` penalty sum is -9.6
+  (G1 run at 500: -4.3), `feet_air_time` sum 0.008 (G1: 0.040), tracking reward per step 0.012 (G1: 0.020), terrain level 1.00
+  (G1: 1.48). So the X2 is surviving more and stepping less than the G1 did at the same iteration: the standing-still pattern the
+  SSR track reported. Too early to call (500 of 30,000; the G1 also took thousands of iterations to climb), but this is the thing
+  to watch: if `feet_air_time` and tracking per step are not rising by about iteration 1,500, look at the X2-specific suspects
+  first (style data with long standing stretches, action scale on the ankles, the 40 deg camera seeing less ground, 8,192 robots).
+- Not measured yet: double-support share, any video; actual speed only for one robot in one second. "Walks" is not established;
   only that robots stay up for most of an episode and the tracking term matches the G1 run's at this stage.
 - Numbers at a few thousand iterations: not reached yet (about 8.5 s per iteration; iteration 2,000 around 02:00 UTC 2026-11-12).
 
@@ -232,20 +241,26 @@ Plan: a small monitor term for per-type terrain level, actual vs commanded speed
   waits for the checkpoint, stops training, runs one Isaac worker per terrain, restarts training, logs the pause length.
   Each terrain costs about 3 to 5 minutes of start-up, so the nine terrains need four or five 10-minute pauses, or one 40-minute
   pause: to be agreed with the coordinator before a full table.
-- Status: never run to completion on any robot (the G1 script was unit-tested only). First plumbing test queued at checkpoint 500.
-  No X2 paper-eval number exists yet. This is a track report, not the team's apparatus score.
+- Status: plumbing proven at checkpoint 500 on one terrain with 200 robots and a shortened Table 1 run (400 steps): 288 s for
+  the terrain including Isaac start-up, tables printed with the paper's row beside ours, `results_*.json` written
+  (`tracks/hiking/eval/paper_eval/x2_parkour_v1_500/`). Result at 500: Stair Up 0 of 200 (see Early signals). No full table
+  (nine terrains, 1,000 robots, 10,000-step Table 1) has been run. This is a track report, not the team's apparatus score.
 
-## Eval hand-over (`/mnt/filesystem-g4/tracks/hiking/eval/x2_parkour_v1_250/`)
+## Eval hand-over (`/mnt/filesystem-g4/tracks/hiking/eval/x2_parkour_v1_500/`, and `..._250/` with synthetic observations)
 
 - `policy.onnx` (flat observation 5,408 -> 29 actions), also `0-depth_encoder.onnx` + `actor.onnx` (the paper's deploy layout),
   `adapter_card.json` (50 Hz, joint order, default pose, action scale, PD gains, effort and velocity limits, each observation term
   with offset and size, the command and how to make it from waypoints, depth sensor pose, optics and preprocessing),
   `obs_check.npz` (50 observations with torch and ONNX actions, max difference 7e-7).
 - Made on the CPU by `code/x2_port/export_for_eval.py <checkpoint>` while training runs.
-- Limits: `model_250` does not walk yet (plumbing only). The 50 observations are synthetic, so they prove ONNX equals torch, not
-  that an adapter builds the observation as the simulator does; a recording from the simulator (`obs_check_sim.npz`: observation,
-  action, root state, joint state, command for 50 steps) is produced by the paper-eval pause. The order of the 8 depth frames and
-  of history entries (oldest first assumed) is not verified.
+- `x2_parkour_v1_500/obs_check.npz` holds 50 observations recorded in the training simulator (robot 0, Stair Up, first second);
+  `obs_check_sim_state.npz` holds the matching simulator state per step (root pose and velocities, gravity vector, joint positions
+  and velocities, command, default pose, joint names) so an adapter can rebuild each observation and compare. ONNX on those
+  observations reproduces the simulator policy's actions to 1e-6.
+- Checked on the recording: history entries are oldest first (newest last) for joint positions (error 0.009 = the noise level;
+  0.036 the other way round).
+- Limits: `model_500` stands and does not walk (plumbing only). The order of the 8 depth frames is not verified. The card's
+  depth preprocessing was read from the config, not rebuilt outside Isaac.
 
 ## Extended terrain set (`/mnt/filesystem-g4/data/terrains/extended_v1/`, 9.4 MB, CPU export, 2026-11-11)
 
@@ -269,8 +284,7 @@ Plan: a small monitor term for per-type terrain level, actual vs commanded speed
 
 ## Next
 
-1. Read the checkpoint-500 paper-eval plumbing test (`eval/paper_eval/x2_parkour_v1_500/`), fix what it shows, confirm training
-   restarted by itself.
+1. Watch the standing-still signal (Early signals) at 1,000 and 1,500 iterations against the G1 numbers.
 2. Early numbers at about 1,000 and 2,000 iterations from `metrics.jsonl`; add actual-speed and double-support logging.
 3. MuJoCo sim2sim of an X2 checkpoint (port `scripts/sim2sim_mujoco.py`: X2 joint order, head camera, mesh vs sphere feet).
 4. Extended task as a second task name (`Instinct-Parkour-Extended-Amp-X2-v0`): **not started**. Needed: an Isaac terrain
