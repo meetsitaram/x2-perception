@@ -52,8 +52,9 @@ class ACPBaseline(Adapter):
 
     def load(self, path):
         z = self.z = np.load(path, allow_pickle=True)
-        self.enc = [(np.asarray(z["enc_w%d" % k], np.float64), np.asarray(z["enc_b%d" % k], np.float64)) for k in range(5)]
-        self.dec = [(np.asarray(z["dec_w%d" % k], np.float64), np.asarray(z["dec_b%d" % k], np.float64)) for k in range(5)]
+        # float32, as the original network: half the time of float64 on one core, differences of 1e-6
+        self.enc = [(np.asarray(z["enc_w%d" % k], np.float32), np.asarray(z["enc_b%d" % k], np.float32)) for k in range(5)]
+        self.dec = [(np.asarray(z["dec_w%d" % k], np.float32), np.asarray(z["dec_b%d" % k], np.float32)) for k in range(5)]
         eps = float(z["norm_eps"])
         self.norm = {k: (np.asarray(z[k + "_mean"], np.float64), np.sqrt(np.asarray(z[k + "_var"], np.float64) + eps ** 2)) for k in ("goal", "prop", "scan", "contact", "ref")}
         self.il = np.asarray(z["il_to_mj"], int)                       # x_il = x_mj[il]
@@ -66,6 +67,7 @@ class ACPBaseline(Adapter):
 
     @staticmethod
     def _mlp(layers, x):
+        x = np.asarray(x, np.float32)
         for k, (w, b) in enumerate(layers):
             x = w @ x + b
             if k < len(layers) - 1:
@@ -114,7 +116,7 @@ class ACPBaseline(Adapter):
         ref = np.concatenate(([d[0], d[1], math.cos(a), math.sin(a)], np.zeros(26)))
         nz = lambda k, x: (x - self.norm[k][0]) / self.norm[k][1]  # noqa: E731
         h = np.concatenate((self.zc, nz("prop", prop), nz("scan", scan), nz("contact", con), nz("ref", ref)))
-        act = np.clip(self._mlp(self.dec, h)[self.mj_to_il], -20.0, 20.0)
+        act = np.clip(self._mlp(self.dec, h)[self.mj_to_il].astype(np.float64), -20.0, 20.0)
         self.a_prev = act
         self.debug = dict(x=np.concatenate((np.zeros(680), prop, scan, con, ref)), contacts=con, action=act)
         return self.q0 + self.scale * act

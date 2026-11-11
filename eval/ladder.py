@@ -24,6 +24,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from apparatus import Apparatus, data_dir, quat_mat  # noqa: E402
 
 TIME_LIMIT = 60.0        # s per ladder test (the routes are 2 to 9 m)
+T0, WALL = time.time(), float(os.environ.get("LADDER_WALL", "520"))   # s: a run stops itself after this (a test not finished is redone)
 
 
 def terrain_dir():
@@ -218,7 +219,13 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
         d = out / ("step%d" % step) / test
         (d / "traj").mkdir(parents=True, exist_ok=True)
         results, t0 = [], time.time()
+        if (d / "summary.json").exists() and not os.environ.get("LADDER_REDO"):
+            print("%-20s already done, kept" % test, flush=True)        # a group cut by its wall limit continues here
+            continue
         for i in range(trials):
+            if time.time() - T0 > WALL:                 # never unbounded: stop cleanly, the same command continues later
+                print("wall limit reached in %s after %d trials; run the same command again" % (test, i), flush=True)
+                sys.exit(3)
             r = tr.run(seed0 + i, protocol, TIME_LIMIT, record=True)
             tr.save_traj(d / "traj" / ("%d.npz" % (seed0 + i)))
             results.append(r)

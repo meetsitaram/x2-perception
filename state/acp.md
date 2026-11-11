@@ -639,3 +639,72 @@ failing clips by sampling clips in proportion to their failure rate (the paper h
 ### CPU smoke of the recorder / replay / planner updates
 
 (filled in below when the run finishes)
+
+## 11. X2 gains: what the simulator applies, and the switch to plant `mc_20261024` (user decision, 2026-11-11)
+
+Read back from the live MuJoCo Warp model (`tools/plant_report.py`, CPU; full table per joint in
+`tracks/acp/eval/plant_report_s1_v1_001250.json`). Timestep 0.005 s, 4 substeps, control 0.02 s, implicitfast. The actuators
+are PD position servos built by `assets.build_x2` (gain = kp, bias = -kp q - kd qd, force range = +-plant effort); the MJCF's
+own `<motor>` actuators are deleted at build time, so their `ctrlrange` (118 for hips and knees, 2.2 wrists, 2.6 / 0.6
+head) is **not** applied: the plant's effort is (120, 6, 3 / 1).
+
+**Until iteration 2,000 (plant `vendor_20260823`, armature rule), live = plant file exactly:**
+
+| Joints | kp | kd | armature | effort | action scale | measured (`mc_20261024`) kp / kd | measured / live |
+|---|---|---|---|---|---|---|---|
+| hip pitch / roll / yaw, waist yaw | 114.8 | 7.31 | 0.0291 | 120 | 0.261 | hips 100 / 4 (pitch), 3 (roll, yaw); waist yaw 40 / 8 | hips 0.87 / 0.41-0.55; waist yaw 0.35 / 1.09 |
+| knee | 114.8 | 7.31 | 0.0291 | 120 | 0.261 | 150 / 5 | 1.31 / 0.68 |
+| ankle pitch, shoulder pitch / roll | 34.9 | 2.22 | 0.0088 | 36 | 0.258 | ankle pitch 40 / 3; shoulders 30, 20 / 1 | 1.15 / 1.35; 0.86, 0.57 / 0.45 |
+| ankle roll | 12.37 | 0.787 | 0.0031 | 24 | 0.485 | 30 / 2 | 2.43 / 2.54 |
+| waist pitch / roll | 12.37 | 0.787 | 0.0031 | 24 | 0.485 | 40 / 5 | 3.23 / 6.35 |
+| shoulder yaw; elbow, wrist yaw | 12.37 | 0.787 | 0.0031 | 24 | 0.485 | 20 / 1; 50 / 1 | 1.62 / 1.27; 4.04 / 1.27 |
+| wrist pitch / roll | 16.78 | 1.068 | 0.0043 | 6 | 0.089 | 20 / 1 | 1.19 / 0.94 |
+| head yaw / pitch | 16.78 | 1.068 | 0.0043 | 3 / 1 | 0.039 / 0.009 | 3.4 / 0.11; 10 / 0.8 | 0.20 / 0.11; 0.60 / 0.75 |
+
+Default pose (rad): hip pitch -0.31, knee 0.67, ankle pitch -0.36, shoulder pitch 0.2, shoulder roll +-0.2, elbow -0.6, all
+others 0. Armature, effort, default pose and action scale are the same in both plant files (checked: action scale
+identical per joint).
+
+**Randomisation coverage:** kp, kd and armature are each x U(0.9, 1.1) per environment (the paper's Table S2). That range
+covers **none** of the measured gains: the nearest is hip kp (x0.87), the farthest waist pitch / roll (kp x3.2, kd x6.4),
+ankle roll (x2.4 / x2.5) and elbow / wrist yaw kp (x4.0). A policy trained on the armature-rule gains was therefore never
+shown the robot's actual stiffness on any joint.
+
+**Are soft ankle roll and waist behind the weak sets?** Per-joint tracking error from the checkpoint-1,250 paper-eval
+rollouts (mean |q - q_ref|, rad):
+
+| Set | hip | knee | ankle pitch | ankle roll | waist yaw | waist pitch / roll | arms, head |
+|---|---|---|---|---|---|---|---|
+| flat | 0.156 | 0.210 | 0.141 | 0.096 | 0.109 | 0.096 | 0.163 |
+| blocks | 0.161 | 0.218 | 0.144 | 0.096 | 0.113 | 0.096 | 0.166 |
+| chains | 0.137 | 0.260 | 0.141 | 0.080 | 0.116 | 0.128 | 0.156 |
+| terrain-park stairs | 0.148 | 0.251 | 0.164 | 0.069 | 0.090 | 0.179 | 0.112 |
+| fitted stair climbs | 0.168 | 0.394 | 0.205 | 0.102 | 0.172 | 0.070 | 0.130 |
+| **stair descents** | **1.153** | 0.559 | 0.321 | 0.172 | 0.100 | 0.120 | 0.152 |
+| ramps | 0.128 | 0.284 | 0.198 | 0.090 | 0.088 | 0.134 | 0.114 |
+| 4x4 stepovers | 0.151 | 0.343 | 0.129 | 0.092 | 0.118 | 0.170 | 0.116 |
+| Pico 2x2 | 0.180 | 0.270 | 0.145 | 0.078 | 0.154 | 0.170 | 0.103 |
+
+Ankle roll (0.07-0.10 rad) and waist pitch / roll (0.07-0.18) are not worse on the weak sets than on the strong ones, and
+they are the best-tracked joints after the arms; the knee is the worst everywhere. So this data does not show soft ankle
+roll or waist as the cause of the weak sets. (It does not test what stiffer gains would do; the comparison after the
+switch will.)
+
+**The stair-descent set's own references are broken.** Hip error 1.15 rad led to the clips: in all 38 `gs2dn_v1` clips a hip
+yaw joint sits at its limit (left +3.43 rad, right -3.43 rad, i.e. the leg turned about 196 degrees) and the clips contain
+frame-to-frame joint jumps of up to 1.1 rad at 50 Hz. No other set comes near (hip yaw within +-1.9 rad; the largest jumps
+are 0.77 rad in the fitted stair climbs and 0.59 in locomotion, which also want a look). The descents' 63.7 % is therefore
+mostly a data fault (a retargeting / stair-fit artefact), not the policy, the foot length or the gains. Recommended and
+planned: keep the set through the checkpoint-2,250 comparison so the plant effect is seen on unchanged data, then take it
+out of training (weight 0) and replace it with clean descents (the terrain-park stair set has descents; or re-fit these
+clips with the hip yaw unwrapped). This set was in the earlier SuperMimic runs too ("0 / 38 varied descents clean" in the
+old issue log is probably the same fault).
+
+**The switch (armed, automatic):** at checkpoint 2,000 the run pauses (heartbeat says why), the paper eval runs on that
+checkpoint under the old plant (the "before" number, beside 1,250), and training resumes from that checkpoint with
+`ACP_PLANT=mc_20261024` (stiffness and damping from the measured file; armature, effort, default pose, action scale
+unchanged; randomisation x U(0.9, 1.1) now around the new values). Right after, the gains are read back from the live model
+into `eval/plant_report_002000_live_mc_20261024.json`. At checkpoint 2,250 (first after the switch) a second pause runs the
+paper eval under the new plant and saves rollouts; on the CPU a new planner is trained from them and the eval hand-over is
+regenerated with the new gains in the card (`eval/handover_pair_s1_002250_mc_20261024_planner/`). Planner v1 and the first
+hand-over (vendor gains) are stale from then on.
