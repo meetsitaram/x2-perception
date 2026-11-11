@@ -38,6 +38,7 @@ class Command:
     index: int                     # waypoint index
     total: int                     # number of waypoints
     path_ahead: np.ndarray         # (k, 2) the next waypoints after the current one, world (m); may be empty
+    station: bool = False          # the current waypoint is a station (the robot has to stop and stand there)
 
 
 class View:

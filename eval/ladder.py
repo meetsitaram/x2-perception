@@ -62,15 +62,16 @@ def wp(x, y, hold=0.0, heading=None, face=None, name=None, tol=None):
 
 def flat(name):
     g = np.zeros((400, 400))
+    X0 = -2.0                                              # the tests start 2 m behind the tile centre, facing +x
     routes = {
-        "flat_walk": [wp(2.0, 0, name="2 m ahead"), wp(4.0, 0, name="4 m ahead")],
-        "flat_stop_stand": [wp(2.0, 0, hold=1.0, heading=0, name="stop and stand 1 s"), wp(4.0, 0, hold=1.0, heading=0, name="stop and stand 1 s again")],
-        "flat_turn_in_place": [wp(0.0, 0.0, hold=1.0, heading=180, tol=20, name="turn to face back"), wp(0.0, 0.0, hold=1.0, heading=0, tol=20, name="turn to face ahead")],
-        "flat_turn_and_return": [wp(1.5, 0, name="1.5 m ahead"), wp(0.0, 0, name="back to the start (a 180 degree turn)")],
-        "flat_backward": [wp(-1.5, 0, face=0, name="1.5 m backward, facing ahead")],
-        "flat_sideways": [wp(0, 1.0, face=0, name="1 m to the left, facing ahead"), wp(0, -1.0, face=0, name="2 m to the right, facing ahead")],
+        "flat_walk": [wp(X0 + 2.0, 0, name="2 m ahead"), wp(X0 + 4.0, 0, name="4 m ahead")],
+        "flat_stop_stand": [wp(X0 + 2.0, 0, hold=1.0, heading=0, name="stop and stand 1 s"), wp(X0 + 4.0, 0, hold=1.0, heading=0, name="stop and stand 1 s again")],
+        "flat_turn_in_place": [wp(X0, 0.0, hold=1.0, heading=180, tol=20, name="turn to face back"), wp(X0, 0.0, hold=1.0, heading=0, tol=20, name="turn to face ahead")],
+        "flat_turn_and_return": [wp(X0 + 1.5, 0, name="1.5 m ahead"), wp(X0, 0, name="back to the start (a 180 degree turn)")],
+        "flat_backward": [wp(X0 - 1.5, 0, face=0, name="1.5 m backward, facing ahead")],
+        "flat_sideways": [wp(X0, 1.0, face=0, name="1 m to the left, facing ahead"), wp(X0, -1.0, face=0, name="2 m to the right, facing ahead")],
     }
-    return Course("ladder:" + name, g, -3.99, -3.99, 0.02, [], [0.0, 0.0, 0.0], routes[name], name)
+    return Course("ladder:" + name, g, -3.99, -3.99, 0.02, [], [X0, 0.0, 0.0], routes[name], name)
 
 
 def _tile(ttype, tile_id):
@@ -248,9 +249,41 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
     return table
 
 
+def collect(out, step):
+    """The step's table from the per-test summaries on disk (tests run in several groups), as json and text."""
+    rows, head = [], None
+    for test in STEPS[step]:
+        f = out / ("step%d" % step) / test / "summary.json"
+        if not f.exists():
+            continue
+        s = json.load(open(f))
+        head = head or s
+        course = STEPS[step][test]()
+        rows.append(dict(test=test, trials=s["trials"], success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
+                         side_hits_per_trial=s["side_hits"]["per_trial"], mean_waypoints=s["mean_waypoints"], of=len(course.waypoints), outcomes=s["outcomes"],
+                         time_median=(s["time_success"] or {}).get("median"), length_m=round(float(np.linalg.norm(np.diff(course.path(), axis=0), axis=1).sum()), 1),
+                         tile=s.get("tile"), renders=s.get("renders")))
+    if not rows:
+        return rows
+    json.dump(dict(label=head.get("label"), step=step, on="the training map (not an apparatus result)", adapter=head["adapter"], checkpoint=head["checkpoint"],
+                   protocol=head["protocol"], rows=rows), open(out / ("step%d.json" % step), "w"), indent=1)
+    lines = ["%s | step %d, ON THE TRAINING MAP (not an apparatus result) | %s | protocol %s" % (head.get("label") or head["adapter"], step, head["checkpoint"], head["protocol"]),
+             "%-22s %-10s %-9s %-12s %-6s %-8s %-10s %-7s %s" % ("test", "success", "rate", "95 % interval", "clean", "penalty", "waypoints", "time", "outcomes / tile")]
+    for r in rows:
+        lines.append("%-22s %3d / %-4d %5.0f %%   %3.0f - %3.0f %%   %3d    %6.2f   %4.1f / %-3d %5s   %s%s" % (
+            r["test"], r["success"], r["trials"], 100.0 * r["success"] / r["trials"], 100 * r["ci95"][0], 100 * r["ci95"][1], r["clean"], r["mean_penalty"],
+            r["mean_waypoints"], r["of"], ("%.0f s" % r["time_median"]) if r["time_median"] else "-",
+            ", ".join("%s %d" % kv for kv in sorted(r["outcomes"].items(), key=lambda kv: -kv[1])), (" | " + r["tile"]) if r["tile"] else ""))
+    open(out / ("step%d.txt" % step), "w").write("
+".join(lines) + "
+")
+    return rows
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--adapter", required=True)
+    ap.add_argument("--collect", action="store_true", help="only rebuild the step's table from the summaries on disk")
+    ap.add_argument("--adapter", default=None)
     ap.add_argument("--checkpoint", default=None)
     ap.add_argument("--step", type=int, default=1)
     ap.add_argument("--tests", nargs="*", default=None)
@@ -261,4 +294,7 @@ if __name__ == "__main__":
     a = ap.parse_args()
     import memcap
     memcap.guard(cap_gb=6, need_free_gb=12, low_priority=True)
-    run(a.adapter, a.checkpoint, a.step, a.tests or list(STEPS[a.step]), a.trials, pathlib.Path(a.out), a.protocol, a.label)
+    if not a.collect:
+        run(a.adapter, a.checkpoint, a.step, a.tests or list(STEPS[a.step]), a.trials, pathlib.Path(a.out), a.protocol, a.label)
+    collect(pathlib.Path(a.out), a.step)
+    print(open(pathlib.Path(a.out) / ("step%d.txt" % a.step)).read())

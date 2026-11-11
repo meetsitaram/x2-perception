@@ -41,6 +41,12 @@ class ACPBaseline(Adapter):
 
     def __init__(self):
         self.planner = FootMlpPlanner(os.path.join(EXPORT, "planner_v2_hist1.npz"), goal_mag=self.goal_mag, floor=0.0)
+        # The original switched to the next waypoint at 0.5 m, so on the way to a waypoint that was not a station the goal
+        # command always had its full length (0.5); only at stations did it shrink. With the eval's 0.20 m arrival the
+        # distance drops below 0.5 at every waypoint, a command the pair never met there. ACP_GOAL=shrink keeps that
+        # (the first 200-trial run); the default keeps the full length except at stations, as the original effectively did.
+        self.keep_mag = os.environ.get("ACP_GOAL", "keep") != "shrink"
+        self.planner.keep_mag = self.keep_mag
         self.load(os.path.join(EXPORT, "acp3_v2_1000.npz"))
         self.debug = {}
 
@@ -56,7 +62,7 @@ class ACPBaseline(Adapter):
         self.joints = [str(n) for n in z["joint_names"]]
         g = (np.zeros(680) - self.norm["goal"][0]) / self.norm["goal"][1]
         self.zc = np.tanh(self._mlp(self.enc, g))                      # the encoder sees zeros: a constant
-        self.checkpoint = "%s + %s" % (str(z["source"]), self.planner.name)
+        self.checkpoint = "%s + %s; goal length %s" % (str(z["source"]), self.planner.name, "kept at 0.5 except at stations" if getattr(self, "keep_mag", True) else "shrinks with the distance")
 
     @staticmethod
     def _mlp(layers, x):
@@ -100,7 +106,7 @@ class ACPBaseline(Adapter):
         con = np.concatenate((cs["target"] * ok[:, None], np.where(ok > 0, cs["dt"] / HORIZON, 1.0)[:, None], ok[:, None], cs["contact"].astype(float)[:, None]), 1).ravel()
         d = bounded_goal(cmd.target_xy, p[:2], yaw, 1.0)
         n = float(np.linalg.norm(d))
-        if n > self.goal_mag:
+        if n > self.goal_mag or (self.keep_mag and not cmd.station and n > 1e-6):
             d = d * self.goal_mag / n
         a = math.atan2(d[1], d[0])
         if cmd.target_heading is not None:

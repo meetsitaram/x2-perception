@@ -71,6 +71,7 @@ class FootMlpPlanner(ContactSource):
     touchdown is within this many seconds). NOT yet checked against the original code's outputs."""
 
     def __init__(self, npz, decode="mode", step_mask=0.03, latch=0.3, goal_mag=0.5, dt=0.02, floor=None):
+        self.keep_mag = False            # True: the goal keeps its full length on the way to a waypoint that is not a station
         self.floor = floor               # the original terrain code never returns less than its floor (0): the ground below
         #                                  the deck around our apparatus (-0.108 m in the raster) read as 0 there
         z = np.load(npz, allow_pickle=True)
@@ -97,7 +98,7 @@ class FootMlpPlanner(ContactSource):
         scan = hs(W) - p[2]
         d = bounded_goal(cmd.target_xy, p[:2], yaw, 1.0)
         n = float(np.linalg.norm(d))
-        if self.goal_mag > 0 and n > self.goal_mag:
+        if self.goal_mag > 0 and (n > self.goal_mag or (self.keep_mag and not cmd.station and n > 1e-6)):
             d = d * self.goal_mag / n
         a = math.atan2(d[1], d[0])
         if cmd.target_heading is not None:

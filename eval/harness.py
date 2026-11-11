@@ -45,7 +45,7 @@ HIT_F, HIT_J = 20.0, 0.5 # N, N s: a side contact is a hit when its peak horizon
 SCUFF_P = 0.02           #         below both it is a scuff, which costs this much and does not spoil a clean success
 HIT_BASE, HIT_J_W, HIT_J_REF = 0.1, 0.4, 10.0      # penalty of a hit: base + J_W * min(1, impulse / J_REF) ...
 HIT_D_W, HIT_DV_REF, HIT_TILT_REF = 0.5, 0.30, 10.0  # ... + D_W * min(1, max(pelvis speed change / DV_REF, tilt change / TILT_REF))
-HIT_WINDOW = 0.3         # s after the contact starts in which the pelvis disturbance is measured
+HIT_WINDOW = 0.3         # s after the contact starts: the impact. Peak force, impulse and pelvis disturbance are taken in it
 BEAM_NEAR = 0.12         # m: a face this close to a 4x4's centre line is the 4x4's
 CLASSES = ("4x4", "wedge", "stair")
 EVENT_GAP = 0.2          # s: contacts of the same kind on the same side closer than this are one event
@@ -220,7 +220,7 @@ class Trial:
             vx = 0.0 if abs(err) > math.radians(60) else float(np.clip(1.0 * dist, 0.15, a.vmax) * math.cos(err))
             vel = np.array([vx, 0.0, wz])
         ahead = np.array([[v["x"], v["y"]] for v in self.wps[self.wp + 1:self.wp + 4]]).reshape(-1, 2)
-        return Command(tgt, self.ground(*tgt), th, holding, vel, dist, float(err), self.wp, len(self.wps), ahead)
+        return Command(tgt, self.ground(*tgt), th, holding, vel, dist, float(err), self.wp, len(self.wps), ahead, bool(w["hold_s"] > 0))
 
     def _beams(self):
         """The pelvis path of this control step against each 4x4's centre line, within the beam's length: going round
@@ -256,7 +256,8 @@ class Trial:
         last = self.last_event.get(key)
         if last is not None and t - last["t1"] <= EVENT_GAP:
             last["t1"], last["force"] = t, max(last["force"], force)
-            last["peak_h"], last["impulse"] = max(last["peak_h"], fh), last["impulse"] + fh * X.SIM_DT
+            if t - last["t"] <= HIT_WINDOW:                 # the impact: force and impulse of the first HIT_WINDOW seconds only
+                last["peak_h"], last["impulse"] = max(last["peak_h"], fh), last["impulse"] + fh * X.SIM_DT
             return
         d = self.d
         e = dict(kind=kind, side=side, t=round(t, 3), t1=t, force=force, peak_h=fh, impulse=fh * X.SIM_DT,
