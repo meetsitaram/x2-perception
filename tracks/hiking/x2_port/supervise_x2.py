@@ -19,7 +19,7 @@ import time
 
 T = pathlib.Path("/mnt/filesystem-g4/tracks/hiking")
 CODE = T / "code/hiking-in-the-wild"
-PY = "/home/NODE_USER/hiking-env/bin/python"
+PY = str(pathlib.Path.home() / "hiking-env/bin/python")
 HEART = pathlib.Path("/mnt/filesystem-g4/status/hiking.json")
 
 ap = argparse.ArgumentParser()

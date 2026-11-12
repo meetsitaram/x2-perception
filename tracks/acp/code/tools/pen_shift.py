@@ -5,7 +5,7 @@ foot that does not fit (retarget: foot length, ankle range) stays penetrating at
     CUDA_VISIBLE_DEVICES= python pen_shift.py cfg/stage2_sets.json OUT.json"""
 import os, sys, json, collections
 import torch
-sys.path.insert(0, "/mnt/filesystem-g4/tracks/acp/code_next")
+sys.path.insert(0, "/mnt/filesystem-g4/tracks/acp/code")
 from acp.data import Dataset
 from gear_sonic.supermimic.kinematics import mv3
 cfg = sys.argv[1]

@@ -6,7 +6,7 @@ clip_quality's rule, and of the flagged frames how many are (a) straddling an ed
     CUDA_VISIBLE_DEVICES= python pen_cause.py cfg/stage2_sets.json"""
 import os, sys, json
 import torch
-sys.path.insert(0, "/mnt/filesystem-g4/tracks/acp/code_next")
+sys.path.insert(0, "/mnt/filesystem-g4/tracks/acp/code")
 from acp.data import Dataset
 from gear_sonic.supermimic.kinematics import mv3
 cfg = sys.argv[1]

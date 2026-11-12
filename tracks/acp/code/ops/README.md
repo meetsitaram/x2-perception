@@ -25,3 +25,12 @@ installed into `code/` only inside a restart; the previous `code/acp` and `code/
 
 Other entry points: `../tools/paper_eval.py`, `eval_live.sh`, `pair_eval.py`, `handover.py`, `card_planner.py`, `clip_quality.py`,
 `ground_check.py`, `weak_sets.py`, `plant_report.py`, `diag.py`; `python -m acp.planner label|train|export`.
+
+## Added 2026-11-12 (01:30 UTC)
+
+| File | What |
+|---|---|
+| `restart_s2b.sh` | the restart actually used at checkpoint 2,500 (as restart_s2.sh, but the STOP flag is moved to `_trash/<date>/stop_flags/`, not deleted) |
+| `live_test.sh` | the live-evaluation test: two paper-eval sizes beside training after a checkpoint, with training speed before / during / after |
+
+Next data change (at the next needed restart): `DATA=cfg/stage2c_sets.json` (stage2b + re-fitted stair descents `gs2dn_v2`; built by `../data_build/gen_stairfit_dn.py` on the desktop). Motion recipe: `../MOTIONS.md`.

@@ -3,7 +3,7 @@
 # separate process; starts only after the checkpoint file is complete; one eval at a time (lock); robot count capped so
 # total GPU memory stays under 80 GB; niced and pinned to four CPU cores; wall-clock limit; the eval aborts itself if free
 # GPU memory drops under 10 GB (tools/paper_eval.py). Measures training speed before / during / after from metrics.jsonl.
-#   bash tools/eval_live.sh RUN_DIR ITERATION EPISODES_PER_SET_PER_SEED [PLANT] [SEEDS]
+#   [EVAL_TIMEOUT=900] bash tools/eval_live.sh RUN_DIR ITERATION EPISODES_PER_SET_PER_SEED [PLANT]   (3 seeds, fixed in paper_eval.py)
 set -u
 RUN=$1; IT=$(printf %06d "$2"); PER=$3; PLANT=${4:-}; export ACP_EVAL_SEEDS=${5:-3}
 T=/mnt/filesystem-g4/tracks/acp
@@ -22,7 +22,7 @@ t0=$(date +%s)
 mon=$!
 cd "$T/code"
 w0=$(grep -c "nefc overflow\|height field collision overflow\|nan" "$RUN/train.out")
-ACP_EVAL_NO_DUMP=1 ACP_PLANT=$PLANT nice -n 10 taskset -c 0-3 timeout 900 "$PY" tools/paper_eval.py "$CK" "$OUT.json" "$PER" > "$OUT.out" 2>&1
+ACP_EVAL_NO_DUMP=1 ACP_PLANT=$PLANT nice -n 10 taskset -c 0-3 timeout ${EVAL_TIMEOUT:-900} "$PY" tools/paper_eval.py "$CK" "$OUT.json" "$PER" > "$OUT.out" 2>&1
 rc=$?
 t1=$(date +%s)
 kill $mon 2>/dev/null
