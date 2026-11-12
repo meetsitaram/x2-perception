@@ -5,6 +5,16 @@ Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53
 
 ## Hand-over 2026-11-12 (newest first)
 
+- 03:25 **Run 4 training** since 03:19:06 (launcher: "is training, GPU idle about 375 s"). Iteration 4: reward -12.0 (includes the
+  -8 fall penalty), episode 47 steps, bad_orientation 74% / root_height 37% of ends (shares overlap), D-reward 0.26, style coef
+  0.075, 9.7 s per iteration, 52 GB GPU memory, 0 Tracebacks. Construction checks seen in the log: "[X2 run 4] filtered 20 more link
+  pairs", AMP joint terms 120 = 12 leg joints x 10 frames, `rewards_fall_penalty` -8.0 per fall. Run 3 stopped by its supervisor
+  at 03:19 and kept (`model_250`, `model_500`); resume with `start_x2_parkour_v3.sh` if run 4 is abandoned.
+  **Run 3 at 500** (iterations 491-496): speed ratio 0.515 (0.36/0.70 m/s), both feet down 64%, no support 16.7%, step rate 11.7 Hz,
+  air time 0.0125/ep, wait -1.09, falls 80%, stalled 11%, time-outs 10%, episode 348, style coef 0.075, weighted style 0.033,
+  level 0.50 (perlin_rough_stand 4.49, perlin_rough 1.62, slope/mesh boxes 0.83, boxes 0.22, stairs and gaps 0.00-0.06).
+  Run 2 at 500: falls 10%, 936 steps, speed ratio 0.006. G1 at 1,000 (equal samples): 687 steps, falls 50%, air time 0.049.
+
 - 03:07 **Run 4 `x2_parkour_v4` built and launching** (coordinator's decision after the port audit `state/hiking_port_audit.md`;
   the iteration-500 continuation of run 3 is cancelled, `continue_v3.sh` is in `_trash`). Task `Instinct-Parkour-Fixed-Amp-X2-v0`
   = `config/x2/fixed.py` (X2ParkourFixedEnvCfg, subclass of the staged task), from scratch, options a,c,d,f,r,s, stage 500,1500,

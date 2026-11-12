@@ -208,7 +208,19 @@ class ACPAdapter(Adapter):
         self.joints = [str(n) for n in z["joint_names"]]
         if "goal_r" in z:
             self.goal_r = float(z["goal_r"])
+        # eval variants (coordinator 2026-11-12), off by default: ACP_GOAL_R overrides the goal's shrink radius; ACP_LOOKAHEAD (m)
+        # moves the target of a non-station waypoint that far beyond it, on the line from the robot through it
+        self.lookahead = float(os.environ.get("ACP_LOOKAHEAD", "0") or 0)
+        variant = []
+        if os.environ.get("ACP_GOAL_R"):
+            self.goal_r = float(os.environ["ACP_GOAL_R"])
+            variant.append("goal_r %.2f m (eval variant)" % self.goal_r)
+        if self.lookahead > 0:
+            variant.append("lookahead %.2f m past non-station waypoints (eval variant)" % self.lookahead)
         self.checkpoint = "%s | contacts from: %s" % (str(z["source"]) if "source" in z else path, self.contacts.name)
+        self.variant = ", ".join(variant)
+        if variant:
+            self.checkpoint += " | " + self.variant
         self.observes = self.observes.replace("contact targets from the planner (zeros if no planner is loaded)", "contact targets from: " + self.contacts.name)
 
     def plant(self, joint_names):
@@ -232,9 +244,12 @@ class ACPAdapter(Adapter):
         yaw = heading_of(R)
         self.hist.push(self._proprio(view))
         scan = np.clip(view.height_scan(to_world(SCAN, p[:2], yaw)) - p[2], -2.0, 2.0)
-        want = cmd.target_heading if (cmd.hold and cmd.target_heading is not None) else math.atan2(cmd.target_xy[1] - p[1], cmd.target_xy[0] - p[0])
+        txy = np.asarray(cmd.target_xy, float)
+        if getattr(self, "lookahead", 0.0) > 0 and not cmd.station and not cmd.hold and cmd.dist > 1e-6:
+            txy = txy + (txy - p[:2]) / cmd.dist * self.lookahead
+        want = cmd.target_heading if (cmd.hold and cmd.target_heading is not None) else math.atan2(txy[1] - p[1], txy[0] - p[0])
         dpsi = (want - yaw + math.pi) % (2 * math.pi) - math.pi
-        goal = np.concatenate((bounded_goal(cmd.target_xy, p[:2], yaw, self.goal_r), [dpsi if cmd.dist > 0.05 or cmd.hold else 0.0]))
+        goal = np.concatenate((bounded_goal(txy, p[:2], yaw, self.goal_r), [dpsi if cmd.dist > 0.05 or cmd.hold else 0.0]))
         self.goal_now = goal
         cs = self.contacts(view, cmd)
         ok = np.asarray(cs["valid"], float)
@@ -278,6 +293,8 @@ class ACPHandover(ACPAdapter):
         assert np.allclose(card["kp"], self.z["kp"]) and np.allclose(card["kd"], self.z["kd"]), "the card's gains differ from actor.npz"
         self.plant_name = str(card["plant"])
         self.checkpoint = "ACP %s, iteration %s (stage %s) + %s" % (os.path.basename(d.rstrip("/\\")), card.get("iteration"), card.get("stage"), self.contacts.name)
+        if getattr(self, "variant", ""):
+            self.checkpoint += " | " + self.variant
         self.label = card.get("label")
 
     def plant(self, joint_names):

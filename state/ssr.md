@@ -836,3 +836,37 @@ Not verified / open:
   | walker, 0.3 s air (about 2.0 touchdowns/s) | about 2.7-2.9 | 0.25 | 0.19 | 2.0 / 50 x 20 x 0.20 = 0.16 | 3.30-3.50 |
 
   Gap walker - shuffler: about +0.2 to +0.45 per step (feet_air 0.09-0.16, style 0.15-0.19), against about 0 without them.
+
+## Port-audit points checked for SSR (2026-11-12 03:20, CPU; `scripts/port_audit.py`, `eval/port_audit.json`)
+
+Reference = moving windows (>= 0.2 m/s) of the flat prior `amp_v2`; self-contacts on 1,570 full-body frames of the BONES-SEED
+flat clips in the SSR training model (MuJoCo; mesh geoms collide with each other, parent-child pairs excluded).
+
+1. **Discriminator inputs**: 21 joints (12 leg, waist yaw, 8 arm: shoulder pitch/roll/yaw, elbow) with velocities, base
+   gravity and velocities, wrist and foot positions in the base frame. Not seen: head, waist pitch/roll, wrists. **Applies.**
+   Reference arms: shoulder roll past the X2 hard limit (+-0.061) in 66 % / 62 % of frames (R / L), shoulder yaw +0.58 / -0.59
+   (default 0), elbow -0.35 (default -0.6); wrist links inside the hip/pelvis links in 46 % of frames (up to 59 mm vs the hip
+   roll link, 101 mm vs the pelvis). Explains r3's standing policy pressing both shoulder rolls on the limit 94 % of the time.
+   Reference waist pitch mean 0.214 rad (12 deg forward, p95 0.314 = limit); SSR holds waist pitch at 0 and does not show it to
+   the discriminator, but the wrist positions carry the lean. Pelvis tilt in the reference 4.5 deg.
+   **Fix (in from the 1,000 restart): `--disc_mask_arms`** (arm q, qd and wrist positions zeroed at the discriminator input, both
+   sides; `scripts/patch_mask.py`; network size unchanged so the checkpoint resumes). Listed departure.
+2. **Default pose vs prior mean**: knee 0.669 vs 0.32, hip pitch -0.312 vs -0.08, ankle pitch -0.363 vs -0.06, hip yaw 0 vs
+   -0.21 / +0.21 (toe-out). **Applies** (same as Hiking). `dof_dev` (-1.8 x mean |q - default|) charges the reference posture
+   about 0.40 per step (legs 0.19, arms 0.21) against 0.11-0.20 for the current walker, so style and dof_dev pull apart.
+   Not fixed now (changing the default pose moves every action offset: a from-scratch change); options for the next fresh run:
+   default pose = reference mean leg pose, or dof_dev measured from it.
+3. **Action scale**: 0.261 rad per unit at hips, knee and waist yaw, 0.258 ankle pitch / shoulder pitch and roll, 0.485 ankle
+   roll / shoulder yaw / elbow. Reference p5-p95 ranges in action units: knee 4.1, hip pitch 2.7, hip yaw 2.7, ankle pitch 1.6.
+   **Applies weakly to the cost**: following the reference exactly costs 0.001-0.003 per step in action_rate (flat, ramp,
+   stairs, beam, platform), against 0.10-0.16 measured, which is the exploration noise (0.12 x 2 sigma^2 at sigma 0.6-0.7). It
+   matters for exploration: with sigma 0.6-1.0 a knee swing needs 4 units. Not changed (gains/scale are the user's plant rule).
+4. **Self-collision**: none at the default pose. In reference poses 89 % of frames have a self-contact, 80 % with arms at the
+   default: pelvis vs hip roll link (both sides, up to 11 mm) in most frames, the X2 hull overlap the audit found. **Applies to
+   the physics** (contacts push against hip roll/pitch while stepping); no reward term charges them, and only elbow links end
+   an episode on force (> 80 N). Not changed yet: whether the walking policy actually meets them is to be measured (probe with
+   contact counts); excluding pelvis-hip_roll pairs would be a model change, proposed for the next fresh run.
+5. **Limit bands**: SSR's `dof_pos_lim` uses the hard limits (no soft factor). Reference frames outside them: shoulder roll
+   62-66 % (removed from style by fix 1), elbow 2-6 %, knee 0.15 %; within 5 % of the range: hip roll 45 % (p5 -0.23 vs limit
+   -0.235), knee 64 % (knee p5 0.095 vs limit 0). **Applies mildly** (cost 0.07 per joint-step outside; the r3 stander paid
+   0.14 from the two shoulder rolls).
