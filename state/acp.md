@@ -1,6 +1,6 @@
 # ACP track state
 
-Updated 2026-11-11 23:45 UTC (track agent). **Stage 1 is training** on node acp (run `s1_v1`, 36,000 envs, tmux `acp`), from checkpoint 2,000 on with the measured gains (plant `mc_20261024`, section 12); paper eval 91.0 % at 2,000; stage-2 code ported and installed (section 10); next automatic pause at checkpoint 2,250 (paper eval and planner rollouts under the new gains).
+Updated 2026-11-12 00:30 UTC (track agent). **Stage 2 is training** on node acp: run `s2_v1`, tmux `acp`, 36,000 envs, measured gains (plant `mc_20261024`), from stage-1 checkpoint 2,250; see section 13 first (it supersedes the run commands in section 4). Stage 1 (`s1_v1`) ended at 2,250, paper eval 91.2 %.
 
 ## 0. Answer to the question that decides the track
 
@@ -792,3 +792,118 @@ for penetration, and decide whether to drop them.
 
 Recovery after the gains switch: reward 0.087 at iteration 2,007, 0.111 at 2,080 (0.123 before the switch); joint error
 0.171 -> 0.161 rad (0.156 before).
+
+## 13. Checkpoint 2,250 and the switch to stage 2 (2026-11-12 00:13-00:22 UTC)
+
+**What runs now: stage 2**, run `/mnt/filesystem-g4/tracks/acp/runs/s2_v1`, tmux `acp`, since 00:21:32 UTC, from stage-1
+checkpoint 2,250 (`runs/s2_v1/init_from_s1_v1_002250.pt`), 36,000 envs, budget to iteration 6,500, plant `mc_20261024`,
+data `cfg/stage2_sets.json`, attention planner trained online from scratch, eta_obs from 200 iterations in over 1,500,
+eta_rew from 1,700 over 1,500 (coordinator's gentle ramp). Start / resume (the supervisor resumes from `latest.pt` once the
+first stage-2 checkpoint exists, before that from the init file):
+`tmux new -d -s acp "ACP_PLANT=mc_20261024 DATA=cfg/stage2_sets.json EXTRA='--stage 2 --init /mnt/filesystem-g4/tracks/acp/runs/s2_v1/init_from_s1_v1_002250.pt --planner-arch attn --u-obs 200 --u-rew 1700 --n-ann 1500' bash /mnt/filesystem-g4/tracks/acp/code/supervise.sh /mnt/filesystem-g4/tracks/acp/runs/s2_v1 36000 6500"`
+Stop: `touch runs/s2_v1/STOP`. Stage 1 (`runs/s1_v1`) ended at iteration 2,260; its last checkpoint is 2,250.
+
+First stage-2 numbers (iteration 2,270, eta still 0): 71,400 env-steps/s (12.1 s per iteration; stage 1 was 108,000: the
+planner runs for every robot every step), GPU 99 %, **81.9 GB** of 96; reward 0.123, joint error 0.148 rad, finish 0.91;
+replay 428,692 samples from 2,714 successful recorded episodes of 3,050; planner loss 4.76 affordance / 0.455 occupancy
+(start of training). To do at the next needed restart: run the planner in chunks to bring GPU memory back under 80 GB
+(the live-evaluation guard rail) and see whether the planner step can be made cheaper.
+
+**The 2,250 pause** (00:13:46-00:18:24, 4 min 38 s; heartbeat stated the reason): code update + smoke test, paper eval under
+the new gains with rollouts, stage-2 code at full scale for 8 iterations (passed: 36,000 envs, 67,000-70,000 steps/s,
+schedules, recorder, replay, planner updates). **The switch** (00:21:31, a stop of about one second plus start-up) followed
+the rule "first checkpoint where the paper eval under the new gains is back to 2,000's level": 91.2 % >= 91.0 %.
+
+**Paper eval, reference terrains, oracle contacts, 9,018 episodes each:**
+
+| Set | 1,250 (old gains) | 2,000 (old gains) | 2,250 (measured gains, 250 iterations after the switch) |
+|---|---|---|---|
+| **Pooled** (paper >= 98.5 %) | 86.6 | 91.0 | **91.2** (90.6-91.8) |
+| Pico 2x2 | 98.3 | 100.0 | 100.0 |
+| ramps | 92.7 | 96.8 | 95.6 |
+| stair descents (faulty clips) | 63.7 | 91.2 | 93.2 |
+| flat locomotion | 93.3 | 92.9 | 92.7 |
+| 4x4 stepovers | 90.3 | 93.7 | 92.5 |
+| blocks | 90.6 | 92.0 | 91.6 |
+| fitted stair climbs | 87.9 | 88.7 | 89.6 |
+| terrain-park stairs | 88.2 | 87.4 | 88.9 |
+| chains | 74.3 | 75.9 | 76.9 |
+
+Contact placement error 0.163 m (0.166 at 2,000). The measured gains cost nothing after 250 iterations and gained nothing
+visible yet: every set is within its interval of 2,000. Files: `eval/paper_eval/s1_v1_002250_plant_mc_20261024.json`,
+`_weak_sets.txt`, `_rollouts.pt`.
+
+**Data changes at the switch (`cfg/stage2_sets.json`; filters in `acp/data.py`):**
+- `gs2dn_v1` (38 stair descents) left out. My attempt to repair it failed: re-solving the legs for the same foot poses
+  (`tools/repair_legs.py`) ends on the flipped branch again (hip yaw 3.34 rad, foot error up to 35 cm), which means the
+  FOOT poses themselves point backward relative to the pelvis: the clips have the pelvis and upper body facing up the
+  stairs while the feet walk down. That is a fault of the stair fit (root heading), not an angle wrap, and needs the fit
+  re-run on the desktop (`loco-manip-apparatus/sim/pipeline/stairfit.py`, `gwbc-v6/scripts/acp/data/gen_stairfit2.py`) with
+  the root turned; I cannot fix it from the joint angles alone. Until then there is no dedicated descent set; its 5 % share
+  went to the terrain-park stairs. The policy had learned to follow these clips (93 % at 2,250), i.e. it was being rewarded
+  for walking down stairs with the legs turned around.
+- one Pico 2x2 clip with the same flipped leg left out (9 of 10 remain).
+- chains: clips containing a single step higher than 0.30 m left out (50 of 96 source clips; 87 of 210 segments remain).
+  Checked first: the always-failing chain clips are not penetrating their boxes (sole 3 cm at most, shins none) and have no
+  limit dwell; they are simply 39-41 cm step-ups, which neither apparatus needs.
+- fitted stair climbs (`gst_v1`): re-solving changed nothing (foot error 0.1 cm, jumps still 0.40-0.51 rad per 50 Hz frame),
+  so those jumps are in the motion itself (fast jogging swings, 20-25 rad/s at the joint, above the 11.9 rad/s speed limit),
+  not branch flips. Kept; flagged as a data-quality item (the clips ask for leg speeds the robot does not have).
+- Total now 1,521 segments, 176.7 min.
+
+**Clip-quality table** (`tools/clip_quality.py`, part of the data build; `eval/clip_quality/stage1_sets.json`; flags: leg
+joint at a limit > 10 % of frames; jump > 0.35 rad per 50 Hz frame; |hip yaw| > 2 rad; sole > 3 cm inside prop or floor on
+> 5 % of frames; shin > 2 cm inside a box on > 2 % of frames):
+
+| Set | Clips | Any flag | Limit dwell | Jump | Leg flip | Sole penetration | Shin | Max jump (rad) | Max abs hip yaw | Worst sole penetration |
+|---|---|---|---|---|---|---|---|---|---|---|
+| flat locomotion | 419 | 192 | 145 | 80 | 0 | 30 | 0 | 0.82 | 1.85 | 11 cm |
+| blocks | 419 | 192 | 145 | 80 | 0 | 30 | 0 | 0.82 | 1.85 | 11 cm |
+| chains | 210 | 175 | 46 | 170 | 0 | 47 | 0 | 0.48 | 1.22 | 8 cm |
+| terrain-park stairs | 88 | 88 | 88 | 0 | 0 | 53 | 0 | 0.16 | 0.89 | 17 cm |
+| fitted stair climbs | 113 | 113 | 113 | 98 | 0 | 0 | 0 | 0.77 | 1.76 | 2 cm |
+| stair descents | 38 | 38 | 38 | 38 | 38 | 0 | 0 | 1.10 | 3.43 | 3 cm |
+| ramps | 330 | 205 | 55 | 0 | 0 | 205 | 0 | 0.35 | 0.99 | 16 cm |
+| 4x4 stepovers | 56 | 29 | 23 | 0 | 0 | 8 | 0 | 0.23 | 1.16 | 10 cm |
+| Pico 2x2 | 10 | 3 | 2 | 0 | 1 | 2 | 0 | 0.14 | 3.43 | 4 cm |
+
+Reading it: "limit dwell" is mostly the knee at 0 (straight leg) and the ankles at their short limits, so it over-flags;
+the real findings are the 39 flipped clips, the jumps in 80 locomotion, 170 chain (stitch points) and 98 stair-climb clips,
+and soles inside the ground on the ramps (205 of 330 clips, up to 16 cm: the shifted capture variants do not sit on the
+ramp raster) and the terrain-park stairs (53 of 88, up to 17 cm). The ramp and stair penetrations are not fixed yet.
+
+**Removed files (my mistake in procedure, nothing lost):** at 00:12 I deleted
+`data/clips/gs2dn_v2_resolved.pkl` and `data/clips/pico_2026-10-29_2x2_train_v2_resolved.pkl`: the outputs of the failed
+repair above, written ten minutes earlier by `tools/repair_legs.py`, deleted so nobody would train on them. The originals
+were never touched. Rule since then: nothing on the shared filesystem is deleted; unwanted files go to
+`tracks/acp/_trash/<date>/` with a line in `NOTES.txt` (the checkpoint pruning and the code roll-back copy now move there
+too: `_trash/2026-11-12/pruned_checkpoints/`, `code_prev_*`). `/tmp` on the node is cleaned freely.
+
+**No more evaluation pauses.** The supervisor never had a periodic pause; the three pauses so far were one-off scripts
+(1,250, 2,000, 2,250) and none is armed now. What replaces them: (1) rollouts for planner labels: the stage-2 trainer
+records and labels them in-process (3,000 recorder robots; `planner/*` fields in `metrics.jsonl`); (2) success-style
+metrics every iteration from live episodes: `end/finished_phase099`, per-set `finish/<set>`, termination causes,
+`planner/recorded_successes`; (3) the paper eval: at restarts that are needed anyway, at most about every 1,000 iterations,
+or live beside training if the test below holds; (4) the planner-driven check: on the node's CPU (108 episodes), now with
+a fall-based failure rule beside the old one.
+
+**Live evaluation beside training (to test at the first stage-2 checkpoint, 2,500):** `tools/eval_live.sh` (separate
+process, starts only after the checkpoint file is complete, lock against a second eval, robot count capped so the total
+stays under 80 GB, `nice` + four CPU cores, 15-minute limit, aborts if free GPU memory drops under 10 GB, measures training
+speed before and during from `metrics.jsonl`). Open problem: stage 2 itself uses 81.9 GB, so the 80 GB cap refuses to start
+until the planner runs in chunks.
+
+**Planner-driven check at 2,250 (measured gains; CPU, 108 episodes, same clips and starts; MLP planner from the 2,250
+rollouts: target error 5.8 cm class, 432,342 samples from 2,729 successful rollouts;
+`eval/handover_pair_s1_002250_mc_20261024_planner/`, card with plant `mc_20261024`):**
+
+| Contacts | Old rule (ended 0.5 m from the reference) | Fall rule (ended only by a fall: root under 0.35 m over the ground, or tilt over 60 degrees) |
+|---|---|---|
+| oracle | 92.6 % (86.1-96.2), 7.4 % ended early | 96.3 % (90.9-98.6), 0.9 % fell |
+| planner | 50.9 % (41.6-60.2), 49.1 % ended early | **58.3 %** (48.9-67.2), **1.9 % fell** |
+
+Success in both = not ended early and within 0.5 m of the segment's end point when the clip time is up. With the fall rule
+the planner-driven robot almost never falls (2 of 108); the 40 % that fail are standing or walking somewhere else when the
+time is up: they do not keep up with, or do not follow, the route the reference takes (flat locomotion 2 of 12, chains 4
+of 12, ramps 6 of 12; stairs and descents 9-10 of 12). So the gap to close in stage 2 is following the goal under planner
+contacts, not balance. Earlier pairs under the old rule: 46.3 % (1,250), 44.4 % (2,000).

@@ -310,7 +310,7 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
         results.sort(key=lambda r: r["seed"])
         if part.exists():
             os.remove(part)
-        meta = dict(label=label, ladder_step=step, test=test, on="the training map (not an apparatus result)", apparatus=course.name, route=course.name,
+        meta = dict(label=label, ladder_step=step, test=test, on="a ladder course below the apparatus (not an apparatus result)", apparatus=course.name, route=course.name,
                     tile=course.route.get("tile"), simulator="MuJoCo %s (CPU), dt %.4f s" % (mujoco.__version__, X.SIM_DT), adapter=adapter.name,
                     checkpoint=str(adapter.checkpoint), observes=adapter.observes, control_dt=adapter.control_dt, protocol=protocol_name,
                     plant=adapter.plant_name or "harness default vendor_20260823 (test fixture)",
@@ -351,7 +351,7 @@ def collect(out, step):
         return rows
     json.dump(dict(label=head.get("label"), plant=head.get("plant"), step=step, on="the training map (not an apparatus result)", adapter=head["adapter"], checkpoint=head["checkpoint"],
                    protocol=head["protocol"], rows=rows), open(out / (STEP_DIR[step] + ".json"), "w"), indent=1)
-    lines = ["%s | step %d, ON THE TRAINING MAP (not an apparatus result) | %s | plant %s | protocol %s" % (
+    lines = ["%s | ladder step %d, BELOW THE APPARATUS: skill courses and training-map tiles (not an apparatus result) | %s | plant %s | protocol %s" % (
         head.get("label") or head["adapter"], step, head["checkpoint"], head.get("plant"), head["protocol"]),
              "%-22s %-10s %-9s %-12s %-6s %-8s %-10s %-7s %s" % ("test", "success", "rate", "95 % interval", "clean", "penalty", "waypoints", "time", "outcomes / tile")]
     for r in rows:

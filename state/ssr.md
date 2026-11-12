@@ -588,32 +588,93 @@ the standing problem. (Final numbers at iteration 300 are in `runs/d3/log.jsonl`
 2. With it, a lower entropy coefficient (`--ent 0.002`; paper 0.005): the action noise alone costs the stander about 0.5 per
    step and the shuffler more.
 
-## Status (2026-11-11 23:15 UTC): what runs, what is queued, how to continue
+## Results 23:25-00:20 UTC (d3, d4, discriminator scores, evaluation beside training)
 
-**No SSR policy walks yet.** Four full-method runs (r1-r4) stand still; the cause is measured (see "Root-cause
-investigation"); two diagnostic runs move (a shuffle, not a walk).
+| Run | Setting | Iterations | vx curve | Verdict |
+| --- | --- | --- | --- | --- |
+| d3 | d1 with plant `mc_20261024` | 290 | 0.45 (60), 0.18 (100), 0.21 (150), 0.43 (180), 0.59 (220), 0.71 (280), 0.73 (290) | moves like d1 (d1: 0.91 at 270): the gains are not the cause |
+| d4 | flat, **all Table 6 terms**, no style, `mc_20261024` | 290 | 0.37 (50), 0.09 (80), 0.03 (110), 0.15 (240), 0.18 (270), 0.21 (290) | **the penalties bring standing back** on flat ground with no terrain, obstacles or style reward (double support 0.86 at 110); from 200 on it creeps: 0.12 m/s in 3 cm steps |
+| r5 | full method, style weight 1.0, per-critic normalisation, rebuilt flat prior, `mc_20261024`, `chest_rs` | running | 0.52 (10), 0.35 (40), 0.20 (60), 0.05 (80), 0.03 (110-140) | standing by iteration 80 (double support 0.85) |
 
-On the node now, in this order, one GPU job at a time:
+**What d4 ends as** (probe, 256 robots, 30 s, command 0.6 m/s, no noise, plant mc): 0.115 m/s, 3.8 touchdowns per foot per
+second, median air time 0.04 s, step length 3 cm, clearance 0.5 cm: a stand with foot taps. Table 6 score **2.36 per step**:
+lin_vel 0.39, ang_vel 0.76, orientation 0.48, ang_vel_xy 0.25, base_height 0.36, single_support 0.198 of 0.2, dof_dev -0.10,
+everything else under 0.02. The taps collect the whole single-support reward (it only asks that one foot be unloaded at some
+moment in the last 0.2 s) at no cost. The d3 shuffler (0.53 m/s, 10.9 touchdowns per foot per second) scores **1.00** on the
+same table (action_rate -0.40, smoothness -0.44, impact -0.22, slip -0.11, dof_dev -0.29). So under the paper's table as
+implemented here the ranking is: tap-in-place 2.36 > plain stand 1.88 > shuffle 1.0-1.66; only a clean walk (about 2.7-2.9
+if everything is near its maximum) is above the tapping stand, and the gap to it is small.
 
-1. `d3` (training, started 22:54 UTC, ends by itself at iteration 300, about 23:25): d1 with plant `mc_20261024`.
-   **It runs without a supervisor** (I killed the queue script that had launched its supervisor, which took the supervisor
-   with it; the training process survived). If it dies it is not restarted; nothing depends on it but the plant comparison.
-   Until it ends the heartbeat reads `run d4, waiting_for_gpu`: that is the next job's supervisor waiting, as designed.
-2. `d4` (300 iterations, about 30 min): flat tile, all Table 6 terms, style weight 0, plant `mc_20261024`, head camera.
-   Pass/fail: vx under 0.2 at iteration 300 confirms the penalty terms as what holds the robot at a stand.
-3. `r5` (20,000 iterations, about 33 h at 5.9 s per iteration; supervised, resumes itself): the full method, per-critic
-   advantage normalisation, moving-only prior and walking starts, style weight 1.0, plant `mc_20261024`, camera `chest_rs`,
-   8,192 robots. Pass: vx at least 0.3, single support at least 0.3 and air times over 0.1 s by iteration 500, mean terrain
-   level rising by 1,000. **If it is under vx 0.2 at iteration 500, stop it** (`touch runs/STOP`) and go to plan step 3 in
-   the root-cause section, as written under "Fallback order" above: restart as `r6` with the same flags plus `--stage_a 250 --stage_b 750 --ent 0.002`.
+**Does the style reward separate standing from walking?** Barely, and it prefers standing to the shuffle
+(`scripts/disc_score.py`, CPU; `eval/disc_score_r3.json`, `_r2.json`; flat discriminator, style reward 0-1):
 
-The queue is `runs/queue2.sh`, running in tmux session `ssrq` (not `ssr`). Its exact commands:
-- `../env/venv/bin/python scripts/supervise_node.py --name d4 --iters 300 --num_envs 8192 -- --flat_only --w_style 0 --prior_min_speed 0.2 --rsi_min_speed 0.3 --plant mc_20261024 --camera head`
-- `../env/venv/bin/python scripts/supervise_node.py --name r5 --iters 20000 --num_envs 8192 -- --adv_norm separate --prior_min_speed 0.2 --rsi_min_speed 0.3 --w_style 1.0 --plant mc_20261024 --camera chest_rs --amp_file data/amp_v2.npz --prior_balance` (this line is now in `runs/queue3.sh`, tmux session `ssrq3`, which waits for d4 to end; `queue2.sh` stops after d4 because `runs/QUEUE_STOP` is set. Stop r5 before it starts: `touch runs/QUEUE3_STOP`.)
+| Windows | r3's discriminator (prior without standing, it 300) | r2's (prior with standing, it 350) |
+| --- | --- | --- |
+| reference, 0.4 m/s or more | 0.93 | 0.95 |
+| reference, 0.2-0.4 m/s | 0.88 | 0.92 |
+| reference, standing (under 0.05 m/s) | 0.81 | 0.90 |
+| standing policy, no action noise | 0.62 | 0.75 |
+| standing policy, with its training noise | 0.34 | 0.36 |
+| shuffle policy (d1), no noise | 0.59 | 0.47 |
+| shuffle policy (d1), with noise | 0.18 | 0.01 |
 
-Stop everything: `touch /mnt/filesystem-g4/tracks/ssr/runs/QUEUE_STOP /mnt/filesystem-g4/tracks/ssr/runs/STOP` (the queue
-checks `QUEUE_STOP` between jobs; `STOP` ends the running supervised job). Resume a run: start its command again in tmux from
-`tracks/ssr/code`; it continues from `runs/<name>/last.pt`.
+A standing reference window earns 87 % of a walking one even after standing was removed from the prior (95 % before), and a
+standing policy earns more than a shuffling one; what the discriminator punishes most is the action-noise jitter. So raising
+the style weight cannot pull the robot off the stand; r5 confirms it. Same picture as the Hiking track's.
+
+**Evaluation beside training** (user, 2026-11-11; measured on r5, 8,192 robots, 33.8 GB, baseline 30.3k-31.7k samples/s):
+
+| Eval job | Wall time | Training samples/s while it ran | Loss | Peak GPU memory | Trainer warnings |
+| --- | --- | --- | --- | --- | --- |
+| gait probe, 256 robots, 30 s of simulation | 165 s (about 60 s of it start-up) | 24.4k-25.4k | 18 % | 35.6 GB (+1.8) | none |
+| gait probe, 2,048 robots, 30 s | 210 s | 21.0k-22.0k | 31 % | 40.1 GB (+6.2) | none |
+
+Training returned to 30-31.7k within one log interval after each. Rule for this track: evals beside training use at most
+256 robots (about 512 would be the limit for 20 %), through `scripts/eval_guard.sh <tag> <seconds> <command>`: one at a time
+(lock file), `nice`, wall-clock limit, refuses to start with under 10 GB free or over 70 GB used, kills the eval if free
+memory drops under 10 GB; it logs start, end, duration and peak memory to `runs/eval_guard.log`. A 1,000-trial paper
+evaluation would have to run as four 256-robot batches or wait for a restart.
+
+Throughput note: `chest_rs` (87 x 58 deg, 3 m, 38 march steps) costs 9 % against the head camera (30.3k vs 33.3k samples/s).
+
+**Next: recipe tests** (`runs/queue4.sh`, to start when r5 is stopped at its gate; one at a time; all on the flat tile with
+style weight 0, plant mc, camera chest_rs; each followed by a gait probe written to `eval/<name>/gait.json`). Pass for each:
+air time over 0.2 s and step length over 0.25 m at 0.6 m/s with the full Table 6 on at the end.
+
+| Test | Flags | Iterations | Result |
+| --- | --- | --- | --- |
+| t_a staged schedule | `--stage_a 150 --stage_b 400` (tracking + posture only until 150, the rest ramped in by 400) | 550 | pending |
+| t_b command curriculum | `--cmd_cur_iters 200 --cmd_min0 0.5 --sig_v0 0.06` (no command under 0.5 m/s and a narrow tracking kernel, so zero speed pays nothing, until 200; released by 400) | 500 | pending |
+| t_c no-progress termination | `--stuck_term --stuck_until 300` | 450 | pending |
+| t_d less noise | `--ent 0.001 --init_std 0.5` | 300 | pending |
+
+Housekeeping rule (2026-11-11): nothing under `/mnt/filesystem-g4` is deleted any more; unwanted files go to
+`tracks/ssr/_trash/<date>/` with a note. (Before the rule I deleted `scripts/bc.py`, the two Windows supervisors, the
+`runs/smoke` test folder and superseded camera-check frames.)
+
+## Status (2026-11-12 00:35 UTC): what runs, what is queued, how to continue
+
+**No SSR policy walks yet.** Five full-method runs (r1-r5) stand still; the cause is measured (see "Root-cause
+investigation" and "Results 23:25-00:20"). Diagnostic runs with reduced rewards move, as a shuffle.
+
+- **r5 stopped by me at iteration 270 (00:30 UTC), before its iteration-500 gate.** Reason: vx 0.03-0.09 from iteration 80 on
+  (0.086 at 270, double support 0.73, level 0.01, the same slow tap-and-creep d4 showed), the offline discriminator scores
+  show the style reward prefers a stand to a shuffle, and the Hiking track relaunches at 01:50 UTC with whichever recipe test
+  shows real swing, so the GPU went to the tests. r5 is not lost: `runs/r5/last.pt` (iteration 250) resumes with its command
+  (below) if anyone wants the gate.
+- **Running now: `runs/queue4.sh` in tmux session `ssr`**, the recipe tests, one at a time, each under the supervisor
+  (heartbeat names the test) and each followed by a gait probe written to `eval/<name>/gait.json` and `gait_noise.json`:
+  `t_b` (started 00:31 UTC, 500 iterations, about 55 min), then `t_a`, `t_c`, `t_d` (table in "Results"). After `t_d` the
+  GPU is idle: the next step is a full run with the recipe that passed.
+- Stop: `touch /mnt/filesystem-g4/tracks/ssr/runs/QUEUE4_STOP /mnt/filesystem-g4/tracks/ssr/runs/STOP`.
+- r5's command, to resume: `cd /mnt/filesystem-g4/tracks/ssr/code && ../env/venv/bin/python scripts/supervise_node.py --name r5 --iters 20000 --num_envs 8192 -- --adv_norm separate --prior_min_speed 0.2 --rsi_min_speed 0.3 --w_style 1.0 --plant mc_20261024 --camera chest_rs --amp_file data/amp_v2.npz --prior_balance`
+- Known artefact in d4 and t_b: one enormous slip penalty at the very first step of iteration 0 (the flat-tile reset did not
+  refresh the stored foot positions); the value loss recovers by iteration 10. Fixed in the code for t_a onwards.
+- Zero-command share and what a stander is paid (checked for the coordinator): 12.5 % of non-walking-start walkers draw a
+  command under the 0.15 m/s threshold (about 6 % of all walkers, since half start from walking frames at 0.3 m/s or more),
+  and about 1 % of the omnidirectional robots; no resampling within an episode. Under a moving command the velocity kernel
+  exp(-v^2 / 0.25) still pays a stander 0.70 at 0.3 m/s, 0.24 at 0.6, 0.02 at 1.0 (mean 0.37 over the command range), and
+  the yaw kernel pays its full 0.8 because the heading starts aligned. t_b removes both early on.
 
 Watch: `python3 /mnt/filesystem-g4/tracks/ssr/code/scripts/d.py <run> 5 5` (iteration, vx, single / double support,
 touchdowns per second, rewards, episode length, level, std, step size, shares of episode ends).

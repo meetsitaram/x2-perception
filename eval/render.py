@@ -86,7 +86,7 @@ def render(run: pathlib.Path, seed: int, view: str, track: str, t0=None, t1=None
     path = out / (name + ".mp4")
     wr = imageio.get_writer(str(path), fps=slow / (every * dt), codec="libx264", ffmpeg_params=["-crf", "22", "-preset", "medium"])
     font, small = _font(19), _font(16)
-    label = "%s | track: %s | %s: %s | seed %d | %s" % (s["simulator"], track, "ON THE TRAINING MAP, test" if s.get("ladder_step") else "apparatus",
+    label = "%s | track: %s | %s: %s | seed %d | %s" % (s["simulator"], track, "LADDER TEST (not the apparatus)" if s.get("ladder_step") else "apparatus",
                                                        s["apparatus"].replace("ladder:", ""), seed, s.get("protocol", ""))
     label2 = ("%s | " % s["label"] if s.get("label") else "") + "plant %s | checkpoint: %s" % (s.get("plant", "?"), s["checkpoint"])
     frames = list(range(k0, k1, every))

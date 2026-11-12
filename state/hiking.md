@@ -73,6 +73,44 @@ Proposed test (one shot, about 12 minutes, started by hand right after a checkpo
 
 Until the coordinator decides, Hiking evaluation stays on the MuJoCo port (desktop CPU) and the training logs.
 
+### Next run, ready to launch at run 2's iteration 1,000 (the coordinator names the options before 01:50 UTC)
+
+Task `Instinct-Parkour-Staged-Amp-X2-v0` (`code/x2_port/files_instinctlab/tasks/parkour/config/x2/staged.py`): the run-2 task plus
+options that are all off by default. **Never constructed in Isaac**; the schedule function and the two new kernels pass a CPU unit
+test (`code/x2_port/test_staged.py`); everything else is first exercised at launch.
+
+Launch (watched, falls back to resuming run 2 if the new task does not reach its third iteration; stops run 2 through its own
+supervisor, kills nothing else):
+`tmux new -d -s launchnext "bash /mnt/filesystem-g4/tracks/hiking/code/x2_port/launch_next.sh x2_parkour_v3 <options> <hold,end> <camera randomisation 0 or 1>"`,
+for example `... x2_parkour_v3 b,c,d 500,1500 1`. It writes `runs/x2_parkour_v3/_supervisor/launch.txt` and a matching
+`code/x2_port/start_x2_parkour_v3.sh` for later resumes. Expected GPU idle: about 1 minute plus the 4-5 minute start-up.
+
+Every schedule holds its early value until iteration `hold` (default 500), moves linearly to the paper's value at `end` (default
+1,500) and stays there. Schedules survive restarts (the supervisor passes the resume iteration as `HIKING_ITER_OFFSET`).
+
+| Option | What changes | Early value | Paper's value (after `end`) |
+|---|---|---|---|
+| a | `is_alive` scaled | x 0.3 | x 1 (weight 3.0) |
+| a | `action_rate_l2`, `feet_slide`, `dof_acc_l2`, `feet_flat_ori` scaled | x 0.2 | x 1 |
+| b | linear-tracking kernel std | 0.25 (zero speed pays 0.002 for a 0.63 m/s command) | 0.5 (pays 0.20) |
+| b | yaw tracking multiplied by forward progress v_x / (0.5 x commanded v_x), 0..1, for robots commanded to move | full gate | no gate |
+| c | robots told to stand | 0% (whole run, not scheduled) | 5% |
+| c | minimum commanded speed | 0.6 m/s (whole run) | 0.45 m/s |
+| c | target redrawn until at least 1.5 m from the robot (whole run) | on | targets anywhere, about 15% of commands zero from the start |
+| d | `dont_wait` scaled | x 4 | x 1 (weight -0.5) |
+| d | termination `stalled`: commanded to move, average speed since episode start under 0.1 m/s after 4 s | on | off |
+| e | `feet_air_time` scaled | x 4 | x 1 (weight 0.5) |
+
+- Option c is not ramped back: it is a config value read once. Returning to the paper's command settings means a restart
+  without c; say so if it is used.
+- Camera mount randomisation (`HIKING_X2_CAM_RAND=1`, last argument of the launch script) can be switched on in the same launch.
+- Curriculum (checked 2026-11-12): a robot moves up when its episode's linear tracking score exceeds 0.6 and down under 0.3; a
+  zero command scores 1.0 by standing. 25% of robots have a zero command (5% told to stand, 5% stand column, about 15% with the
+  target inside the 0.4 m stop radius), and they are what raises the mean level while nobody walks: at iteration 492 the stand
+  column is at 7.45, mesh boxes 2.83, slope 2.57, rough 2.36, boxes 1.09, and all stairs, platforms and gaps at 0.05-0.08. Not a
+  port defect (no robot-specific number in the rule; same code as the G1 run). Option c removes most of it.
+- The three scripts that killed every GPU process (`launch_v2.sh`, `pause_and_eval.sh`, `restart_at.sh`) no longer do.
+
 ### What run 2 changes against run 1 (everything else identical; the paper's terrains, commands, rewards, curriculum, PPO)
 
 | Item | Run 2 | Why |
@@ -232,11 +270,15 @@ Weighted reward per control step (episode sum / episode length), from the per-te
 | 200 | 22.6 | 573 | 0.25 | 0.02 (0.63 / 0.01) | 81% | 0.014 | -6.16 | 58% | 0.47 |
 | 249 | 35.1 | 736 | 0.40 | 0.02 (0.62 / 0.01) | 84% | 0.016 | -8.31 | 35% | 0.50 |
 | G1 at 500 (equal samples to X2 250) | 43.9 | 731 | 1.48 | not logged | not logged | 0.040 | -4.27 | 60% | 0.44 |
+| 400 | 57.7 | 939 | 0.88 | 0.01 (0.63 / 0.01) | 90% | 0.011 | -10.09 | 12% | 0.55 |
+| 499 | 63.5 | 950 | 1.20 | 0.01 (0.63 / 0.01) | 91% | 0.009 | -10.70 | 10% | 0.57 |
+| G1 at 1,000 (equal samples to X2 500) | 44.5 | 687 | 2.06 | not logged | not logged | 0.049 | -4.17 | 50% | 0.47 |
 
 **Run 2 is going the same way as run 1: as the robots learn to stay up, forward speed goes to zero** (speed ratio 0.45 at
 iteration 50 while everything falls, 0.02 from iteration 200 on). So the standing is not explained by the old gains, the head
 camera or the standing share of the motion reference alone: all three were changed and the pattern is the same at 250. The early
-"speed" at iterations 50-100 is robots falling forward, not walking. Checkpoint: `runs/x2_parkour_v2/20261111_225809/model_250.pt`.
+"speed" at iterations 50-100 is robots falling forward, not walking. Checkpoints: `runs/x2_parkour_v2/20261111_225809/model_250.pt`, `model_500.pt`. At 500 the robots stand through almost the whole
+episode (950 of 1,000 steps, 10% falls) at 1% of the commanded speed; air time is falling, not rising (0.016 at 249, 0.009 at 499).
 
 ### Does the style reward tell standing from walking? (offline, CPU, `code/x2_port/score_discriminator.py`)
 
