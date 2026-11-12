@@ -243,3 +243,26 @@ ACP tracker s1 2,250 + planner_mlp (plant `mc_20261024`), MuJoCo 3.15 CPU, nomin
    step-1 stairs_up L1 and of the apparatus run, to the coordinator for review.
 - Render labels now say "MuJoCo, not the training simulator" and carry the protocol and trial count.
 - The ACP hand-over adapter's goal is d / max(|d|, 0.3 m): it shrinks inside 0.3 m by construction (its training convention).
+
+## Resumed again (2026-11-12 01:41 UTC): baseline step 2 done, ACP 2,250 apparatus running
+
+- Baseline pair (plant `vendor_20260823`) on the eight step-2 routes, 50 trials each, MuJoCo CPU nominal (CHAIN DONE 02:25 UTC,
+  collected; `eval/out/baseline_20261102/ladder/step2.txt`, copied to the shared filesystem): street_out_and_back 50/50,
+  home_dead_end_and_back 49/50, stairs_U_turn 32/50, corridor_rails 11/50, wedge_field_loop 11/50, amphitheatre_loop 10/50,
+  corridor_walls 4/50. Clean: street 50, home 49, amphitheatre 10, others 0. Falls dominate every failure.
+- **street_doorway_out_and_back 0/50 is a COURSE DEFECT, not a result.** A 0.33 m "block" box (top 0.17-0.27 m above the floor) at
+  (-1.20, 1.51), plus a rock and a plant (meshes as their boxes) further on, stand on the route's centre line. They are not in the
+  walk raster that the height scans and the route check's step test use, and the wall test only looks 0.30-1.30 m above the
+  ground, so the check passed it and the policy cannot see it; all 50 trials fall at the block (x -1.45 to -1.28 m, 5-12 s). No
+  other step-2 route has a box on its path (checked all eight). Flagged in `eval/ladder.py` `STEP2_DEFECT` (printed under the
+  row). Fix to choose: reroute the waypoints round the three objects, or put low boxes into the raster; the route check also needs
+  a low-obstacle test. Not done yet.
+- Running: ACP 2,250 pair on our apparatus, 200 trials nominal, started 02:26 UTC, bounded loop of `run_acp_apparatus.sh` slices
+  (about 50 s wall per trial -> about 3 h). Log `eval/out/acp/handover_pair_s1_002250_mc_20261024_planner/ours_nominal.log`.
+
+### Remaining list (as given by the coordinator)
+1. (done) collect step 2 for the baseline.
+2. The ACP 2,250 pair on our apparatus, 200 trials, nominal; repeat until it prints DONE: `RUN_LABEL="ACP pair tracker 2250 + planner, plant mc_20261024, current rule, MuJoCo CPU" bash eval/run_acp_apparatus.sh eval/data/handover/acp_2250 handover_pair_s1_002250_mc_20261024_planner ours nominal 200`. Then `python eval/report.py eval/out/acp/handover_pair_s1_002250_mc_20261024_planner/ours_nominal`, beside the baseline's `eval/out/baseline_20261102/ours_nominal_goalshrink` (15/200) and `ours_nominal_goalkeep` (4/200): success and clean success with trial counts and intervals, per-section reach, where trials end (falls and stalls separately), side hits by class (counts only; no force figures). This is the number the user is waiting for: report it to the coordinator as soon as it exists.
+3. The ACP 2,250 pair on step 2 (launch like the baseline chain: `ACP_HANDOVER_DIR=eval/data/handover/acp_2250`, adapter `acp:ACPHandover`, step 2, 50 trials, out `eval/out/acp/handover_pair_s1_002250_mc_20261024_planner/ladder`, `LADDER_LABEL` set); note route eligibility per the profile rule in `docs/EVAL.md`.
+4. Renders with `python eval/render.py <run dir> --seeds <best> <median> <failure> --track acp`: step-1 stairs_up L1 (`.../ladder/step1/stairs_up_L1`, a typical failure such as seed 1013) and the apparatus run (picks in its summary). Chase view and legs close-up, labelled "MuJoCo, not the training simulator" with plant, protocol and trial count; look at each yourself and check it against `trials.csv` and `events.csv`; send the coordinator the file paths and what each shows; nothing goes to the user without the coordinator's review.
+5. Copy the changed `eval/ladder.py`, `eval/render.py`, `eval/run_acp_apparatus.sh` to `/mnt/filesystem-g4/eval/code/`, and the step-2 and apparatus results to `/mnt/filesystem-g4/eval/...`; update `/mnt/filesystem-g4/status/eval.json` and `state/eval.md`. (ladder.py and the baseline step-2 results copied 02:28 UTC.)

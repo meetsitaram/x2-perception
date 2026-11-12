@@ -1025,3 +1025,41 @@ blocks. Action: low-riser flights (risers 10-15 cm, treads 25-32 cm, climbs and 
 (`code/data_build/gen_stairfit_low.py`, same rules and screens as the descents v2) for the stage-2c data. Not done: the
 planner's foothold on a 10 cm riser in a closed loop (my CPU check runs on reference terrains; the eval monitor's synthetic
 stairs are not in my tools yet).
+
+**Coordinator's decision on live evaluation (02:30 UTC):** accepted. Limits: at most one full paper eval per 1,000
+iterations (the planner-driven check with it if it fits), started right after a checkpoint, guard rails unchanged, no
+per-250 evals; the training-speed cost of each eval is logged here. Armed: `code/ops/live_every.sh 4000 5000 6000` (tmux
+`acp-evallive`), with one line per eval in `eval/paper_eval/live_costs.log`. Costs so far: 2,750, 900 robots: 146 s at
+-36.6 %; 2,750, full: 190 s at -43.6 % (table above).
+
+**All paper evals before 2026-11-12 02:20 UTC (checkpoints 1,250, 2,000, 2,250, and the two live ones at 2,750) carry the
+nefc overflow** (MuJoCo Warp `njmax` 300 in the eval, 450 in training; 35-290 warning lines per eval). From then on the
+eval uses 450 (`ACP_NJMAX`).
+
+**Low-riser flights `gs2lo_v1`** (desktop CPU, `code/data_build/gen_stairfit_low.py`, `DN_GAP=0.05 python gen_stairfit_low.py <out>/gs2lo_v1 3`):
+risers 10-15 cm, treads 25-32 cm (tread capped so the one wall size covers the flight), 3 random flights per capture,
+climbs with the stock foot targets and descents with the down-facing ones. Accepted: **39 climbs** of 63 fits and **43
+descents** of 81 (14 and 17 of them with risers of 12 cm or less); |hip yaw| at most 0.64 / 0.73 rad, joint jump at most
+0.71 / 0.60 rad, swing clearance worst -1.7 / -2.7 cm. clip_quality: no leg flip, no sole-penetration flag. Box sizes are
+the same seven as the other fitted flights, so no new prop slots. sha256 30db5030...b6e1c1.
+
+**Planner footholds on low risers, before the swap** (`tools/riser_check.py`; CPU closed loop, tracker 2,250 + MLP planner
+2,250, the eval monitor's pair; fall rule; gs2lo climbs vs gst_v1 climbs; output
+`eval/handover_pair_s1_002250_mc_20261024_planner/riser_check_002250.json`):
+
+| Risers | Episodes | Success, oracle contacts | Success, planner contacts | Planner foot targets within 3 cm of a riser edge (oracle: about 0) |
+|---|---|---|---|---|
+| 10-12 cm | 20 | 65 % (7 fell) | **35 %** (4 fell) | **14.6 %** |
+| 12-15 cm | 28 | 96 % | 68 % | 12.0 % |
+| 16-22 cm (trained) | 48 | 79 % | 85 % | 4.5 % |
+
+Reading: on 10-12 cm risers both halves are weak. The tracker falls 7 of 20 times even with the reference's own contacts
+(it has never trained on them), and the planner puts three times as many foot targets on a riser edge as on the trained
+heights. Target heights sit on the surface (median 0 cm above). This agrees with the eval monitor's 23/50 at 10 cm and
+50/50 at 14 and 18.6 cm. Fix: train on them (stage 2c below). In stage 2 the planner learns online from the tracker's own
+rollouts on these terrains. Small sample (20-48 episodes per bin).
+
+**Stage 2c = 2b + gs2dn_v2 (0.05) + gs2lo_v1 (0.05); terrain-park stairs 0.15 -> 0.08, gst_v1 0.10 -> 0.07**
+(`cfg/stage2c_sets.json`; label cache built; clip_quality in `eval/clip_quality/stage2c_sets.txt`). It goes in through a restart
+that is needed for the data change, at checkpoint 3,000 (armed: `restart_s2b.sh 3000` with `DATA=cfg/stage2c_sets.json`;
+code unchanged). The resume command in `code/ops/README.md` now says stage2c.

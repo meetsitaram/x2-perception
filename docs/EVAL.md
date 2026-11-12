@@ -310,6 +310,10 @@ export per skill, the table further up) is kept as `step1_v0` for continuity.
 skill and level (not a random family of them); step 2 uses tiles of the training export. Meshes
 that are not in the raster (cylinders, stones, bushes) become their bounding boxes. One tile per skill: a test says "this
 log", not "logs in general".
+Found 2026-11-12: such boxes are in the physics but not in the walk raster, so neither the height scan nor the route check's step
+test sees them, and the wall test starts 0.30 m above the ground. `street_doorway_out_and_back` has a block, a rock and a plant on
+its centre line (all baseline trials fall at the block); its rows are marked COURSE DEFECT and are not results until the route is
+fixed (`eval/ladder.py` `STEP2_DEFECT`). The other seven routes have no box on their path.
 
 **Plant (user, 2026-11-11):** a policy is always run under the X2 plant it was trained with, taken from its adapter card (name
 and per-joint kp, kd); the harness default is only for test fixtures. Every summary, table and render label states the plant.

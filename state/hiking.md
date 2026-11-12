@@ -5,6 +5,22 @@ Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53
 
 ## Hand-over 2026-11-12 (newest first)
 
+- 02:45 **Run 3 at 250** (`report_line.py`, iterations 241-247): speed ratio 0.52 (0.36/0.70 m/s), both feet down 81%, air time
+  0.0038/ep, wait -0.85, falls 84% (root_height 65%, bad_orientation 18%), stalled resets 9.6%, time-outs 7.5%, episode 148,
+  style coef 0.075, D-reward 0.464, weighted style 0.035, level 0.18 (perlin_rough_stand 1.86, stairs and gaps 0.00). Trend
+  50/100/150/200/247: episode 53/74/112/131/148, falls 108/101/94/87/84% (shares overlap, sum can pass 100%), speed ratio
+  0.77/0.64/0.58/0.53/0.52. Stop rule hit literally (falls > 70%, episode < 200) and reported; **coordinator: keep running**.
+  Their check at 500: continue if episode > about 300 and speed ratio > about 0.3; report at once (no change) if episode
+  flat under 200 or speed ratio under 0.1; if air time is still under 0.01 at 500 the next lever is the air-time reward (option e).
+- 02:45 **MuJoCo render of run 3 `model_250`** (desktop CPU, "MuJoCo, not the training simulator", nominal camera mount, no
+  randomisation): `perception-agents-work/hiking_sim2sim_x2/x2v3_ckpt250_mujoco_{flat,stairs}_{chase,legs}.mp4`, CSV/JSON beside
+  them, frame sheets in `checks/frames/x2v3_ckpt250_*.png`. Reading: **a lunge, not a gait**: feet stay planted (4 lift-offs on
+  stairs, no step cycle), the body pitches forward and falls flat at 2.4 s (flat) and 1.7 s (stairs) after moving about 1 m;
+  peak forward speed 0.9-1.7 m/s during the fall. Same picture as the Isaac numbers (episodes about 3 s, falls 84%, air time a tenth
+  of the G1's). Export: `eval/x2_parkour_v3_250/` (ONNX vs torch 1.4e-6, card from the run's env.yaml).
+- 02:40 `code/x2_port/export_for_eval.py` replaced by the env.yaml-driven version (the old one hard-coded run 1's gains and camera
+  and failed on the current asset file: SyntaxError slicing `agibot_x2.py`); old one in `_trash/2026-11-12/` with a note.
+
 - 02:05 Third Hiking agent resumed. Run 3 training (heartbeat 01:58 iteration 10, 0 Tracebacks, one trainer start since the
   01:50:59 supervisor start). `launch_next.sh` already falls back on a Traceback (checked: it greps the new part of train.log);
   nothing to change there. `supervise_x2.py` STOP handling: patched copy `code/x2_port/supervise_x2.py.next` (moves an old STOP to

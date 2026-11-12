@@ -244,6 +244,12 @@ STEP2_NEEDS = {
 # smaller than the lowest level passed while a lower level failed (coordinator 2026-11-12)
 STEP2_SIZE = {"stairs_U_turn": {"stairs_up": 0.15}, "amphitheatre_loop": {"stairs_up": 0.125, "stairs_down": 0.125}}
 LEVEL_SIZE = {"stairs_up": {1: 0.10, 2: 0.14, 3: 0.186}, "stairs_down": {1: 0.10, 2: 0.14, 3: 0.186}}
+# routes whose course is wrong (eval monitor 2026-11-12): their rows are printed but are NOT results
+STEP2_DEFECT = {
+    "street_doorway_out_and_back": "COURSE DEFECT, not a result: a 0.33 m block (top 0.17-0.27 m above the floor), a rock and a plant (meshes as their boxes, "
+                                   "0.26 and 0.53 m) stand on the route's centre line, are not in the walk raster the height scan "
+                                   "and the route check use, and every trial falls at the block (x -1.45 to -1.28 m)",
+}
 
 
 def eligible_routes(profile, with_notes=False):
@@ -374,7 +380,7 @@ def collect(out, step):
         rows.append(dict(test=test, trials=s["trials"], success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
                          side_hits_per_trial=s["side_hits"]["per_trial"], mean_waypoints=s["mean_waypoints"], of=len(course.waypoints), outcomes=s["outcomes"],
                          time_median=(s["time_success"] or {}).get("median"), length_m=round(float(np.linalg.norm(np.diff(course.path(), axis=0), axis=1).sum()), 1),
-                         tile=s.get("tile"), renders=s.get("renders")))
+                         tile=s.get("tile"), renders=s.get("renders"), defect=STEP2_DEFECT.get(test) if step == 2 else None))
     if not rows:
         return rows
     plants = sorted({str(json.load(open(out / STEP_DIR[step] / r["test"] / "summary.json")).get("plant")) for r in rows})
@@ -390,7 +396,9 @@ def collect(out, step):
             r["test"], r["success"], r["trials"], 100.0 * r["success"] / r["trials"], 100 * r["ci95"][0], 100 * r["ci95"][1], r["clean"], r["mean_penalty"],
             r["mean_waypoints"], r["of"], ("%.0f s" % r["time_median"]) if r["time_median"] else "-",
             ", ".join("%s %d" % kv for kv in sorted(r["outcomes"].items(), key=lambda kv: -kv[1])), (" | " + r["tile"]) if r["tile"] else ""))
-    if step == 1:                                           # the skill profile: highest level passed per skill
+        if r.get("defect"):
+            lines.append("    ^ %s" % r["defect"])
+    if step == 1:                                          # the skill profile: highest level passed per skill
         by = {r["test"]: r for r in rows}
         flat_ok = all(by.get(t, {}).get("success") == by.get(t, {}).get("trials") and by.get(t) for t in FLAT_GATE)
         lines += ["", "FLAT GATE (50 of 50 on %s): %s" % (", ".join(FLAT_GATE), "PASSED" if flat_ok else "NOT PASSED"), "",
