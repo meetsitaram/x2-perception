@@ -20,7 +20,17 @@ Options are read from the environment when the config is built (the supervisor p
      (about 15% of robots otherwise). The stand column keeps its zero commands.
   d  not moving: `dont_wait` x 4 early (HIKING_X2_WAIT_EARLY overrides the 4; run 3 uses 2); and an early termination `stalled`: a robot commanded to move whose average speed since
      the episode start is under 0.1 m/s after 4 s is reset. The termination is switched off at `end`.
-  e  `feet_air_time` x 4 early.
+  e  `feet_air_time` x 4 early (HIKING_X2_AIR_EARLY overrides the 4).
+  f  fall penalty: a one-off reward of -P on the step an episode ends by base_contact, bad_orientation or root_height (not on
+     time-outs or `stalled` resets), P = HIKING_X2_FALL_PENALTY (default 8), held until `hold`, linear to 0 at `end` (the paper
+     has no termination penalty; at `end` the full `is_alive` makes a fall cost about as much on its own). Isaac Lab's
+     `is_terminated_term`, times the schedule; weight = -P / step dt (the reward manager multiplies by dt).
+  r  reference-state starts: a share of resetting robots (HIKING_X2_REF_START, default 0.5, held to `hold`, linear to 0 at
+     `end`; the paper's G1 task has none) take joint positions and velocities, body roll/pitch and body velocities from the
+     motion reference's current frame (the walking clips of the v2 reference that the style reward uses). Position and heading
+     stay those of the normal reset (spawn point and yaw), so nobody is placed off the tile or into an obstacle: x, y and yaw
+     from `reset_base`, height = spawn origin height + the clip's own pelvis height + 3 cm, velocities rotated from the
+     clip's heading to the robot's.
   s  style reward coefficient (0.25) x 0.3 early (HIKING_X2_STYLE_EARLY), patched into the trainer's WasabiPPO.
      Every staged run (with or without s) logs `style_coef` and `style_reward_weighted` per step.
 Every option is a listed deviation from the paper, with its schedule; the run's state file must say which were on.
@@ -166,6 +176,68 @@ def feet_air_time_staged(env, command_name: str, vel_threshold: float, sensor_cf
     return mdp.feet_air_time(env, command_name=command_name, vel_threshold=vel_threshold, sensor_cfg=sensor_cfg) * _s(env, early_scale)
 
 
+# ---- r: reference-state starts ----
+def _yaw(q):  # wxyz -> yaw
+    w, x, y, z = q.unbind(-1)
+    return torch.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+
+
+def _quat_z(a):  # yaw angle -> wxyz
+    return torch.stack([torch.cos(a / 2), torch.zeros_like(a), torch.zeros_like(a), torch.sin(a / 2)], -1)
+
+
+def _qmul(a, b):
+    aw, ax, ay, az = a.unbind(-1); bw, bx, by, bz = b.unbind(-1)
+    return torch.stack([aw * bw - ax * bx - ay * by - az * bz, aw * bx + ax * bw + ay * bz - az * by,
+                        aw * by - ax * bz + ay * bw + az * bx, aw * bz + ax * by - ay * bx + az * bw], -1)
+
+
+def _rot_z(v, a):  # rotate vectors (n, 3) about z by a (n,)
+    c, s_ = torch.cos(a), torch.sin(a)
+    return torch.stack([c * v[:, 0] - s_ * v[:, 1], s_ * v[:, 0] + c * v[:, 1], v[:, 2]], -1)
+
+
+def reference_start_state(ref_pos, ref_quat, ref_lin, ref_ang, origin, robot_pos, robot_quat, lift=0.03):
+    """Pure tensor part of option r: keep the robot's x, y and yaw, take height above the origin, roll, pitch and body-frame
+    velocities from the reference frame. Returns pos (n,3), quat wxyz (n,4), lin vel w (n,3), ang vel w (n,3)."""
+    d = _yaw(robot_quat) - _yaw(ref_quat)
+    quat = _qmul(_quat_z(d), ref_quat)
+    pos = torch.stack([robot_pos[:, 0], robot_pos[:, 1], origin[:, 2] + (ref_pos[:, 2] - origin[:, 2]) + lift], -1)
+    return pos, quat, _rot_z(ref_lin, d), _rot_z(ref_ang, d)
+
+
+def reset_from_reference_staged(env, env_ids, early_share: float = 0.5, lift: float = 0.03):
+    share = _s(env, early_share, final=0.0)
+    if share <= 0.0 or env_ids is None or len(env_ids) == 0:
+        return
+    env_ids = torch.as_tensor(env_ids, device=env.device)
+    sel = env_ids[torch.rand(len(env_ids), device=env.device) < share]
+    if len(sel) == 0:
+        return
+    robot = env.scene["robot"]
+    ref = env.scene["motion_reference"]
+    _ = ref.data  # make the reference update its buffers, as reset_robot_state_by_reference does
+    st = ref.get_init_reference_state(sel)
+    origin = env.scene.env_origins[sel]
+    pos, quat, lin, ang = reference_start_state(st.base_pos_w, st.base_quat_w, st.base_lin_vel_w, st.base_ang_vel_w, origin,
+                                                robot.data.root_pos_w[sel], robot.data.root_quat_w[sel], lift)
+    robot.write_root_pose_to_sim(torch.cat([pos, quat], -1), env_ids=sel)
+    robot.write_root_velocity_to_sim(torch.cat([lin, ang], -1), env_ids=sel)
+    robot.write_joint_state_to_sim(st.joint_pos, st.joint_vel, env_ids=sel)
+
+
+# ---- f: fall penalty ----
+FALL_TERMS = "base_contact|bad_orientation|root_height"
+from isaaclab.envs.mdp.rewards import is_terminated_term as _is_terminated_term  # noqa: E402
+
+
+class fall_penalty_staged(_is_terminated_term):
+    """1 on the step a fall ends the episode (time-outs excluded by the base class; several fall terms at once still count 1), times the f schedule (1 -> 0)."""
+
+    def __call__(self, env, term_keys=FALL_TERMS):
+        return super().__call__(env, term_keys).clamp(max=1.0) * _s(env, 1.0, final=0.0)
+
+
 
 # ---- s: style reward coefficient (patches the trainer's WasabiPPO class; logs the weighted style reward per step) ----
 def install_style_schedule(algo_cls, early: float):
@@ -203,7 +275,7 @@ class X2ParkourStagedEnvCfg(X2ParkourTorsoCamEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         opts = _opts()
-        unknown = opts - set("abcdes")
+        unknown = opts - set("abcdefrs")
         assert not unknown, "unknown HIKING_X2_OPTS: %s" % sorted(unknown)
         from instinct_rl.algorithms.wasabi import WasabiPPO
         install_style_schedule(WasabiPPO, float(os.environ.get("HIKING_X2_STYLE_EARLY", "0.3")) if "s" in opts else 1.0)
@@ -236,4 +308,13 @@ class X2ParkourStagedEnvCfg(X2ParkourTorsoCamEnvCfg):
                                   params=dict(r.dont_wait.params, early_scale=float(os.environ.get("HIKING_X2_WAIT_EARLY", "4.0"))))
             self.terminations.stalled = DoneTerm(func=stalled, params={"command_name": "base_velocity"})
         if "e" in opts:
-            r.feet_air_time = RewTerm(func=feet_air_time_staged, weight=r.feet_air_time.weight, params=dict(r.feet_air_time.params))
+            r.feet_air_time = RewTerm(func=feet_air_time_staged, weight=r.feet_air_time.weight,
+                                      params=dict(r.feet_air_time.params, early_scale=float(os.environ.get("HIKING_X2_AIR_EARLY", "4.0"))))
+        if "r" in opts:  # added last, so it runs after reset_base and reset_robot_joints
+            from isaaclab.managers import EventTermCfg as EventTerm
+            self.events.reset_from_reference = EventTerm(func=reset_from_reference_staged, mode="reset",
+                                                         params={"early_share": float(os.environ.get("HIKING_X2_REF_START", "0.5"))})
+        if "f" in opts:
+            step_dt = self.sim.dt * self.decimation
+            r.fall_penalty = RewTerm(func=fall_penalty_staged, weight=-float(os.environ.get("HIKING_X2_FALL_PENALTY", "8.0")) / step_dt,
+                                     params={"term_keys": FALL_TERMS})

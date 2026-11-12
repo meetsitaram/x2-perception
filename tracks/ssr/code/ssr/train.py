@@ -133,9 +133,10 @@ def train(a):
         print("walking-start frames:", len(env.rsi_ok), "of", len(env.rsi_frames), flush=True)
     env.imit_w = a.imit_w
     env.stuck_term = a.stuck_term
-    env.flat_only = a.flat_only
+    env.flat_only = a.flat_only or a.flat_until > 0
+    env.feet_air_w, env.feet_air_min = a.feet_air_w, a.feet_air_min
     env.only_terms = set(a.only_terms.split(",")) if a.only_terms else None
-    if a.flat_only:
+    if a.flat_only or a.flat_until > 0:
         env.reset(torch.arange(a.num_envs, device=dev))
         env.refresh()
         env._contacts()
@@ -161,6 +162,8 @@ def train(a):
         env.guide_on = bool(ck.get("guide_on", False))
         lr_ppo = opt_ppo.param_groups[0]["lr"]
         print("resumed", a.resume, start, flush=True)
+    if a.flat_until > 0:
+        env.flat_only = not (start >= a.flat_until and bool((env.type != T.FLAT).any()))   # resumed after the switch: keep the loaded levels
 
     N_, Tn = a.num_envs, STEPS
     h = enc.init_h(N_, dev)
@@ -178,6 +181,20 @@ def train(a):
                  done=z0(), term=z0(), amp=z0(AMP_DIM * AMP_FRAMES), idx=torch.zeros(Tn, N_, dtype=torch.long, device=dev),
                  hb=z0(HB_NX * HB_NY), hf=z0(2 * HF_NX * HF_NY), sole=z0(2, 3), touch=torch.zeros(Tn, N_, 2, dtype=torch.bool, device=dev),
                  base=z0(2), yaw=z0(), nprop=z0(PROP_DIM))
+        if a.flat_until > 0 and env.flat_only and it >= a.flat_until:      # flat phase over: terrain curriculum from level 0
+            env.flat_only = False
+            allr = torch.arange(N_, device=dev)
+            env.type[:] = torch.randint(0, 5, (N_,), device=dev) if a.obst_ramp <= 0 else torch.where(torch.rand(N_, device=dev) < a.obst0, torch.randint(0, 4, (N_,), device=dev), torch.full((N_,), T.FLAT, device=dev))
+            env.level[:] = 0
+            env.ep[:] = 1                                              # so reset() keeps these types and levels (it redraws them when no step was taken yet)
+            env.reset(allr)
+            env.refresh()
+            env._contacts()
+            env._update_obs(allr)
+            h = h * 0.0
+            ep_r.zero_(); ep_len.zero_()
+            print("flat phase over at", it, "; terrain curriculum on, types", torch.bincount(env.type, minlength=5).tolist(), flush=True)
+        env.obst_target = None if (a.obst_ramp <= 0 or a.flat_until <= 0 or env.flat_only or it >= a.flat_until + a.obst_ramp) else a.obst0 + (0.8 - a.obst0) * (it - a.flat_until) / a.obst_ramp
         env.boot = max(0.0, 1.0 - it / a.boot_iters) if a.boot_iters > 0 else 0.0     # early schedule, not in the paper: off unless asked for
         env.air_bonus = 8.0 * env.boot
         ramp = 1.0 if a.stage_b <= 0 else min(1.0, max(0.0, (it - a.stage_a) / max(a.stage_b - a.stage_a, 1)))   # staged schedule: 0 before stage_a, 1 from stage_b on
@@ -188,7 +205,9 @@ def train(a):
         env.stuck_term = a.stuck_term and (a.stuck_until <= 0 or it < a.stuck_until)
         env.prog_gate = 0.0 if a.prog_gate <= 0 else a.prog_gate * (1.0 if gate_start is None else max(0.0, 1.0 - (it - gate_start) / max(a.gate_ramp, 1)))
         w[2] = a.w_style * ramp
-        if a.style_low >= 0:                         # t_f: style held low until real swing appears, then ramped to full
+        if a.style_from > 0:                         # style by schedule from style_from (overrides the latch)
+            w[2] = a.w_style * ramp * min(1.0, max(0.0, (it - a.style_from) / max(a.gate_ramp, 1)))
+        elif a.style_low >= 0:                         # t_f: style held low until real swing appears, then ramped to full
             w[2] = w[2] * (a.style_low if gate_start is None else min(1.0, a.style_low + (1.0 - a.style_low) * (it - gate_start) / max(a.gate_ramp, 1)))
         env.gait = {}
         env.cnt = {}
@@ -388,7 +407,7 @@ def train(a):
                          foothold=dict(touchdowns=cnt.get("td_n", 0.0), msr=round(cnt.get("td_support", 0.0) / max(cnt.get("td_n", 0.0), 1.0), 4),
                                        sfr=round(cnt.get("td_safe", 0.0) / max(cnt.get("td_n", 0.0), 1.0), 4)),
                          levels_by_type=dict(zip(T.TYPES, lv)), level_max_share=round((env.level[~env.free] >= T.NLEVEL - 1).float().mean().item(), 4),
-                         samples_per_s=round(N_ * Tn / max(time.time() - t0, 1e-6)), num_envs=N_, air_td=round(air_td, 3), air_long_share=round(float(cnt.get("air_long", 0.0)) / max(float(cnt.get("air_n", 0.0)), 1.0), 3), prog_mean=round(float(cnt.get("prog_sum", 0.0)) / max(float(cnt.get("prog_n", 0.0)), 1.0), 3), prog_gate=round(env.prog_gate, 3), gate_start=gate_start, w_style_now=round(float(w[2]), 4), gpu_util=gu, gpu_mem_mb=gm)
+                         samples_per_s=round(N_ * Tn / max(time.time() - t0, 1e-6)), num_envs=N_, air_td=round(air_td, 3), air_long_share=round(float(cnt.get("air_long", 0.0)) / max(float(cnt.get("air_n", 0.0)), 1.0), 3), prog_mean=round(float(cnt.get("prog_sum", 0.0)) / max(float(cnt.get("prog_n", 0.0)), 1.0), 3), prog_gate=round(env.prog_gate, 3), gate_start=gate_start, flat_phase=bool(env.flat_only), obst_share=round(float((env.type != T.FLAT).float().mean()), 3), obst_target=env.obst_target, w_style_now=round(float(w[2]), 4), gpu_util=gu, gpu_mem_mb=gm)
             rec = dict(it=it, dt=round(time.time() - t0, 2), elapsed_h=round((time.time() - t_start) / 3600, 3), r_l=round(rs[0], 3), r_f=round(rs[1], 3), r_s=round(rs[2], 3),
                        ep_ret=round(float(np.mean(done_stats["ret"])) if done_stats["ret"] else 0.0, 2), ep_len_s=round(float(np.mean(done_stats["len"]) if done_stats["len"] else 0.0) * 0.02, 2),
                        n_done=len(done_stats["len"]), level=lv, kl=round(kl_m, 4), lr=lr_ppo, pi=round(pi_l, 4), v=round(v_l, 3), std=round(actor.std().mean().item(), 3),
@@ -450,6 +469,12 @@ if __name__ == "__main__":
     ap.add_argument("--rsi_min_speed", type=float, default=0.0, help="walking starts only from frames moving forward at least this fast (m/s); 0 = any frame")
     ap.add_argument("--adv_floor", type=float, default=2e-3)
     ap.add_argument("--boot_iters", type=int, default=0, help="early schedule length (earlier runs: 3000); 0 = the paper's rewards from the start")
+    ap.add_argument("--style_from", type=int, default=0, help="deviation: style weight 0 before this iteration, ramped to --w_style over --gate_ramp; overrides --style_low; 0 = off")
+    ap.add_argument("--feet_air_w", type=float, default=0.0, help="deviation: feet-air-time reward weight (per touchdown, W * clamp(air - feet_air_min, 0, 0.4 - feet_air_min)); 0 = off")
+    ap.add_argument("--feet_air_min", type=float, default=0.1, help="air time below which a touchdown earns nothing")
+    ap.add_argument("--obst0", type=float, default=0.25, help="with --flat_until and --obst_ramp: share of robots on obstacle tiles at the switch")
+    ap.add_argument("--obst_ramp", type=int, default=0, help="with --flat_until: iterations over which the obstacle share rises from --obst0 to 0.8; 0 = all at once")
+    ap.add_argument("--flat_until", type=int, default=0, help="deviation: all robots on the flat tile until this iteration, then terrain types redrawn at level 0 and the curriculum on; 0 = off")
     ap.add_argument("--style_low", type=float, default=-1.0, help="t_f (deviation): style weight x this until touchdown air time > --gate_air for 5 iterations, then ramped to full over --gate_ramp; -1 = off")
     ap.add_argument("--prog_gate", type=float, default=0.0, help="t_e (deviation): multiply orientation, yaw, base height, roll/pitch rate and lateral terms by 1 - g(1 - progress) for robots with a moving command; 0 = off")
     ap.add_argument("--gate_air", type=float, default=0.2, help="with --prog_gate: start ramping the gate off once mean touchdown air time exceeds this for 5 iterations")

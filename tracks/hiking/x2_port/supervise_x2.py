@@ -165,7 +165,12 @@ def housekeeping(path, pr, last):
 
 
 def main():
-    STOP.unlink(missing_ok=True)
+    if STOP.exists():  # an old stop flag is moved to _trash/<date>/, not deleted (nothing under /mnt/filesystem-g4 is deleted)
+        tr = T / "_trash" / time.strftime("%Y-%m-%d"); tr.mkdir(parents=True, exist_ok=True)
+        dst = tr / ("STOP_%s_%s" % (A.name, time.strftime("%H%M%S")))
+        STOP.rename(dst)
+        with open(tr / "NOTES.txt", "a") as f:
+            f.write("%s %s: empty stop flag of %s, moved by supervise_x2.py at its start\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), dst, A.name))
     (OUT / "supervisor.pid").write_text(str(os.getpid()))
     log("supervisor start pid %d task %s total %d" % (os.getpid(), A.task, A.total))
     tries = 0

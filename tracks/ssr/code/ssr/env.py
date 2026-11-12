@@ -174,6 +174,8 @@ class SSREnv:
         self.prog_gate = 0.0                    # t_e (not in the paper): weight of the forward-progress gate on GATED_TERMS for robots with a moving command
         self.v_ema = torch.zeros(n, 2, device=dev)   # base planar velocity (body frame), 0.5 s moving average, for the progress gate
         self.prog = torch.ones(n, device=dev)
+        self.feet_air_w, self.feet_air_min = 0.0, 0.1   # feet-air-time reward (not in the paper; off unless --feet_air_w)
+        self.obst_target = None                 # obstacle-tile share ramp after the flat phase (None = types fixed)
         self.late_scale = 1.0                   # staged schedule (not in the paper): factor on every term outside CORE_TERMS, 0 -> 1 early in training
         self.cnt = {}                           # raw counts for the log (termination causes, touchdown support)
         self.reset(torch.arange(n, device=dev))
@@ -355,6 +357,13 @@ class SSREnv:
                 self.type[ids] = self.type[ids] if self.ep.sum() else torch.randint(0, 5, (n,), device=self.dev, generator=self.gen)
                 if not self.ep.sum():
                     self.level[ids] = torch.randint(0, 4, (n,), device=self.dev, generator=self.gen)
+            if self.obst_target is not None and not self.flat_only:     # move robots from the flat type to obstacle tiles as their episodes end
+                fl = ids[self.type[ids] == T.FLAT]
+                need = int(self.obst_target * self.N) - int((self.type != T.FLAT).sum())
+                if need > 0 and len(fl):
+                    cv = fl[:need]
+                    self.type[cv] = torch.randint(0, 4, (len(cv),), device=self.dev, generator=self.gen)
+                    self.level[cv] = 0
             if self.flat_only:
                 self.type[ids], self.level[ids] = T.FLAT, 0
             x, y = self._terrain_reset(ids)
@@ -688,6 +697,7 @@ class SSREnv:
             lateral=0.08 * torch.exp((dy - D_Y_MIN).clamp(max=0.0) / SIG_D),
             air_bonus=self.air_bonus * (self.air.clamp(max=T_AIR) * first.float()).sum(-1) * (~still).float(),   # early training only: gets stepping started
             imitate=self._imitation(q_rel),
+            feet_air=self.feet_air_w * ((self.air.clamp(max=T_AIR) - self.feet_air_min).clamp(min=0.0) * first.float()).sum(-1) * (~still).float(),
         )
         self.v_ema += 0.04 * (v[:, :2] - self.v_ema)
         cn = cmd[:, :2].norm(dim=-1)

@@ -55,3 +55,14 @@ gym.register(
         "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_amp_cfg:X2ParkourPPORunnerCfg",
     },
 )
+
+# Run 4: the staged task with the port fixes of the 2026-11-12 audit (fixed.py). Not yet run in Isaac.
+gym.register(
+    id="Instinct-Parkour-Fixed-Amp-X2-v0",
+    entry_point="instinctlab.envs:InstinctRlEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{task_entry}.fixed:X2ParkourFixedEnvCfg",
+        "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_amp_cfg:X2ParkourPPORunnerCfg",
+    },
+)

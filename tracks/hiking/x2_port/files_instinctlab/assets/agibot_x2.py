@@ -3,7 +3,8 @@
 Model: the shared X2 URDF (/mnt/filesystem-g4/data/robots/x2_ultra/urdf/x2_ultra.urdf, mesh feet), root = pelvis.
 Actuator plant: vendor datasheet 2026-08-23 (gwbc-v6 config/robot_plant/x2_ultra.yaml), with the same BeyondMimic rule the G1
 task uses: kp = armature * (2 pi 10 Hz)^2, kd = 2 * 2.0 * armature * (2 pi 10 Hz), action scale = 0.25 * effort / kp.
-Delayed PD actuators (0-2 steps) as in the G1 task.
+Delayed PD actuators (0-2 steps) in runs 1-3. Correction (audit 2026-11-12): the G1 run used implicit PD with no delay
+(its apply_shoe_config replaces the delayed actuators); run 4 (config/x2/fixed.py) uses implicit PD like the G1.
 """
 import os
 
