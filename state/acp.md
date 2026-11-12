@@ -991,3 +991,37 @@ paper-eval sizes one after the other (100 and 334 episodes per set per seed, 3 s
 `tools/eval_live.sh` (flock, 80 GB start check, nice 10, cores 0-3, `EVAL_TIMEOUT` 1,500 s, self-abort under 10 GB free).
 Training speed before / during come from `eval_live.sh`, after from `live_test.sh`. Results go to
 `eval/paper_eval/live_test_2750.log` and `live_s2_v1_002750_per*.live.json`, then here.
+
+**Memory with the replay buffer full** (1.5 M samples from iteration about 2,591): 51.6 GB as logged by the trainer
+(52.8 GB in nvidia-smi), 69,700-70,500 env-steps/s. Verified.
+
+**Live evaluation test, checkpoint 2,750** (02:05-02:14 UTC; `eval/paper_eval/live_test_2750.log`, `live_s2_v1_002750_per{100,334}.{json,live.json,gpu.txt,out}`):
+
+| Eval size | Robots | Eval time | Training env-steps/s before / during / after | Loss during | Peak total GPU memory |
+|---|---|---|---|---|---|
+| 100 per set per seed | 900 | 146 s | 69,930 / 44,345 / 69,596 | **36.6 %** | 53.9 GB |
+| 334 per set per seed (full paper eval, 8,016 episodes) | 3,006 | 190 s | 69,596 / 39,278 / 69,695 | **43.6 %** | 56.6 GB |
+
+Both evals finished (rc 0), with no abort, no OOM and no new trainer warnings. Training was back to full speed by the next iteration.
+**Verdict: not accepted** under the coordinator's rule (at most about 20 % loss while running). The GPU is time-sliced between
+the two processes, so `nice` (CPU only) cannot protect the trainer, and a 3x smaller eval only lowers the loss from 44 to
+37 %. Cost per full eval is about 85 s of training (about 7 iterations), less than an eval inside a stop (3-5 min). The
+choice is the coordinator's / user's. Until then, evaluation stays in needed restarts. The `acp-evaltest` tmux session has
+ended; nothing is armed.
+
+**Paper eval at 2,750 (stage 2, oracle contacts, data stage2b, 8,016 episodes, run live):** pooled **92.7 %** (mean of the
+eight equal-size sets): Pico 2x2 100.0, ramps 98.1, flat 93.5, chains 93.4 (the 40 cm step-ups are now filtered out; 76.9
+at 2,250 with them), 4x4 93.2, blocks 93.3, fitted climbs 90.1, terrain-park stairs 89.7. Not directly comparable with
+2,250's 91.2 % (nine sets including the faulty descents, chains unfiltered). **Defect found:** every paper eval so far ran
+MuJoCo Warp with `njmax` 300 (training uses 450) and printed nefc overflows (35-290 lines). Fixed in
+`tools/paper_eval.py` (default 450, `ACP_NJMAX`) for future evals; the numbers above and before carry the defect.
+
+**Ladder step 1 at 2,250 (eval monitor, coordinator's message):** stairs up level 1 (10 cm risers, 30 cm run) 23/50, all
+27 falls at the first riser, while 14 and 18.6 cm passed 50/50. Riser heights in the training props
+(`data/clips/*_props.json`): fitted climbs gst_v1 16-22 cm (none lower), terrain-park stairs two levels of 14 and 16 cm,
+descents v2 14-22 cm, 4x4 8 cm, block steps mostly 4 cm and 10 cm, chains 10-11 cm stairs (46 clips) and the 40 cm step-ups
+that are filtered out. So **no fitted stair flight has a riser under 14 cm**; 10 cm appears only as chain stairs and single
+blocks. Action: low-riser flights (risers 10-15 cm, treads 25-32 cm, climbs and descents) are being fitted on the desktop
+(`code/data_build/gen_stairfit_low.py`, same rules and screens as the descents v2) for the stage-2c data. Not done: the
+planner's foothold on a 10 cm riser in a closed loop (my CPU check runs on reference terrains; the eval monitor's synthetic
+stairs are not in my tools yet).
