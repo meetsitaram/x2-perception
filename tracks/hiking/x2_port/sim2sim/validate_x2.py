@@ -27,12 +27,15 @@ def out(*a):
 
 def main():
     np.set_printoptions(precision=4, suppress=True, linewidth=200)
-    ec = s2s.EnvConfig()
-    policy = s2s.OnnxPolicy()
-    rec = np.load(s2s.ASSETS / "eval" / "obs_check.npz")
-    st = np.load(s2s.ASSETS / "eval" / "obs_check_sim_state.npz")
+    # run 1 is the only run with an Isaac recording
+    run, export = s2s.ASSETS / "run", s2s.ASSETS / "eval"
+    ec = s2s.EnvConfig(run, export / "adapter_card.json")
+    policy = s2s.OnnxPolicy(export / "policy.onnx")
+    rec = np.load(export / "obs_check.npz")
+    st = np.load(export / "obs_check_sim_state.npz")
     obs = rec["obs"]
     T = len(obs)
+    DR = ec.cam["drange"][1]  # depth range (m) of this run
     assert [str(j) for j in st["joint_names"]] == ec.joints, "joint order: recording vs card"
     assert np.allclose(st["default_joint_pos"], ec.default_q, atol=1e-6)
     assert np.array_equal(obs, st["obs"])
@@ -98,9 +101,9 @@ def main():
 
     # ------------------------------------------------------------------ 3. depth
     a, size, nf = ec.layout["depth_image"]
-    D = obs[:, a:a + size].reshape(T, nf, 18, 32)
+    D = obs[:, a:a + size].reshape(T, nf, *ec.frame_shape)
     out("3. DEPTH")
-    out(f"   (a) frame order. value range of the recording {D.min():.3f}..{D.max():.3f} (x2.5 m = {D.min()*2.5:.2f}..{D.max()*2.5:.2f} m)")
+    out(f"   (a) frame order. value range of the recording {D.min():.3f}..{D.max():.3f} (x2.5 m = {D.min()*DR:.2f}..{D.max()*DR:.2f} m)")
     sh_a = max(float(np.abs(D[t, :-1] - D[t - 5, 1:]).max()) for t in range(5, T))
     sh_b = max(float(np.abs(D[t, 1:] - D[t - 5, :-1]).max()) for t in range(5, T))
     out(f"       frame i of step t == frame i+1 of step t-5: max diff {sh_a:.1e};   opposite direction: {sh_b:.3f}")
@@ -127,7 +130,7 @@ def main():
     out(f"   (b) comparison with a MuJoCo ray-cast on FLAT ground. The Isaac terrain (stair-up tile, perlin roughness) is not available, so the ground")
     out(f"       is assumed flat at the height of the lowest sole point while standing (steps 25..49): z = {ground:.3f} m (world);"
         f" lowest sole at step 0: {sole[0].min()-ground:+.3f} m above it, spread over steps 25..49: {sole[25:].min(axis=1).std()*1000:.1f} mm")
-    mj = np.zeros((T, 18, 32), np.float32)
+    mj = np.zeros((T, *ec.frame_shape), np.float32)
     robot_px = np.zeros(T, int)
     raw_full, raw_robot = {}, {}
     for t in range(T):
@@ -185,7 +188,7 @@ def main():
     out(f"       left/right: (right third - left third) mean depth per step, Isaac vs MuJoCo: correlation over steps {corr(lr_i, lr_m):+.3f},"
         f" Isaac range {lr_i.min():+.4f}..{lr_i.max():+.4f}, MuJoCo range {lr_m.min():+.4f}..{lr_m.max():+.4f}")
     out(f"       robot's own body in the cropped image (MuJoCo, recorded poses): {robot_px.min()}..{robot_px.max()} of 576 pixels hit the robot;"
-        f" minimum recorded depth {D.min()*2.5:.2f} m -> no near (own-body) pixels in the recording either")
+        f" minimum recorded depth {D.min()*DR:.2f} m -> no near (own-body) pixels in the recording either")
     out(f"       uncropped 36x64 image (MuJoCo): pixels on the robot's own body at step 0: {raw_robot[0]}, at step 49: {raw_robot[49]} of 2304")
     out("")
 
@@ -259,9 +262,9 @@ def main():
     out("")
     # ------------------------------------------------------------------ 7. is the depth used at all
     import onnxruntime as ort
-    enc = ort.InferenceSession(str(s2s.ASSETS / "eval" / "0-depth_encoder.onnx"), providers=["CPUExecutionProvider"])
+    enc = ort.InferenceSession(str(export / "0-depth_encoder.onnx"), providers=["CPUExecutionProvider"])
     nm = enc.get_inputs()[0].name
-    lat = enc.run(None, {nm: obs[:, a:a + size].reshape(T, 8, 18, 32)})[0] if enc.get_inputs()[0].shape[0] != 1 else         np.concatenate([enc.run(None, {nm: obs[t:t + 1, a:a + size].reshape(1, 8, 18, 32)})[0] for t in range(T)])
+    lat = enc.run(None, {nm: obs[:, a:a + size].reshape(T, 8, *ec.frame_shape)})[0] if enc.get_inputs()[0].shape[0] != 1 else         np.concatenate([enc.run(None, {nm: obs[t:t + 1, a:a + size].reshape(1, 8, *ec.frame_shape)})[0] for t in range(T)])
     out("7. DEPTH ENCODER OUTPUT (finding, not a test of the port): 0-depth_encoder.onnx on the 50 recorded Isaac depth stacks")
     out(f"   latent shape {lat.shape}, max |latent| = {np.abs(lat).max():.3g}, non-zero entries: {int((lat != 0).sum())} of {lat.size}")
     o2 = obs.copy(); o2[:, a:] = np.clip(o2[:, a:] * 0.8, 0, 1)

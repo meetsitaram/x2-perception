@@ -3,18 +3,26 @@
 Port of hiking-in-the-wild/scripts/sim2sim_mujoco.py (Unitree G1). Never uses the GPU for compute: CUDA is hidden and
 ONNX runs on CPUExecutionProvider. (The optional mp4 uses MuJoCo's OpenGL offscreen renderer for drawing only.)
 
-What it reproduces from the Isaac training env (assets/run/env.yaml, cross-checked against assets/eval/adapter_card.json):
+Every run setting is read from the run's params/env.yaml (--run) and, when an export folder with adapter_card.json is
+given (--export), asserted equal to the card: PD gains, armature, effort / velocity limits, default pose, action scale,
+observation layout, command rule, and the depth camera (body, offset, quaternion, apertures = field of view, crop, depth
+range, frame shape, history). Nothing of run 1 is hard-coded; run 1 (head camera, armature-rule gains, 18x32 frames,
+5408 obs) and run 2 (torso camera, measured gains, 36x32 frames, 10016 obs) both load. Robot facts that are not in
+env.yaml stay in this file: the URDF, the filtered collision pairs of the training asset, the sole spheres.
+
+What it reproduces from the Isaac training env:
   * robot: the training URDF (x2_ultra.urdf) with the massless base_link removed -> pelvis is the free root, fixed links
     fused, collision = convex hull of each link's collision mesh (MuJoCo collides meshes as their convex hull),
     self-collision on except the pairs the training filtered (torso/head_pitch, knee/ankle_roll, wrist_yaw/wrist_roll)
   * actuators: explicit PD, tau = kp (q* - q) - kd qd clipped to the effort limit, recomputed every 5 ms physics step;
     armature per joint; sim dt 0.005, decimation 4 (policy 50 Hz); q* = default + action_scale * action for the 29
     commanded joints, the two head joints are held at 0 by their own PD
-  * observation (5408): base_ang_vel*0.25 | projected_gravity | velocity_commands | joint_pos-default (31) |
-    joint_vel*0.05 (31) | last action (29), each an 8-step history oldest first; then 8 depth frames (18x32) oldest first
-  * depth: ray-cast pinhole 64x36 on head_pitch_link (offset + 40 deg down), min distance 0.1 m, crop (18,0,16,16),
-    gaussian blur k3 sigma 1, clip/normalise 0..2.5 m, 37-frame 50 Hz history, 8 frames every 5th; rays hit the terrain
-    and the robot's own visual meshes
+  * observation: base_ang_vel*0.25 | projected_gravity | velocity_commands | joint_pos-default (31) |
+    joint_vel*0.05 (31) | last action (29), each an 8-step history oldest first; then 8 depth frames oldest first
+    (run 1: 18x32 -> 5408 values; run 2: 36x32 -> 10016)
+  * depth: ray-cast pinhole camera on the body named in env.yaml (run 1: head_pitch_link, 40 deg down; run 2:
+    torso_link, 61.6 deg down), min distance 0.1 m, crop, gaussian blur k3 sigma 1, clip/normalise to the depth range,
+    37-frame 50 Hz history, 8 frames every 5th; rays hit the terrain and the robot's own visual meshes
   * command: PoseVelocityCommand from a target point: vx = clip(2*x_b, 0, vmax), vy = 0, yaw rate = clip(2*heading
     error, -1, 1), all zero inside the 0.4 m stop radius
 
@@ -36,9 +44,11 @@ Deviations from Isaac (PhysX) -- none of them tuned:
   * no domain randomisation, no pushes, no reset noise (unless a recorded state is given).
 
 usage (from this folder, python = C:/Users/PC/.venvs/hiking/Scripts/python.exe):
-  python sim2sim_mujoco_x2.py --name x2_ckpt500_mujoco_flat --terrain flat --seconds 14 --vmax 0.74
+  python sim2sim_mujoco_x2.py --name x2_ckpt500_mujoco_flat --terrain flat --seconds 14 --vmax 0.74      # run 1 (default)
   python sim2sim_mujoco_x2.py --name x2_ckpt500_mujoco_stairs --terrain stairs --seconds 14 --vmax 0.74
-  python validate_x2.py            # checks against the Isaac recording, writes validation.txt
+  python sim2sim_mujoco_x2.py --run assets/run2 --export assets/eval_v2_250 --name x2v2_ckpt250_mujoco_flat --no-video
+  python validate_x2.py            # run 1 against the Isaac recording, writes validation.txt
+  python depth_check_run2.py       # run-2 camera against the acceptance landmarks, writes depth_check_run2.txt
 """
 
 from __future__ import annotations
@@ -62,9 +72,8 @@ import yaml
 
 HERE = pathlib.Path(__file__).resolve().parent
 ASSETS = HERE / "assets"
-CARD_JSON = ASSETS / "eval" / "adapter_card.json"
-ENV_YAML = ASSETS / "run" / "env.yaml"
-POLICY_ONNX = ASSETS / "eval" / "policy.onnx"
+DEFAULT_RUN = ASSETS / "run"  # CLI default only (run 1, the run with an Isaac recording): folder with env.yaml
+DEFAULT_EXPORT = ASSETS / "eval"  # CLI default only: folder with policy.onnx + adapter_card.json
 X2_DESC = pathlib.Path(r"C:\Users\PC\projects\gwbc-v6\gear_sonic\data\assets\robot_description")
 URDF = X2_DESC / "urdf" / "x2_ultra" / "x2_ultra.urdf"
 MESHDIR = X2_DESC / "urdf" / "x2_ultra" / "meshes"
@@ -106,17 +115,57 @@ def _match(table, name, default=None):
     return default
 
 
-class EnvConfig:
-    """Everything the player needs, read from the run's env.yaml; joint order from the adapter card; the card's numbers
-    (default pose, gains, limits, armature, action scale, observation layout) are asserted equal to the yaml's."""
+def find_env_yaml(run) -> pathlib.Path:
+    """`run` may be the env.yaml itself, a folder holding it, or a training run folder (params/env.yaml)."""
+    run = pathlib.Path(run)
+    for cand in (run, run / "env.yaml", run / "params" / "env.yaml"):
+        if cand.is_file():
+            return cand
+    raise FileNotFoundError(f"no env.yaml under {run}")
 
-    def __init__(self, env_yaml: pathlib.Path = ENV_YAML, card_json: pathlib.Path = CARD_JSON):
-        with open(env_yaml) as f:
+
+def isaac_joint_order(urdf_text: str):
+    """Joint order Isaac Lab gives the articulation: breadth first from the root link, the moving joints under each link
+    in alphabetical order (links behind fixed joints are merged into their parent)."""
+    import xml.etree.ElementTree as ET
+
+    rob = ET.fromstring(re.sub(r"<\?xml[^>]*\?>", "", urdf_text))
+    kids, children = {}, set()
+    for j in rob.findall("joint"):
+        par, ch = j.find("parent").get("link"), j.find("child").get("link")
+        kids.setdefault(par, []).append((j.get("name"), j.get("type"), ch))
+        children.add(ch)
+    roots = [l.get("name") for l in rob.findall("link") if l.get("name") not in children]
+    assert len(roots) == 1, roots
+
+    def moving(link):  # moving joints directly under `link`, looking through fixed joints
+        out = []
+        for name, typ, ch in kids.get(link, []):
+            out += moving(ch) if typ == "fixed" else [(name, ch)]
+        return out
+
+    order, queue = [], [roots[0]]
+    while queue:
+        link = queue.pop(0)
+        for name, ch in sorted(moving(link)):
+            order.append(name)
+            queue.append(ch)
+    return order
+
+
+class EnvConfig:
+    """Everything the player needs, read from one run's env.yaml (no run-specific constants in this file). Joint order
+    from the URDF (Isaac's breadth-first rule). If an adapter card is given, its numbers (joint order, default pose, gains,
+    limits, armature, action scale, observation layout, depth camera) are asserted equal to the yaml's."""
+
+    def __init__(self, run=DEFAULT_RUN, card_json=None):
+        self.env_yaml = find_env_yaml(run)
+        with open(self.env_yaml) as f:
             self.cfg = c = yaml.unsafe_load(f)
-        self.card = card = json.load(open(card_json))
-        self.joints = list(card["joint_order"])  # 31, Isaac articulation order
-        self.action_joints = list(card["action_joint_order"])  # 29
-        self.action_idx = np.array([self.joints.index(j) for j in self.action_joints])
+        self.card = card = json.load(open(card_json)) if card_json is not None and pathlib.Path(card_json).is_file() else None
+        self.joints = isaac_joint_order(training_urdf_text())  # 31, Isaac articulation order
+        if card is not None:
+            assert self.joints == list(card["joint_order"]), "joint order: URDF breadth-first vs card"
         self.sim_dt = float(c["sim"]["dt"])
         self.decimation = int(c["decimation"])
         rob = c["scene"]["robot"]
@@ -142,37 +191,45 @@ class EnvConfig:
         assert (self.kp > 0).all(), "a joint has no actuator"
         act = c["actions"]["joint_pos"]
         assert act["use_default_offset"] and act["clip"] is None
-        yaml_action_joints = [j for j in self.joints if any(re.fullmatch(e, j) for e in act["joint_names"])]
-        assert yaml_action_joints == self.action_joints, "action joint order: card vs env.yaml"
+        self.action_joints = [j for j in self.joints if any(re.fullmatch(e, j) for e in act["joint_names"])]  # 29
+        self.action_idx = np.array([self.joints.index(j) for j in self.action_joints])
+        assert card is None or self.action_joints == list(card["action_joint_order"]), "action joint order: card vs env.yaml"
         self.action_scale = np.array([_match(act["scale"], j) for j in self.action_joints])
+        # the armature rule of run 1 (kp = armature (2 pi 10 Hz)^2, kd = 4 armature 2 pi 10 Hz) or other per-joint gains
+        w0 = 2 * math.pi * 10.0
+        self.gains_rule = bool(np.allclose(self.kp, self.armature * w0 ** 2, rtol=1e-4) and np.allclose(self.kd, 4 * self.armature * w0, rtol=1e-4))
         # cross-check the card
-        for key, arr, names in (("default_pose", self.default_q, self.joints), ("kp", self.kp, self.joints),
+        for key, arr, names in () if card is None else (("default_pose", self.default_q, self.joints), ("kp", self.kp, self.joints),
                                 ("kd", self.kd, self.joints), ("effort_limit", self.effort, self.joints),
                                 ("velocity_limit", self.vel_limit, self.joints), ("armature", self.armature, self.joints),
                                 ("action_scale", self.action_scale, self.action_joints)):
             cv = np.array([card[key][j] for j in names])
             assert np.allclose(cv, arr, rtol=1e-6, atol=1e-9), f"card {key} differs from env.yaml"
-        assert abs(1.0 / (self.sim_dt * self.decimation) - card["control"]["policy_rate_hz"]) < 1e-9
+        assert card is None or abs(1.0 / (self.sim_dt * self.decimation) - card["control"]["policy_rate_hz"]) < 1e-9
         # observations (policy group), in config order
         pol = c["observations"]["policy"]
         skip = {"concatenate_terms", "concatenate_dim", "enable_corruption", "history_length", "flatten_history_dim"}
         self.obs_terms = [(k, v) for k, v in pol.items() if k not in skip and v is not None]
         self.term_dim = {"base_ang_vel": 3, "projected_gravity": 3, "velocity_commands": 3, "joint_pos": n, "joint_vel": n,
                          "actions": len(self.action_joints)}
+        cam0 = c["scene"]["camera"]
+        ct, cb, cl, cr = cam0["noise_pipeline"]["crop_and_resize"]["crop_region"]  # rows cut at the top / bottom, columns left / right
+        self.frame_shape = (int(cam0["pattern_cfg"]["height"]) - ct - cb, int(cam0["pattern_cfg"]["width"]) - cl - cr)  # (rows, cols)
         self.layout = {}  # name -> (start, size, history)
         off = 0
         for name, tc in self.obs_terms:
             if name == "depth_image":
-                size, hist = int(tc["params"]["num_output_frames"]) * 18 * 32, int(tc["params"]["num_output_frames"])
+                hist = int(tc["params"]["num_output_frames"])
+                size = hist * self.frame_shape[0] * self.frame_shape[1]
             else:
                 hist = int(tc.get("history_length") or 1)
                 size = self.term_dim[name] * hist
             self.layout[name] = (off, size, hist)
             off += size
         self.obs_dim = off
-        for t in card["observation"]["terms"]:
+        for t in ([] if card is None else card["observation"]["terms"]):
             assert self.layout[t["name"]][:2] == (t["start"], t["size"]), f"obs layout {t['name']}: card vs env.yaml"
-        assert self.obs_dim == card["observation"]["total"]
+        assert card is None or self.obs_dim == card["observation"]["total"]
         self.proprio_dim = self.layout["depth_image"][0]
         # command
         cmd = c["commands"]["base_velocity"]
@@ -185,7 +242,6 @@ class EnvConfig:
         # camera
         cam = c["scene"]["camera"]
         self.cam_body = cam["prim_path"].split("/")[-1]
-        assert self.cam_body == "head_pitch_link", self.cam_body
         pc = cam["pattern_cfg"]
         self.cam = dict(
             pos=np.array(cam["offset"]["pos"], float),
@@ -209,6 +265,16 @@ class EnvConfig:
         assert self.cam["convention"] == "world" and self.cam["clipping"] == "max" and self.cam["resize"] is None
         assert self.cam["pipeline"] == ["crop_and_resize", "gaussian_blur", "depth_normalization"], self.cam["pipeline"]
         assert abs(self.cam["update_period"] - self.sim_dt * self.decimation) < 1e-9
+        cq = self.cam["quat"] / np.linalg.norm(self.cam["quat"])
+        self.cam["pitch_down_deg"] = math.degrees(math.asin(max(-1.0, min(1.0, 2 * (cq[0] * cq[2] - cq[3] * cq[1])))))  # optical axis below the body's horizontal
+        self.cam["fov_deg"] = (2 * math.degrees(math.atan(self.cam["width"] / (2 * self.cam["fx"]))), 2 * math.degrees(math.atan(self.cam["height"] / (2 * self.cam["fy"]))))
+        if card is not None and "depth" in card:  # card vs env.yaml for the camera
+            cd = card["depth"]
+            assert cd["body"] == self.cam_body and np.allclose(cd["pos_in_body"], self.cam["pos"], atol=1e-6), "camera mount: card vs env.yaml"
+            assert list(cd["raw_size"]) == [self.cam["width"], self.cam["height"]] and np.allclose(cd["fov_deg"], self.cam["fov_deg"], atol=0.02)
+            if "frame_shape" in cd:  # cards written by the generalised export
+                assert tuple(cd["frame_shape"]) == self.frame_shape and np.allclose(cd["quat_wxyz"], cq, atol=1e-5)
+                assert np.allclose(cd["depth_range_m"], self.cam["drange"]) and tuple(cd["crop_region"]) == tuple(self.cam["crop"])
         dp = pol["depth_image"]["params"]
         self.depth_skip = int(dp["history_skip_frames"])
         self.depth_frames = int(dp["num_output_frames"])
@@ -221,7 +287,7 @@ class EnvConfig:
 class OnnxPolicy:
     """policy.onnx: flat observation (n, 5408) -> actions (n, 29). CPU only."""
 
-    def __init__(self, path: pathlib.Path = POLICY_ONNX, threads: int = 2):
+    def __init__(self, path, threads: int = 2):
         import onnxruntime as ort
 
         so = ort.SessionOptions()
@@ -436,8 +502,8 @@ def target_command(ec: EnvConfig, root_pos, root_quat, target, vmax):
 
 
 class DepthCamera:
-    """NoisyGroupedRayCasterCamera on head_pitch_link: z-depth (distance to image plane) by ray-casting the terrain and
-    the robot's own visual meshes; frame() returns the processed 18x32 image the policy sees (0..1)."""
+    """NoisyGroupedRayCasterCamera on the body named in env.yaml: z-depth (distance to image plane) by ray-casting the
+    terrain and the robot's own visual meshes; frame() returns the processed image the policy sees (ec.frame_shape, 0..1)."""
 
     def __init__(self, ec: EnvConfig, m):
         c = self.c = ec.cam
@@ -505,7 +571,7 @@ class DepthCamera:
         return img.astype(np.float32)
 
     def frame(self, m, d):
-        """Processed policy frame (18, 32). Only the cropped block is ray-cast (the blur runs after the crop)."""
+        """Processed policy frame (ec.frame_shape). Only the cropped block is ray-cast (the blur runs after the crop)."""
         return self.process(self.cast(m, d, self.dirs_full[self.crop_slices]))
 
 
@@ -515,9 +581,9 @@ class DepthCamera:
 class X2Sim:
     """One X2 in MuJoCo with the training observation / action interface.
 
-        sim = X2Sim(EnvConfig(), Terrain("flat"))
+        sim = X2Sim(EnvConfig("assets/run2"), Terrain("flat"))
         sim.reset(root_pos=(0, 0, ec.init_z))
-        obs = sim.observe(cmd)          # (5408,) float32, histories updated
+        obs = sim.observe(cmd)          # (ec.obs_dim,) float32, histories updated
         sim.step(policy(obs))           # 4 physics steps of explicit PD
     """
 
@@ -613,7 +679,7 @@ class X2Sim:
         return self.cam.frame(self.m, self.d)
 
     def depth_stack(self):
-        """(8, 18, 32): frames every 5th control step, oldest first, newest last; the newest one is `depth_lag` control
+        """(8, rows, cols): frames every 5th control step, oldest first, newest last; the newest one is `depth_lag` control
         steps old (1 in the Isaac recording)."""
         L = len(self.depth_hist)
         skip, n = self.ec.depth_skip, self.ec.depth_frames
@@ -621,7 +687,7 @@ class X2Sim:
         return np.stack([self.depth_hist[i] for i in idx], 0)
 
     def observe(self, cmd):
-        """Flat policy observation (5408,) for the current state; pushes one entry into every history.
+        """Flat policy observation (ec.obs_dim,) for the current state; pushes one entry into every history.
         Layout: for each proprio term 8 steps [t-7 .. t] concatenated (term after term), then the depth stack flattened
         (frame, row, column). On the first call after reset every history is filled with the first value."""
         parts = []
@@ -855,7 +921,25 @@ def summarize(rec, name, vmax):
 # ----------------------------------------------------------------------------------------------------------------------
 # video
 # ----------------------------------------------------------------------------------------------------------------------
-def render_video(sim: X2Sim, rec, path, caption, view="chase", target=None, fps=25, size=(1280, 720), crf=24):
+def run_labels(ec: EnvConfig, run_name=None, checkpoint=None, plant=None):
+    """(run name, checkpoint label, second caption line) built from the card / env.yaml, never from constants."""
+    card = ec.card or {}
+    ck = pathlib.PurePosixPath(str(card.get("checkpoint", "")).replace(chr(92), "/"))
+    if run_name is None:
+        run_name = ck.parent.parent.name if len(ck.parts) >= 3 else ec.env_yaml.parent.name
+    if checkpoint is None:
+        checkpoint = str(card["iteration"]) if "iteration" in card else "?"
+    if plant is None:
+        plant = (card.get("control") or {}).get("gains_label") or ("armature rule" if ec.gains_rule else "per-joint env.yaml gains")
+    g = lambda j: f"{ec.kp[ec.joints.index(j)]:.0f}/{ec.kd[ec.joints.index(j)]:.1f}"
+    c = ec.cam
+    line2 = (f"gains {plant}: kp/kd hip pitch {g('left_hip_pitch_joint')}, knee {g('left_knee_joint')}, ankle pitch {g('left_ankle_pitch_joint')}"
+             f"   |   depth camera on {ec.cam_body}, {c['pitch_down_deg']:.1f} deg down, {c['fov_deg'][0]:.0f} x {c['fov_deg'][1]:.0f} deg,"
+             f" frame {ec.frame_shape[0]} x {ec.frame_shape[1]}, {c['drange'][0]:.0f}-{c['drange'][1]:.1f} m")
+    return run_name, checkpoint, line2
+
+
+def render_video(sim: X2Sim, rec, path, caption, view="chase", target=None, fps=25, size=(1280, 720), crf=24, caption2=None):
     """mp4 (H.264, real time). view='chase': three-quarter view from behind-right, nothing between camera and robot;
     view='legs': side view at shin height following the feet. Caption burned into every frame."""
     import imageio
@@ -905,8 +989,10 @@ def render_video(sim: X2Sim, rec, path, caption, view="chase", target=None, fps=
             scn.ngeom += 1
         im = Image.fromarray(ren.render())
         dr = ImageDraw.Draw(im)
-        dr.rectangle((0, 0, W, 38), fill=(15, 18, 24))
+        dr.rectangle((0, 0, W, 38 if not caption2 else 62), fill=(15, 18, 24))
         dr.text((12, 7), caption, fill=(240, 240, 240), font=font)
+        if caption2:
+            dr.text((12, 36), caption2, fill=(205, 210, 220), font=small)
         c = rec["cmd"][k]
         v = rec["lin_vel_b"][k]
         vname = "legs close-up (side view, follows the feet)" if view == "legs" else "three-quarter chase view"
@@ -934,14 +1020,24 @@ def main():
     ap.add_argument("--no-self-collision", action="store_true")
     ap.add_argument("--no-video", action="store_true")
     ap.add_argument("--fps", type=int, default=25)
-    ap.add_argument("--ckpt-label", default="checkpoint 500")
+    ap.add_argument("--run", default=str(DEFAULT_RUN), help="env.yaml, a folder with env.yaml, or a run folder with params/env.yaml")
+    ap.add_argument("--export", default=str(DEFAULT_EXPORT), help="export folder: policy.onnx and (optional) adapter_card.json")
+    ap.add_argument("--run-name", default=None, help="caption: run name (default: from the card's checkpoint path)")
+    ap.add_argument("--checkpoint", default=None, help="caption: checkpoint number (default: the card's iteration)")
+    ap.add_argument("--plant-label", default=None, help="caption: name of the gain set (default: card control.gains_label, else derived)")
     ap.add_argument("--out", default=str(OUT_DIR))
     args = ap.parse_args()
 
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    ec = EnvConfig()
-    policy = OnnxPolicy()
+    export = pathlib.Path(args.export)
+    ec = EnvConfig(args.run, export / "adapter_card.json")
+    if ec.card is None:
+        print(f"[warn] no adapter_card.json in {export}: settings come from env.yaml only, nothing is cross-checked")
+    policy = OnnxPolicy(export / "policy.onnx")
+    run_name, ckpt, cap2 = run_labels(ec, args.run_name, args.checkpoint, args.plant_label)
+    print(f"[run] {run_name} checkpoint {ckpt}; env.yaml {ec.env_yaml}; obs {ec.obs_dim} = {ec.proprio_dim} + 8 x {ec.frame_shape[0]} x {ec.frame_shape[1]}")
+    print(f"[run] {cap2}")
     assert policy.obs_dim == ec.obs_dim and policy.num_actions == len(ec.action_joints)
     terrain = Terrain(args.terrain)
     sim = X2Sim(ec, terrain, foot=args.foot, self_collision=not args.no_self_collision, delay_steps=args.delay_steps,
@@ -958,7 +1054,8 @@ def main():
     else:
         rec = run_closed_loop(sim, policy, args.seconds, target=target, vmax=args.vmax)
     summary, line = summarize(rec, args.name, 0.0 if args.stand else args.vmax)
-    summary.update(terrain=terrain.describe(), foot=args.foot, delay_steps=args.delay_steps, depth_lag=args.depth_lag,
+    summary.update(run=run_name, checkpoint=ckpt, env_yaml=str(ec.env_yaml), export=str(export), settings=cap2, obs_dim=ec.obs_dim,
+                   terrain=terrain.describe(), foot=args.foot, delay_steps=args.delay_steps, depth_lag=args.depth_lag,
                    target=None if target is None else target.tolist(), summary_line=line)
     print("[summary]", line)
     write_csv(rec, ec, out / f"{args.name}.csv")
@@ -970,11 +1067,11 @@ def main():
                         feet_force=rec["feet_force"], depth=rec["depth"].astype(np.float32), joint_names=np.array(ec.joints),
                         first_obs=rec["first_obs"])
     if not args.no_video:
-        cap = (f"MuJoCo, not the training simulator; X2, Hiking track, {args.ckpt_label}, commanded "
+        cap = (f"MuJoCo, not the training simulator; X2, Hiking track, run {run_name}, checkpoint {ckpt}, commanded "
                f"{0.0 if args.stand else args.vmax:.2f} m/s")
         for view in ("chase", "legs"):
             p = out / f"{args.name}_{view}.mp4"
-            render_video(sim, rec, p, cap, view=view, target=target, fps=args.fps)
+            render_video(sim, rec, p, cap, view=view, target=target, fps=args.fps, caption2=cap2)
             print("[video]", p, f"{p.stat().st_size/1e6:.2f} MB")
 
 

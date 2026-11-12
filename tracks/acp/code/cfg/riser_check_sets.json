@@ -1,0 +1,1 @@
+{"dir": "/mnt/filesystem-g4/tracks/acp/data/clips", "hmap": "", "note": "riser check only, not training", "sets": [{"pkl": "gs2lo_v1.pkl", "props": "gs2lo_v1_props.json", "weight": 0.5}, {"pkl": "gst_v1.pkl", "props": "gst_v1_props.json", "weight": 0.5}]}

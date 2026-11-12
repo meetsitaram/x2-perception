@@ -55,7 +55,7 @@ def main():
     ac = ActorCritic(ck["actor_dim"], ck["critic_dim"], ck["act_dim"]).to(dev)
     ac.load_state_dict(ck["model"])
     ac.eval()
-    env = AcpEnv(data, N, eval_mode=True)
+    env = AcpEnv(data, N, eval_mode=True, njmax=int(os.environ.get("ACP_NJMAX", 450)))   # as training (300 overflowed: nefc warnings in every eval before 2026-11-12 02:20)
     set_id = torch.arange(nset, device=dev).repeat_interleave(per)
     res = {s: dict(n=0, succ=0, term=0, reach=0, place=[], dist=[]) for s in data.set_names}
     t0 = time.time()

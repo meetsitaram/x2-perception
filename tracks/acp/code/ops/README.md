@@ -5,7 +5,7 @@ Everything runs on node `acp` from `/mnt/filesystem-g4/tracks/acp/code`; Python 
 
 ## Start / resume the current run (stage 2)
 
-    tmux new -d -s acp "ACP_PLANT=mc_20261024 DATA=cfg/stage2b_sets.json EXTRA=\"--stage 2 --init /mnt/filesystem-g4/tracks/acp/runs/s2_v1/init_from_s1_v1_002250.pt --planner-arch attn --u-obs 200 --u-rew 1700 --n-ann 1500\" bash /mnt/filesystem-g4/tracks/acp/code/supervise.sh /mnt/filesystem-g4/tracks/acp/runs/s2_v1 36000 6500"
+    tmux new -d -s acp "ACP_PLANT=mc_20261024 DATA=cfg/stage2c_sets.json EXTRA=\"--stage 2 --init /mnt/filesystem-g4/tracks/acp/runs/s2_v1/init_from_s1_v1_002250.pt --planner-arch attn --u-obs 200 --u-rew 1700 --n-ann 1500\" bash /mnt/filesystem-g4/tracks/acp/code/supervise.sh /mnt/filesystem-g4/tracks/acp/runs/s2_v1 36000 6500"
 
 (`DATA=cfg/stage2_sets.json` before the checkpoint-2,500 restart.) Stop: `touch <run>/STOP`. The supervisor (`../supervise.sh`)
 resumes from `latest.pt`, restarts on a stall, and starts the backup loop (`../backup.sh`, tmux `acp-backup`).

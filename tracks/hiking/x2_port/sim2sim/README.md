@@ -187,3 +187,103 @@ velocities), then 0.15 m in 14 s. Agreement in kind; MuJoCo drifts somewhat more
   not exercised by the policy. The stair tiles were only run with the robot standing in front of them.
 * Ground height in the recording is an estimate (lowest sole point, steady to 0.1 mm over steps 25..49).
 * Why the depth encoder output is zero (only observed on the ONNX files, not traced in the checkpoint).
+
+---
+
+# Follow-up: settings come from the run (run 1 and run 2)
+
+## What changed
+
+* `sim2sim_mujoco_x2.py`: `EnvConfig(run, card_json=None)` reads everything from the run's `env.yaml` (`--run`: the file,
+  a folder with it, or a run folder with `params/env.yaml`): per-joint kp / kd / armature / effort / velocity limit,
+  default pose, action joints and scale, observation layout, command rule, and the camera (body, offset, quaternion,
+  apertures, crop, depth range, frame shape, history). The joint order is computed from the URDF (Isaac's breadth-first
+  rule) and no longer taken from a card. `--export` names the folder with `policy.onnx` and, optionally,
+  `adapter_card.json`; when the card is there every number in it is asserted equal to `env.yaml`. The defaults of
+  `--run` / `--export` still point at run 1 (`assets/run`, `assets/eval`). Robot facts that are not in `env.yaml` stay in
+  the file: URDF path, the filtered collision pairs of the training asset, the sole spheres.
+* Captions are built from the run: line 1 "MuJoCo, not the training simulator; X2, Hiking track, run <run>, checkpoint
+  <n>, commanded <v> m/s"; line 2 gains (label + kp/kd of hip pitch, knee, ankle pitch) and the camera mount (body,
+  tilt, field of view, frame shape, range). Run and checkpoint come from the card (`--run-name`, `--checkpoint`,
+  `--plant-label` override).
+* `depth_check_run2.py` (new) writes `depth_check_run2.txt`.
+* `assets/node_src/export_for_eval.py` (new version of the node's export script; `export_for_eval.orig.py` is the one
+  fetched from the node). **It was NOT put back on the node**: overwriting the shared file was refused by the
+  permission system of this session, and nothing was written to the node at all. The exports below were made on the
+  desktop CPU with the same script (the hiking venv has `instinct_rl`), from checkpoints fetched read-only.
+
+## Run 1 regression (nothing changed)
+
+* `validation.txt` regenerated with the generalised code is byte-identical to the one before
+  (`checks/run1_before/validation_before_generalising.txt`).
+* The 14 s flat run gives a byte-identical CSV, with the old card and with the card written by the new export script.
+
+## New export script against the existing run-1 card (model_500)
+
+Regenerated on the desktop from `model_500.pt` + run 1's `params/`, with the recorded observations:
+* `policy.onnx`: actions on the 50 recorded observations equal the existing export's exactly (max diff 0.0).
+* Card: all 245 numeric values shared with the existing card are equal (kp, kd, armature, effort and velocity limits,
+  default pose, action scale, offsets and sizes of every observation term, camera position, raw size, field of view,
+  rates) except `onnx_vs_torch_max_abs_error` (7.7e-7 on the node, 1.1e-6 on the desktop: machine dependent).
+* Text that differs: `obs_check` (path of the recording), `robot.model` (now the URDF path of env.yaml with the spawn
+  settings), `control.head` (joint names, "hold at the default pose"), the `what` text of the terms (noise is "before
+  scaling"; depth "oldest first (the last one is the newest)"), `observation.history` (adds "oldest first"),
+  `command.training_ranges` / `how_training_makes_it` (generated per terrain; states vx = clip(2 * forward distance, 0,
+  speed) and the 0.4 m stop radius), `depth.orientation` (no longer says "matches the URDF joint rgbd_head_front"),
+  `depth.preprocessing` ("beyond range = 1" instead of "1.0"), `depth.stack` (the configured 0-1 frame delay is cast
+  to an integer and is 0 in practice), `depth.noise`, `not_verified` (rewritten).
+* Added: `run`, `source`, `held_joints`, `robot.joint_order_source`, `control.{actuator, gains_source, gains_label,
+  gains_follow_armature_rule, action_scale_rule, action_delay_physics_steps}`, per term `shape / scale /
+  noise_half_width`, `observation.noise_enabled_in_training`, command numbers, `depth.{quat_wxyz, convention,
+  pitch_down_deg, apertures, crop_region, frame_shape, depth_range_m, output_range, blur, history_frames, stack_frames,
+  stack_skip, pipeline}`, and `verified` (the facts checked against the Isaac recording, each marked "verified on run 1
+  only"). Nothing was removed.
+* Run 2 card (`assets/eval_v2_250/adapter_card.json`): kp, kd, effort, velocity limit, armature, default pose (31 joints)
+  and the 29 action scales equal Isaac's read-back table `applied_Instinct-Parkour-TorsoCam-Amp-X2-v0.json` (0
+  mismatches). Its `checkpoint` and `robot.model` fields hold desktop paths because it was exported here.
+
+How to use it on the node (not done here):
+`CUDA_VISIBLE_DEVICES= nice -n 10 ~/hiking-env/bin/python export_for_eval.py <run>/model_250.pt --plant mc_20261024`
+(the task name is read from the run's `_supervisor/supervisor.log`; `--obs rec.npz` for a recording; `--card-only`
+writes just the card). Not run on the node, so its node-specific branches (supervisor log, the cross-check against
+`X2_ISAAC_JOINTS`) are untested.
+
+## Run 2 depth check (`depth_check_run2.txt`), standing pose on flat ground
+
+Camera from env.yaml: `torso_link`, offset (0.131, 0, 0.259), 61.6 deg down, 87.0 x 58.0 deg, crop (0, 0, 16, 16) ->
+36 x 32, range 0-3.0 m, observation 10016. Lens 1.055 m above the ground, 1 mm ahead of the toe tips (foot hull).
+
+| landmark | wanted | port |
+|---|---|---|
+| floor line 1.0 m ahead of the toes | 27% +-3% from the top | 25.8% (26.0% measured from the MJCF sole-sphere toe) |
+| floor line 0.55 m ahead | near 52% | 51.5% (51.7%) |
+| toe tips | just inside the bottom edge | project at 98.9% of the height, 34% / 66% from the left |
+
+The same numbers come out of the ray table (centre ray of each row). The toe tips are inside the frame by 0.4 of a row:
+no pixel centre lands on a foot in the standing pose (0 foot pixels). The top row sees the floor 1.61 m ahead of the toes.
+Own body in the 36 x 32 frame: standing 1.4% (16 pixels, bottom two rows: thighs / knees); synthetic mid-stride pose
+(one leg swung forward) 7.8% (thigh, knee, foot of the leading leg, rows 25-35); over the poses of the checkpoint-250
+rollout 0.6% to 9.8%, mean 7.2%.
+
+Run 2's observation build is validated against Isaac only through run 1's recording (same code path, run 1's camera
+and crop) until an Isaac recording of run 2 exists. The run-2 check above is geometry in MuJoCo only.
+
+## Run 2, checkpoint 250, 14 s on flat ground (no video): `x2v2_ckpt250_mujoco_flat.csv / .json`
+
+Commanded 0.74 m/s, target 3.7 m ahead, hull feet, delay 0: **stands and shuffles in place, drifting backwards**; no
+fall. Net 0.54 m in 14 s, all of it backwards (x -0.53 m); mean forward speed -0.039 m/s against +0.74 commanded;
+0.03 m in the first second. 46 touchdowns (2 are the landing), 56 lift-offs, the longest 0.12 s: shuffling, not
+steps that carry the robot forward. Both feet down 87% of the time, pelvis 0.65 m, leaning back 6.7 deg, torque limit
+reached in 242 of 2800 physics steps, nothing but the feet touched the ground.
+Other runs (`checks/variants_v2/`): delay 1 step 0.09 m net, delay 2 steps 0.15 m, sphere feet 0.02 m, zero command
+0.07 m; none falls. The stairs tile gives the bit-identical run although the depth frames differ by up to 0.11: the
+actions did not depend on the image there (on other frames of the rollout the encoder output is non-zero, and scaling
+the depth by 0.8 moves the actions by 0.013 at most).
+
+## Not verified (follow-up)
+
+* The new export script on the node (not uploaded, not run there); the node folder `eval/x2_parkour_v2_250/` was not created.
+* Run 2 against Isaac in any form (no recording): depth image, gains in closed loop.
+* Mid-stride body coverage uses a synthetic pose and a rollout of a policy that does not walk yet.
+* Holding the default pose with zero actions falls within 5 s in MuJoCo with either run's gains, so standing depends
+  on the policy; whether Isaac does the same was not checked.
