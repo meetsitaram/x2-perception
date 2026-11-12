@@ -5,6 +5,20 @@ Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53
 
 ## Hand-over 2026-11-12 (newest first)
 
+- 04:15 **Run 4 at 250** (iterations 241-250): speed ratio 0.32 (0.23/0.70 m/s), both feet down 63%, no support 9.8%, step rate
+  14.9 Hz, air time 0.0195/ep, wait -2.61, falls 67% (root_height 51%, bad_orientation 16%), stalled resets 26%, time-outs 8%,
+  episode 279, fall penalty -6.0/ep, reference-start share 0.5 (schedule), style coef 0.075, D-reward 0.48, level 0.14
+  (perlin_rough_stand 1.28, perlin_rough 0.44, slope 0.27, mesh boxes 0.24, boxes 0.12, stairs and gaps 0.00). Trend at
+  50/100/150/200/250: episode 46/54/85/157/279, falls 103/102/100/66/67%, speed ratio 0.62/0.67/0.42/0.25/0.32, stalled
+  0/0/2/31/26%. Run 3 at 250: 148 steps, falls 84%, speed 0.52, air time 0.0038. G1 at 500 (equal samples): 731 steps, falls about 60%,
+  air time 0.040. Stop check (episode < 100 and flat, or speed < 0.1 with both feet down > 80%): not met.
+- 04:15 **MuJoCo render of run 4 `model_250`** ("MuJoCo, not the training simulator"; explicit PD in MuJoCo, run 4 trained with
+  implicit PD; run 4's 20 extra filtered pairs added through `run4_player.py`; the port now accepts ImplicitActuator in env.yaml):
+  `perception-agents-work/hiking_sim2sim_x2/x2v4_ckpt250_mujoco_{flat,stairs}_{chase,legs}.mp4`, frame sheets
+  `checks/frames/x2v4_ckpt250_*.png`. **Flat: it steps**: upright (pitch +3 deg), 74 lift-offs, short shuffling steps (longest
+  air time 0.10 s), 3.74 m to the target in 11.1 s (0.27 m/s net against 0.70 commanded), no fall. Stairs: shuffles at the
+  bottom step without climbing, falls forward into the steps at 8.2 s. Export `eval/x2_parkour_v4_250/` (ONNX vs torch 8e-7).
+
 - 03:25 **Run 4 training** since 03:19:06 (launcher: "is training, GPU idle about 375 s"). Iteration 4: reward -12.0 (includes the
   -8 fall penalty), episode 47 steps, bad_orientation 74% / root_height 37% of ends (shares overlap), D-reward 0.26, style coef
   0.075, 9.7 s per iteration, 52 GB GPU memory, 0 Tracebacks. Construction checks seen in the log: "[X2 run 4] filtered 20 more link

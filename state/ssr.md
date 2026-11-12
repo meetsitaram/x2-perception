@@ -870,3 +870,22 @@ flat clips in the SSR training model (MuJoCo; mesh geoms collide with each other
    62-66 % (removed from style by fix 1), elbow 2-6 %, knee 0.15 %; within 5 % of the range: hip roll 45 % (p5 -0.23 vs limit
    -0.235), knee 64 % (knee p5 0.095 vs limit 0). **Applies mildly** (cost 0.07 per joint-step outside; the r3 stander paid
    0.14 from the two shoulder rolls).
+
+## Status (2026-11-12 03:53 UTC): r6b past its 1,000 gate, restarted with style + feet-air
+
+- **Gate at 1,000 passed**: 59 % of commanded speed (gate 40 %); 1,000 range 57-64 % over 800-1,000. Air time 0.066 s (flat
+  since 550), so the restart took the scheduled-style branch: r6b stopped at 1,010 (03:46:49) and resumed from its 1,000
+  checkpoint at 03:47:13 with `--style_from 1000 --feet_air_w 20 --feet_air_min 0.1 --disc_mask_arms` (all confirmed in
+  `runs/r6b/args.json`). Kept: `runs/r6b/ckpt_001000.pt`.
+- First 40 iterations after the restart (1,040): 70 % of commanded speed, touchdown air 0.075 s (rising from 0.066),
+  share of touchdowns over 0.2 s 1.4 % (0.9 % before), single support 0.62, style weight 0.016 (ramping to 0.2 by 1,500),
+  feet_air 0.04/step, obstacle share 79 %; levels flat 5.1, beam 2.5, platform 1.7, stairs 1.5, ramp 1.0; 30k samples/s.
+- Next gates: air time over 0.2 s by 2,000; speed must stay above 30 % (report if not).
+- Full current command (from `tracks/ssr/code`): `../env/venv/bin/python scripts/supervise_node.py --name r6b --iters 20000
+  --num_envs 8192 -- --flat_until 550 --obst0 0.25 --obst_ramp 500 --stage_a 150 --stage_b 400 --w_style 0.2 --style_low 0
+  --gate_ramp 500 --prior_min_speed 0.2 --rsi_min_speed 0.3 --plant mc_20261024 --camera chest_rs --amp_file data/amp_v2.npz
+  --prior_balance --disc_mask_arms --style_from 1000 --feet_air_w 20 --feet_air_min 0.1 --gate_air 0.15` (tmux `ssr9`, which
+  ran `runs/queue9.sh`; heartbeat "r6b").
+- Departures in r6b, all listed: staged schedule (t_a, 0-400); flat phase to 550 and obstacle share 25 % -> 80 % over
+  550-1,050; style 0 until 1,000, then ramped to the paper's 0.2 over 500; feet-air reward (20 x clamp(air - 0.10, 0, 0.30)
+  per touchdown, moving commands, from 1,000); discriminator arms masked (from 1,000); plus the earlier ones.

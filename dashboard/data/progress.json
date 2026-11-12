@@ -478,5 +478,41 @@
   "episode_len": 80,
   "terrain_level": 0.0,
   "note": "run 4 from scratch"
+ },
+ {
+  "id": "acp-3340",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, stage 2",
+  "iteration": 3340,
+  "total": 6500,
+  "reward": 0.136,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "data set 2c"
+ },
+ {
+  "id": "ssr-r6b-1260",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r6b",
+  "iteration": 1260,
+  "total": 20000,
+  "reward": 1.68,
+  "episode_len": null,
+  "terrain_level": 3.08,
+  "note": "59% of commanded speed, steps lengthening"
+ },
+ {
+  "id": "hiking-v4-328",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 4 (audit fixes)",
+  "iteration": 328,
+  "total": 30000,
+  "reward": -3.68,
+  "episode_len": 317,
+  "terrain_level": 0.25,
+  "note": "steps upright in MuJoCo at 250"
  }
 ]

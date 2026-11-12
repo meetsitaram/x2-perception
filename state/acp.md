@@ -330,6 +330,9 @@ labelled contact agree on 95.4 % of body-frames. Observations finite, actor 588,
 13. Planned for stage 3 (user's eval rule): goal radius 0.2 m for arrival and goal scaling in the goal environments (the
     paper: 0.5 m success) and routes with sharp heading turns right after a waypoint. Reference environments keep the
     paper's 0.3 m (Table S4).
+14. Stage 3 v1 (section 15): six goal families built from the existing prop-slot library (the paper: 32 procedural
+    configurations incl. gaps, stones, ladders, vaults); goal share 0.5 (paper: not given); planner buffer not
+    partitioned per tile and no work-per-metre quality score yet; 36,000 envs on one GPU (paper: 8,400 on 4).
 
 ### Code release check
 
@@ -1145,3 +1148,73 @@ from a waypoint):**
   reward, on the extended-map tiles (section 8). Stage 3 starts at the stage-2 end (budget 6,500, about 12 h at the current
   speed) or earlier on the switch criterion. Its code is the next CPU work item, written and CPU-tested before then. Until
   stage 3, any pair handed over keeps r = 0.3 and the reference-lookahead convention in its card.
+
+## 15. Stage 3: code written and CPU-tested, switch armed (2026-11-12 03:40-04:00 UTC)
+
+**Approved by the coordinator:** stage 2d at the next needed restart; the stage-3 plan (departure 13). Stage-3 code is
+staged in `/mnt/filesystem-g4/tracks/acp/code_s3` (plain-text mirror in `code/staged/s3/`; `code/staged/README.md`).
+
+**Goal terrains: why boxes from the existing slot library.** The user's extended map (`data/terrains/extended_v1`) has 60-346
+distinct box sizes per tile type and meshes for wedges. In our simulator every distinct prop-box size is a slot in every
+world, and a large height field degrades MuJoCo Warp. So v1 builds goal tiles **only from box sizes, and at most as many
+of each, that the stage-2 reference props already use**: tread slabs (7 each of three widths), landing slabs, two
+4.6 m walls, one 4x4 log, one 2x2 log, the small blocks. Heights vary by sinking a box into the floor. Result: **prop
+slots stay at 94** (checked by `acp/goals.py` `check_slots` and by the data build), so no extra GPU cost. Six families,
+each re-arranging extended-map ideas: stairs up, stairs down, logs (4x4, plus 2x2 from level 4), corridor (two walls, a
+4x4 inside from level 3), blocks, flat turns (turn in place, backward, sideways). 10 levels x 12 seeds = 720 tiles
+(`data/goals/goal_tiles_v1.json`, `python -m acp.goals ... 12`). Levels: stair risers 8 -> 22 cm (never within 6 mm of
+both apparatus riser and tread), log height 3 -> 8.9 cm, corridor gap 1.3 -> 0.8 m, block count. Every route ends with a
+station (1 s stand). The heading turn right after a waypoint grows to +-70-90 degrees. No block or obstacle within
+0.35 m of a waypoint or the spawn. Tiles sit at x = -40 m, away from the shared ramp raster. Bringing in the real
+extended-map tiles (raster tiles plus their tall boxes) is v2. It needs a GPU test of a larger height field and a
+size-quantised wall library; not done.
+
+**Goal environments (`acp/env.py`, gated by `goal_env`, so stage 2 is unchanged):**
+- Share: `--goal-share` 0.5, spread over the env ids, so the recorder's first 3,000 envs hold both kinds (paper: ratio not
+  given). Families round-robin; each env has its own level.
+- Command: towards the current waypoint, (dx, dy) = d / max(|d|, 0.2) in the body-yaw frame; dpsi = waypoint heading
+  minus robot heading. A pass-through waypoint is done on entering the 0.2 m disc; a station after 1 s inside; the last
+  waypoint is the goal, and success is latched once it has been held 1 s. Planner contacts only.
+- Rewards (Table 3, stage 3; G in env.py): move2goal 40, standatgoal 20 (at stations and the goal), track_planned_contact
+  1.5, flat_orientation -10, stumbling -10 (foot |F_xy| > 5 F_z), slippage -10, ang_vel_xy -0.1, and the regularisers.
+  No mimic terms.
+- Ends only by a fall (root under 0.35 m over the lowest ground under root and feet, or tilt over 60 degrees) or 15 s.
+- Curriculum (Table S4): EMA s = 0.8 s + 0.2 I; promote on a success with EMA > 0.5; demote when the closest approach
+  to the goal was over 1 m.
+- Planner: goal successes enter the same hindsight buffer (recorder success = goal reached and held). Not done yet: the
+  paper's per-tile partition of the buffer and its quality score (low mechanical work per metre).
+
+**Trainer (`acp/train.py`, `--stage 3`):**
+- Second critic V_fs (input 322: noise-free proprioception, base velocity, 17 x 11 scan, goal, goal distance, height
+  error, normalised time, planned contacts), fixed lr 1e-3, its own normaliser.
+- Advantages normalised separately per environment type.
+- 500-iteration warm-up with goal samples left out of the actor loss.
+- Target KL 0.01, entropy 0.002 (Table S6).
+- The eta schedules continue from the stage-2 start.
+- Checkpoint adds V_fs, its optimiser, the per-env curriculum levels and EMA, s3_start.
+- Metrics: `goal/success`, `goal/fall`, `goal/level_mean`, `goal/level/<family>`, `goal/waypoint_index_mean`,
+  `raw|weighted|weight/goal/<term>`, `ppo/value_loss_goal`.
+
+**CPU tests:**
+1. Training smoke: 64 envs from `ckpt_003000`, 4 iterations, stage 3 end to end (data with 720 tiles, slots 94, V_fs,
+   per-type advantages, warm-up switch, checkpoint with stage 3 fields).
+2. Closed loop of the stage-2 pair at 3,000 (tracker + online planner, planner contacts) on the goal tiles,
+   `tools/goal_check.py`, 4 episodes per family and level, levels 0 / 4 / 9 (`eval/goal_check_s2_003000.json`).
+   Results, success out of 12: logs 12/12; stairs up 6/12; flat turns 3/12; stairs down 1/12; corridor 0/12; blocks 0/12.
+   **No falls in 72 episodes.** Where it fails, the robot does not move off: corridor (walls never seen in training), blocks,
+   stairs down (descents were out of training until 3,000), flat turns with backward and sideways moves. That is the
+   expected starting point (the planner has never seen these scans). The tiles, goal command and waypoint logic work
+   (logs and stairs up succeed to 4-15 cm).
+
+**Switch (armed, tmux `acp-s3switch`, `code/ops/to_stage3.sh`, log `runs/s2_v1/stage3_switch.log`):**
+- Criterion (ours; the paper gives only wall-clock): not before eta_rew = 1 (iteration 5,450); from checkpoint 5,500,
+  switch at the first checkpoint where the stage-2 finish rate (mean of the last 250 iterations) gained under 1 point over
+  the 250 before; at the latest 6,500.
+- The switch waits for a live eval to finish (shared lock), stops stage 2, installs `code_s3` into `code` (previous code
+  to `_trash`), checks stage 3 in a throw-away GPU run (4,096 envs, 3 iterations), then starts stage 3 as `runs/s3_v1`
+  from that checkpoint, 36,000 envs, budget to iteration 14,000 (`S3_ITERS`; paper: about 2 days 6 h on 4 GPUs).
+- On a failed check the previous code is restored and stage 2 resumes.
+- `FORCE_IT=<it>` switches at a chosen checkpoint.
+- The stage-3 data cfg includes the arm fix, so stage 2d arrives with stage 3 at the latest.
+
+Not verified: stage 3 on the GPU (speed, memory, warp behaviour with goal envs). The switch's own check covers it.
