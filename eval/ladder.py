@@ -24,6 +24,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from apparatus import Apparatus, data_dir, quat_mat  # noqa: E402
 
 TIME_LIMIT = 60.0        # s per ladder test (the routes are 2 to 9 m)
+TIME_LIMIT_STEP2 = 180.0  # s per step-2 route (7 to 15.5 m with stations and turns on the spot; the apparatus limit), eval monitor 2026-11-12
 EDGE_START = 3.7         # m: the same for the start pose (stair tiles have only 0.5 m of flat run-up)
 EDGE = 3.4               # m: route points are kept this far inside the 8 m tile (the raster ends at 3.99; export routes end as
 #                          close as 0.09 m to it, and a robot that arrived and took one more step was "off the course")
@@ -304,7 +305,7 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
                 json.dump(results, open(part, "w"))
                 print("wall limit reached in %s after %d trials; run the same command again" % (test, len(results)), flush=True)
                 sys.exit(3)
-            r = tr.run(seed0 + i, protocol, TIME_LIMIT, record=True)
+            r = tr.run(seed0 + i, protocol, TIME_LIMIT_STEP2 if step == 2 else TIME_LIMIT, record=True)
             tr.save_traj(d / "traj" / ("%d.npz" % (seed0 + i)))
             results.append(r)
         results.sort(key=lambda r: r["seed"])
@@ -314,7 +315,7 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
                     tile=course.route.get("tile"), simulator="MuJoCo %s (CPU), dt %.4f s" % (mujoco.__version__, X.SIM_DT), adapter=adapter.name,
                     checkpoint=str(adapter.checkpoint), observes=adapter.observes, control_dt=adapter.control_dt, protocol=protocol_name,
                     plant=adapter.plant_name or "harness default vendor_20260823 (test fixture)",
-                    seeds=[seed0, seed0 + trials - 1], time_limit=TIME_LIMIT, sections=course.sections,
+                    seeds=[seed0, seed0 + trials - 1], time_limit=TIME_LIMIT_STEP2 if step == 2 else TIME_LIMIT, sections=course.sections,
                     definition=dict(radius=Hn.RADIUS, end_stand=Hn.END_STAND, stall=Hn.STALL, hit_f=Hn.HIT_F, hit_j=Hn.HIT_J))
         s = Hn.summarise(results, meta)
         s["renders"] = Hn.pick_renders(results)
@@ -349,6 +350,9 @@ def collect(out, step):
                          tile=s.get("tile"), renders=s.get("renders")))
     if not rows:
         return rows
+    plants = sorted({str(json.load(open(out / STEP_DIR[step] / r["test"] / "summary.json")).get("plant")) for r in rows})
+    head = dict(head, plant=" / ".join(plants) + ("  (MIXED PLANTS)" if len(plants) > 1 else ""),
+                label="%s | %s" % (head.get("label") or head["adapter"], head.get("simulator", "MuJoCo (CPU)")))
     json.dump(dict(label=head.get("label"), plant=head.get("plant"), step=step, on="the training map (not an apparatus result)", adapter=head["adapter"], checkpoint=head["checkpoint"],
                    protocol=head["protocol"], rows=rows), open(out / (STEP_DIR[step] + ".json"), "w"), indent=1)
     lines = ["%s | ladder step %d, BELOW THE APPARATUS: skill courses and training-map tiles (not an apparatus result) | %s | plant %s | protocol %s" % (

@@ -311,6 +311,16 @@ labelled contact agree on 95.4 % of body-frames. Observations finite, actor 588,
 8. Contact "measured" = solver normal force > 1 N at the end of the control step (not over a sensor history window).
 9. MuJoCo Warp prints "height field collision overflow (>= 50)" on the ramp raster (4 cm cells, coarsened from 2 cm) when a
    large body lies on it; contacts beyond 50 are dropped. Not fixed.
+10. Data filters from the stage-2 switch (2026-11-12, iteration 2,250 on): the paper trains on its whole reference set; we
+    leave out (a) chain clips that contain a single step higher than 0.30 m (`exclude_step_over: 0.30` in
+    `cfg/stage2*_sets.json`; 50 of 96 source clips, 87 of 210 segments remain): 39-41 cm step-ups that the X2 failed in every
+    try and that neither apparatus needs; (b) the 38 stair descents `gs2dn_v1` (feet walk down while pelvis faces up the
+    stairs: a stair-fit fault) and one Pico clip with a flipped leg (`exclude_leg_flip`); (c) from iteration 2,500 the ramp,
+    terrain-park stair and 4x4 clips whose stance soles sit more than 1.5 cm inside the terrain are lifted by their median
+    stance gap (`ground_stance`; 99 of 474 clips, at most 4.3 cm). Reason for each: reference faults, not paper choices.
+11. Stage-2 schedule numbers (eta_obs from 200 iterations after the stage-2 start over 1,500; eta_rew from 1,700 over
+    1,500) are ours: the paper gives Eq. 3 without numbers. The replay buffer is in memory and starts empty after every
+    restart (refills to about 430,000 samples in about 50 iterations).
 
 ### Code release check
 

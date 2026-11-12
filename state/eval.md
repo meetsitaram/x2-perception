@@ -201,3 +201,18 @@ has torch for the export):
 - Touching a wall with an arm or the trunk is counted, not a failure; trunk or head on the floor is a fall.
 - Sole spheres 2 cm in MuJoCo (5 mm in the MJCF) for sane height-field contact normals.
 - Headline protocol is the randomised one; the nominal one is reported beside it.
+
+## Resumed by a new eval monitor (2026-11-12 00:50 UTC)
+
+- The previous monitor stopped (usage ran out). Found running: `eval/run_chain.sh` (bounded ladder slices, 9 x 9.5 min) on the
+  ACP pair tracker 2,250 + planner (`handover_pair_s1_002250_mc_20261024_planner`, local copy `eval/data/handover/acp_2250`,
+  plant `mc_20261024`), full step 1 (six flat tests + five skills x three levels), started 00:46 UTC. Left running; no second job.
+- Re-ran the 2,250 hand-over check: `ALL PASS` (pair recording: actor input 5.9e-08, action 4.2e-06; reference-contact
+  recording: 1.2e-07, 9.4e-07). The card has plant `mc_20261024`, kp and kd per joint.
+- ACP pair 1,250 (plant `vendor_20260823`) step 1 is partial: 8 of 21 tests (`eval/out/acp/handover_pair_s1_001250_planner_v1/ladder/step1.txt`):
+  flat walk / stop-stand / turn in place / sideways 50/50, turn-and-return 39/50 (11 stalled), backward 29/50 (21 stalled),
+  log L1 49/50, log L2 43/50. Superseded by 2,250; finished only if the CPU is free after step 2.
+- Fixes: three baseline step-1 summaries lacked the plant name (run before the adapter wrote it) -> filled in
+  `vendor_20260823` with a note; the step tables now state the simulator and the plant of every row (flags mixed plants).
+- Step 2 time limit: 180 s per route (`TIME_LIMIT_STEP2`), the apparatus limit; the routes are 7 to 15.5 m with stations and
+  turns on the spot, and the baseline walks about 0.3 m/s on flat ground, so step 1's 60 s would cut them short. Stall 45 s.

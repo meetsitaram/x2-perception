@@ -644,7 +644,8 @@ air time over 0.2 s and step length over 0.25 m at 0.6 m/s with the full Table 6
 | Test | Flags | Iterations | Result |
 | --- | --- | --- | --- |
 | t_a staged schedule | `--stage_a 150 --stage_b 400` (tracking + posture only until 150, the rest ramped in by 400) | 550 | pending |
-| t_b command curriculum | `--cmd_cur_iters 200 --cmd_min0 0.5 --sig_v0 0.06` (no command under 0.5 m/s and a narrow tracking kernel, so zero speed pays nothing, until 200; released by 400) | 500 | pending |
+| t_b command curriculum | `--cmd_cur_iters 200 --cmd_min0 0.5 --sig_v0 0.06` (no command under 0.5 m/s and a narrow tracking kernel, so zero speed pays nothing, until 200; released by 400) | 500 (ended by a STOP file at 190, 00:52 UTC) | **fail, stands**: vx 0.007 of 0.76 m/s (1-3% from 100 on), double support 0.89, tracking term 0.03/step; probe at 150 (0.6 m/s): 0.005 m/s, air 0.02 s, step 0.002 m. The stander still gets about 1.4/step from orientation 0.44, yaw kernel 0.41, base height 0.37, roll/pitch rate 0.12, lateral 0.08, single support 0.12 (taps); tilt 42% of episode ends |
+| t_e progress gate (coordinator, 01:00 UTC; deviation) | `--prog_gate 1.0 --gate_air 0.2 --gate_ramp 300`: orientation, yaw kernel, base height, roll/pitch rate, lateral x (1 - g(1 - progress)), progress = clip(0.5 s mean velocity along the command / commanded speed, 0, 1), only under a moving command (> 0.15 m/s); gate ramps off over 300 iterations once mean touchdown air time > 0.2 s for 5 iterations (`runs/queue5.sh`, tmux `ssrq`, after t_a) | 650 | pending |
 | t_c no-progress termination | `--stuck_term --stuck_until 300` | 450 | pending |
 | t_d less noise | `--ent 0.001 --init_std 0.5` | 300 | pending |
 
@@ -705,3 +706,49 @@ Not verified / open:
 - The standing policy's two joints at their position limits; the 7.6 deg backward settle under zero actions with `mc_20261024`.
 - A short GPU overlap happened at 22:56 UTC: a 2-robot camera read-back (about 1 minute) ran while d3 trained, because the
   replacement queue did not see a supervisor to wait for. No effect on d3's log; later read-backs run on the CPU.
+
+## Resumed by a new SSR agent (2026-11-12 00:53 UTC): items from the coordinator's list
+
+- **t_b** ended (STOP file at 190, not mine): fails, stands (table above). Reported 00:56.
+- **t_e added** (coordinator, ~01:00): code `scripts/patch_te.py` (applied; backups of the pre-patch files in
+  `tracks/ssr/_bak_20261112/`), flags `--prog_gate --gate_air --gate_ramp`, default off so all earlier commands behave as
+  before. New log fields: `air_td` (mean air time of touchdowns under a moving command), `air_long_share` (share over 0.2 s),
+  `prog_mean` (mean progress under a moving command), `prog_gate`, `gate_start`. CPU smoke test (8 robots, 2 iterations)
+  passed. Queue: `runs/queue5.sh` in tmux `ssrq` waits for `queue4.sh` to exit (QUEUE4_STOP set, so queue4 ends after t_a and
+  its probe), then t_e (650 its), t_c, t_d. Stop: `touch runs/QUEUE5_STOP runs/STOP`.
+- **Zero-command share and stander pay** (item 2, measured earlier, still valid): 12.5 % of non-walking-start walkers draw a
+  command under 0.15 m/s (about 6 % of walkers, about 1 % of omnidirectional robots); no resampling within an episode. Under a
+  moving command the linear kernel (std^2 0.25) pays a stander 0.70 at 0.3 m/s, 0.24 at 0.6, 0.02 at 1.0 (mean 0.37); the
+  yaw kernel pays its full 0.8 (heading starts aligned; Hiking's "yaw earned by turning" has no SSR counterpart); posture terms
+  (orientation, base height, roll/pitch rate, lateral) add about 1.0 more. Under Hiking's measure (25 % of robots paid in full
+  for standing) SSR is about 6 %, so zero commands are not the SSR cause; the posture/alive terms are.
+- **Flat prior from Hiking's cleaned file** (item 3; `scripts/build_flat_v3.py`, `data/amp_v3.npz`, numbers in
+  `eval/flat_prior_v3.json`): 228 seams found (joint jump > 0.25 rad/frame, pelvis height jump > 2 cm, pelvis acceleration
+  > 40 m/s^2), 83 pieces kept (261 s), 130 pieces under 1 s and 16 stair/height pieces left out. 5-frame window speed:
+
+  | Set | seconds | all windows p10/p50/p90 | under 0.2 m/s | moving windows p10/p50/p90 | moving over 0.8 / 1.0 |
+  | --- | --- | --- | --- | --- | --- |
+  | v2 flat (r5, before the trainer's 0.2 m/s filter) | 999 | 0.02 / 0.41 / 0.79 | 33.7 % | 0.29 / 0.57 / 0.84 | 13.8 % / 3.7 % |
+  | v3 flat (Hiking file) | 261 | 0.31 / 0.54 / 0.78 | 6.1 % | 0.35 / 0.56 / 0.79 | 9.2 % / 2.1 % |
+
+  As fed to the discriminator (moving windows only, speed-balanced) the current prior is already at median 0.57 m/s; the
+  "median 0.09" was the raw set before filtering. The Hiking file is not faster (it leaves out jog and run clips) and is a
+  quarter of the size, so **amp_v2 stays**; amp_v3 is kept for a head-to-head if wanted. Commands: walkers' median 0.68 m/s.
+- **Camera** (item 4): already as asked since r5 (`chest_rs`: torso_link (0.126, 0, 0.16), 3 cm in front of the shell, lens
+  0.98 m, 59.5 deg, 1.0 m line at 25.4 % from the top, toe line 3 % below the bottom edge; per-episode mount randomisation
+  forward +-2 cm, height +-5 cm, pitch +-4 deg, roll and yaw +-2 deg). All recipe tests use it.
+- **t_f added** (coordinator, ~01:10, after Hiking found its style reward acts as an alive bonus): `scripts/patch_tf.py`
+  (applied after patch_te; flag `--style_low`, default off; log field `w_style_now`). t_f = t_e plus style weight held at 0
+  until the air-time latch, then ramped to the paper's 0.2 over 300 iterations; runs only if t_e reached the latch.
+  Per-step pay with style (sent to the coordinator 01:05): plain stander 2.20 (paper w_s 0.2) / 2.48 (r5's 1.0), tapping
+  stander 2.68 / 2.96, shuffle 1.25-1.95 / 1.26-2.09, clean walker (estimate) 3.1-3.3 / 3.9-4.1; style is 3 % (12 %) of a
+  stander's pay, so in SSR the always-positive Table 6 posture terms (about 1.4) and foothold (0.25) are the alive bonus.
+
+## Status (2026-11-12 01:05 UTC, new SSR agent)
+
+- Running: t_a in tmux `ssr` (`runs/queue4.sh`; QUEUE4_STOP is set, so queue4 ends after t_a's probe, about 01:56 UTC).
+- Queued: `runs/queue5.sh` in tmux `ssrq`: t_e (650), t_f (650, only if t_e latched), t_c (450), t_d (300), each followed by a
+  gait probe in `eval/<name>/`. Exact commands: `tracks/ssr/code/run_commands/queue4.sh`, `queue5.sh`.
+- Stop everything: `touch /mnt/filesystem-g4/tracks/ssr/runs/QUEUE5_STOP /mnt/filesystem-g4/tracks/ssr/runs/STOP`.
+- Watch: `python3 /mnt/filesystem-g4/tracks/ssr/code/scripts/w.py <run> 10` (speed ratio, support shares, touchdown air
+  time, progress, gate, stage ramp, reward, episode length, tilt share, action std).

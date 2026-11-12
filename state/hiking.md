@@ -1,6 +1,79 @@
 # hiking state
 
-Updated 2026-11-11 23:10 UTC (Hiking track agent). Node `hiking`; address and login are in `config/nodes.local.json`.
+Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53 UTC). Node `hiking`; address and login are in
+`config/nodes.local.json`.
+
+## Hand-over 2026-11-12 (newest first)
+
+- 01:15 Relaunch planned at run 2's `model_1000.pt` (about 01:50 UTC), coordinator's choice (messages 00:58 and 01:10):
+  **options a, c, d**, hold 500, end 1,500, camera randomisation on, **early `is_alive` x 0.3, early `dont_wait` x 2** (not x 4):
+  `launch_next.sh x2_parkour_v3 a,c,d 500,1500 1 0.3 2`. Why: SSR's test t_b (moving commands only plus a narrow kernel, our b)
+  still stood; its stander lives on posture and alive pay. Option b left out (it makes the tracking gradient sparse). A first plan
+  with `is_alive` x 0.1 and wait x 4 was dropped: with it a stander's task reward per step is negative, so on task terms alone
+  dying early beats standing. If SSR's t_a (staged schedule) shows a gait before the launch, the coordinator is told first.
+- `dont_wait` early scale is now set by `HIKING_X2_WAIT_EARLY` (default 4), sixth argument of `launch_next.sh`.
+- Stall reset (option d) against a fall: the task has no termination penalty (no `is_terminated` term; nothing in
+  `TerminationsCfg` pays), so both simply end the episode and the cost is the lost future reward. No penalty was added.
+- Stop at once and report if, at 250, more than about 70% of episode ends are falls and episodes are under 200 steps (run 2 at
+  250: falls 37%, length 737).
+
+#### Early reward per control step under run 3's values (before iteration 500), weighted (weight x 0.02 s x raw)
+
+Sources: run 1's stander at 499 and the G1 walker at 5,000 (table "Which terms pay the standing X2"), run 2's raw `dont_wait`
+(1.08 over all robots with 77% commanded to move, so about 1.4 for a robot that stands under a moving command), commands
+0.6-1.0 m/s under option c. The faller is run 2 at iteration 50 (reward 1.6 over 71 steps, 100% falls, 0.023 per step with full
+`is_alive`). **Found while doing this: the style reward is added to every PPO step as 0.25 x D-reward (instinct_rl
+`ppo.py` `process_env_step`, coefficient 0.25, type quad) and is NOT multiplied by dt, so it is about 0.13-0.16 per step,
+2-3 times all task terms together.** The trainer's printed "Mean reward" leaves it out.
+
+| Term (early scale) | Stander | Walker at 0.6 m/s (G1 at 5,000) | Faller (about 71 steps) |
+|---|---|---|---|
+| `is_alive` (x 0.3) | +0.018 | +0.017 | +0.018 |
+| linear tracking | +0.004 (exp(-v^2/0.25) mean over 0.6-1.0 m/s is 0.09) | +0.022 | |
+| yaw tracking | +0.016 | +0.018 | |
+| `dont_wait` (x 2) | -0.028 | -0.008 | |
+| heading, torso tilt, joint limits | -0.009 | -0.005 | |
+| step penalties (x 0.2) | -0.001 | -0.003 | |
+| edges, stand_still, the rest | 0 | -0.002 | |
+| **task terms in total** | **-0.001 (about zero)** | **+0.039** | **about -0.019** (0.023 - 0.042 for the alive cut) |
+| style, 0.25 x D-reward | +0.14 (run 2 stander logs 0.57) | +0.13 (G1 0.51) | +0.09 (run 2 at 50: 0.36) |
+| **all, per step** | **+0.14** | **+0.17** | **+0.07 for its 71 steps, then nothing** |
+| discounted value (gamma 0.99), task terms only | about -0.1 | about +3.9 | about -1.0 |
+| discounted value, with style | about +14 | about +17 | about +3.6 |
+
+**With option s (style coefficient 0.25 x 0.3 = 0.075 early; coordinator 01:20, added to the launch):** stander -0.001 +
+0.043 = **+0.042** per step; walker +0.039 + 0.038 = **+0.077**; faller -0.019 + 0.027 = **+0.008** for its 71 steps. Discounted
+(gamma 0.99): stander about 4.2, walker about 7.7, faller about 0.4. Walking pays about 1.8 times standing, against 1.2
+times without s.
+
+Launch command, final: `launch_next.sh x2_parkour_v3 a,c,d,s 500,1500 1 0.3 2 0.3`. How option s works: staged.py patches
+instinct_rl's `WasabiPPO.process_env_step` in the trainer process (installed from the task config's `__post_init__`). Before
+each env step it sets `discriminator_reward_coef` = 0.25 x schedule(HIKING_ITER_OFFSET + steps / 24, 0.3). Every staged run
+(with or without s) now logs `Mean step style_coef` and `Mean step style_reward_weighted` (coef x D-reward per step), and
+these reach `metrics.jsonl` as `style_coef` and `style_reward_weighted`. CPU test: `code/x2_port/test_style.py <staged.py>`
+(stand-in algorithm class; coefficient 0.075 early, 0.1625 at 1,000, 0.25 from 1,500; log keys present). Upstream
+instinct_rl is not edited.
+
+Ordering walker > stander > faller holds both with and without the style reward. The walker's lead over the stander is
++0.04 per step in task terms and about +0.03 with style (the stander's style reward is higher than the walker's). What
+the coordinator called "alive pay" is mostly the style reward: 0.14 per step for being upright, against 0.06 for
+`is_alive` at full weight. Cutting `is_alive` moves less than this suggests. Approximations: per-term numbers come from other
+runs at other iterations. Terms that only a walker pays on rough terrain (edges, feet) are near zero on flat ground.
+The style figures are trainer means, not per-robot values.
+- 01:00 Staged task: new environment variable `HIKING_X2_ALIVE_EARLY` (default 0.3) sets option a's early `is_alive` scale;
+  `launch_next.sh` takes it as a fifth argument and writes it into `launch.txt` and the generated `start_<run>.sh`.
+  `test_staged.py` passes (CPU).
+- 00:55 Node login removed from six scripts (`$HOME`): `bench_envs.sh`, `launch_next.sh` (also the generated start script
+  carries a literal `$HOME`), `launch_v2.sh`, `pause_and_eval.sh`, `start_x2_parkour_v1.sh`, `start_x2_parkour_v2.sh`.
+  `supervise_x2.py` is changed (`Path.home()`) right before the relaunch, not while its process runs. `bench_envs.sh` moves its
+  scratch run folders to `tracks/hiking/_trash/<date>/` with a note in `NOTES.txt` instead of `rm -rf`.
+- New `code/x2_port/report_line.py <run folder> <iteration>`: one line of speed ratio, double support, air time, wait penalty,
+  falls, stalled resets, terrain level per type (mean of the last 10 iterations).
+- G1 at equal samples (desktop log, read only; 4,096 robots, so G1 iteration = 2 x X2 iteration): at 500 air-time reward/ep
+  0.040, wait -4.27, length 731, level 1.48, time-outs 40%; at 1,000: 0.049, -4.17, 687, 2.06, 50%; at 2,000: 0.038, -1.49,
+  477, 1.61, 29%.
+- Run 2 at 684: speed ratio 0.019, both feet down 92%, air-time reward/ep 0.011, wait -10.4, falls 8%, level 1.45 (stand
+  column 5.8, mesh boxes 4.2, all stairs and gaps 0.06-0.08).
 
 ## What is running: run 2 (`x2_parkour_v2`), from scratch since 22:58 UTC
 
