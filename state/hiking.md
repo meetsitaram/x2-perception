@@ -5,6 +5,11 @@ Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53
 
 ## Hand-over 2026-11-12 (newest first)
 
+- 01:48 Correction: the 01:46 launch went back to run 2 after 20 s. Cause: `launch_next.sh` counted 'start pid' lines, and
+  the supervisor's own "supervisor start pid" line also matched, so it saw a restart at once. Fixed to count ' start pid N from
+  iteration' only. The stale STOP flag was moved to `_trash/2026-11-12/`. Relaunched at 01:47:44; run 3's supervisor started
+  training from iteration 0 at 01:48:37. To do at the next restart: a Traceback trigger in the launcher's fallback, and
+  `supervise_x2.py` should move its STOP flag to `_trash` instead of `unlink`.
 - **01:46 Run 3 `x2_parkour_v3` launched** (`launch_next.sh x2_parkour_v3 a,c,d,s 500,1500 1 0.3 2 0.3`, tmux `launchnext`
   watching). Run 2 stopped cleanly at `model_1000.pt` through its own supervisor at 01:45:38; kept with all its checkpoints. At
   01:46:44 Isaac was still starting up (no iteration yet, no Traceback). The launcher falls back to run 2 if iteration 2 is not
