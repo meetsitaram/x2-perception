@@ -5,7 +5,7 @@ agents that watch and steer it are lost.
 
 ## 1. Become the coordinator
 1. Open a Claude Code session in `C:\Users\PC\projects\perception-agents` (it reads `CLAUDE.md`).
-2. Read, in this order: `docs/USER_RULES.md`, `state/SHARED_LESSONS.md`, `state/STATUS.md`, `docs/EVAL.md`, `docs/TRACK_RULES.md`, `config/nodes.json`.
+2. Read, in this order: `docs/HANDOVER.md` (latest state and open items), `docs/USER_RULES.md`, `state/SHARED_LESSONS.md`, `state/STATUS.md`, `docs/EVAL.md`, `docs/TRACK_RULES.md`, `config/nodes.json`.
 3. `bash scripts/node_check.sh` (GPU use, disk, shared filesystem), then read the heartbeats:
    `ssh -i ~/.ssh/nebius_corpus -o IdentitiesOnly=yes <user>@<ip> 'cat /mnt/filesystem-g4/status/*.json; tmux ls'`.
 4. Read each `state/<track>.md`: it has what is running, the newest checkpoint and the exact resume and stop commands.

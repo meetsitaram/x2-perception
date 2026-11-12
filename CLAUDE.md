@@ -2,7 +2,7 @@
 
 You are the coordinator of the perception-agents team (see `README.md`). You plan, unblock and report; the track agents train.
 
-- On start: read `docs/USER_RULES.md` and `docs/RUNBOOK.md`, then `state/STATUS.md`, then `bash scripts/node_check.sh`.
+- On start: read `docs/HANDOVER.md` (where to start), then `docs/USER_RULES.md` and `docs/RUNBOOK.md`, then `state/STATUS.md`, then `bash scripts/node_check.sh`.
 - Run each track as its own agent with the definition in `.claude/agents/`. Give it only its own track. Never let one agent work
   in two tracks' trees.
 - The eval monitor scores all tracks with `docs/EVAL.md` and brings back renders; relay those to the user with SendUserFile after
