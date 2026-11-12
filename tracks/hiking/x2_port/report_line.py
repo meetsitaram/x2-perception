@@ -27,9 +27,9 @@ W = "Curriculum/walk_monitor/"
 falls = sum(m("Episode_Termination/" + k) for k in ("base_contact", "bad_orientation", "root_height"))
 lv = {k[len(W + "level/"):]: d for k, d in sel[-1].items() if k.startswith(W + "level/")}
 print("it %d-%d: speed ratio %.3f (%.2f/%.2f m/s), both feet down %.0f%%, no support %.1f%%, step rate %.1f Hz, air-time reward/ep %.4f, "
-      "wait penalty/ep %.2f, alive/ep %.1f, ep len %.0f, falls %.0f%%, stalled resets %.0f%%, timeouts %.0f%%, level mean %.2f | %s"
+      "wait penalty/ep %.2f, alive/ep %.1f, ep len %.0f, falls %.0f%%, stalled resets %.0f%%, timeouts %.0f%%, style coef %.3f, D-reward %.3f, weighted style %.3f, level mean %.2f | %s"
       % (sel[0]["iteration"], sel[-1]["iteration"], m(W + "speed_ratio"), m(W + "actual_speed"), m(W + "cmd_speed"),
          100 * m(W + "double_support"), 100 * m(W + "no_support"), m(W + "step_rate_hz"),
          m("Episode_Reward/rewards_feet_air_time/sum"), m("Episode_Reward/rewards_dont_wait/sum"), m("Episode_Reward/rewards_is_alive/sum"),
-         m("length"), 100 * falls, 100 * m("Episode_Termination/stalled"), 100 * m("Episode_Termination/time_out"),
+         m("length"), 100 * falls, 100 * m("Episode_Termination/stalled"), 100 * m("Episode_Termination/time_out"), m("style_coef"), m("discriminator_reward"), m("style_reward_weighted"),
          m("Curriculum/terrain_levels"), " ".join("%s %.2f" % (k, v) for k, v in sorted(lv.items()))))
