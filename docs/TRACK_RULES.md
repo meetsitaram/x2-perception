@@ -23,3 +23,9 @@
 - **Paper's own evaluation** (user, 2026-11-11): besides the common apparatus eval, each track reports its paper's own success criteria and metrics, computed as the paper defines them (terrains, trial counts, success definition, tables), with the paper's figures beside ours, and says what could not be reproduced and why.
 - **Transparent logs** (user, 2026-11-11): every training run logs, per iteration, every reward and penalty term separately (raw value and weighted contribution), every termination cause with its share, curriculum levels, command statistics, and every metric the paper reports or plots (tracking errors, success rates, gait statistics), plus throughput and GPU use. Logs go to the shared filesystem in a plain format (CSV or JSON lines) next to the checkpoints, with a one-page legend in the state file: each logged name, what it measures, the paper's symbol or table row, and its weight. A term that the paper has and the run does not log is a gap to state.
 - **Knowledge sharing** (user, 2026-11-11): read `state/SHARED_LESSONS.md` when you start or resume and before a long run; append an entry for every problem you hit that another track could meet, with what fixed it. Ask the coordinator to put a question to another track when their entry is close to your problem; answers come back through the same file or the coordinator.
+
+## Nothing is deleted on the shared filesystem (coordinator, 2026-11-12)
+After a track removed two of its own intermediate clip files with `rm` and the session's safety check flagged it: agents do not
+delete files under `/mnt/filesystem-g4`. A file that is no longer wanted is moved to `tracks/<track>/_trash/<date>/` with a
+one-line note of what it was; clearing a trash folder is the user's. Checkpoint retention (newest two plus one per 1,000
+iterations) is also done by moving, not deleting, until the user says otherwise. Scratch under `/tmp` on a node is the agent's.

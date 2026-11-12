@@ -30,6 +30,46 @@ Updated 2026-11-11 23:10 UTC (Hiking track agent). Node `hiking`; address and lo
 - MuJoCo, run 2 `model_250` (desktop, 14 s flat): stands and shuffles in place drifting backwards, 0.54 m net, mean forward
   speed -0.04 m/s against 0.74 commanded, both feet down 87%, no fall; actions did not depend on the depth image.
 
+### Plan: an Isaac evaluation beside the running training (proposed, NOT started; the coordinator decides)
+
+What is known from this node (measured unless marked "estimate"):
+
+- GPU memory: training run 2 holds 56.9 GB of 95.6 GB at iteration 314 (51 GB at start, so it grows), leaving about 39 GB.
+  Training-style memory against robot count (run 1 task): 21.0 GB at 4,096, 34.9 GB at 8,192, 49.1 GB at 12,288, i.e. about
+  7 GB fixed plus 3.4 GB per 1,000 robots including the PPO buffers. An evaluation has no PPO buffers; estimate 8 GB at 200
+  robots and 10-11 GB at 1,000 (never measured: the 64-robot checks did not log memory).
+- GPU compute: training already uses the card at 50-98% and is compute-bound (profile above). A second instance takes its share
+  for as long as it runs: expect training throughput to drop by roughly the evaluation's share, not for free.
+- Start-up: an Isaac start takes 3-5 minutes (terrain generation, URDF conversion, ray-cast mesh build) and briefly used 7.8
+  CPU cores; the node has 24 cores, training uses about 1.8, RAM 197 GB free. CPU and RAM are not the limit.
+- Two instances on one card: never tried on this node. Each is its own process with its own PhysX GPU context; the shader
+  cache (11 GB inside the venv's `isaacsim/kit/cache`) is already warm, so the second instance should only read it, but two
+  instances writing it at once is untested. Converted robot USD files go to separate time-stamped folders in `/tmp/IsaacLab`.
+- What a failure of the second instance could do to the first: an out-of-memory error normally hits the process that asks for
+  memory, so the evaluation would die, but training's PhysX buffers also grow now and then and would fail if the card is full
+  at that moment (the supervisor then resumes from the newest checkpoint, losing up to 250 iterations, about 40 minutes). A
+  driver-level fault (Xid) would take both. The supervisor's own scripts are safe: it only refuses to START while another GPU
+  job runs, so if training crashes during an evaluation it waits for the evaluation to end and then resumes.
+- Things in my own scripts that must not be used with two instances: `pause_and_eval.sh`, `launch_v2.sh` and `restart_at.sh`
+  kill every GPU process on the card.
+
+Proposed test (one shot, about 12 minutes, started by hand right after a checkpoint is written so a training crash loses nothing):
+
+1. Wait for `model_<N>.pt` to appear. Record 3 minutes of training throughput from the log (samples/s, iteration time) and GPU
+   memory: "before".
+2. Start one paper-eval worker on that checkpoint: one terrain, 200 robots, Table 2 only (751 steps), `nice -n 10`, wall-clock
+   limit 600 s (`timeout`), its own log, no kill-all anywhere. Refuse to start if free GPU memory is under 25 GB.
+3. A watchdog loop every 2 s: if free GPU memory falls under 8 GB, or the training log stops advancing for 120 s, kill the
+   evaluation process (by its pid only).
+4. Record training throughput and GPU memory "during" (start-up phase and stepping phase separately) and for 5 minutes "after";
+   check the training log for PhysX errors and the supervisor log for a restart.
+5. Pass if: training never stopped or restarted, no PhysX error, throughput after equals before within 3%, the evaluation
+   finished inside the limit. Report the throughput loss during, peak memory, and the evaluation's own start-up and run time.
+6. Only if that passes: 1,000 robots, then several terrains in sequence (each is a separate start, so most of the cost is
+   start-up; nine terrains would take about 40 minutes of shared GPU).
+
+Until the coordinator decides, Hiking evaluation stays on the MuJoCo port (desktop CPU) and the training logs.
+
 ### What run 2 changes against run 1 (everything else identical; the paper's terrains, commands, rewards, curriculum, PPO)
 
 | Item | Run 2 | Why |
