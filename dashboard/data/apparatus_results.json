@@ -1,1 +1,36 @@
-[]
+[
+ {
+  "id": "baseline-ours-shrink",
+  "date": "2026-11-11",
+  "track": "ACP",
+  "checkpoint": "2 November baseline pair (acp3_v2 1000 + planner_v2_hist1, SuperMimic-based), goal shrinking near waypoints",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU",
+  "trials": 200,
+  "success_pct": 7.5,
+  "note": "baseline reference; current rule; clean 0"
+ },
+ {
+  "id": "baseline-ours-keep",
+  "date": "2026-11-11",
+  "track": "ACP",
+  "checkpoint": "2 November baseline pair, original goal convention",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU",
+  "trials": 200,
+  "success_pct": 2.0,
+  "note": "baseline reference; current rule; clean 0"
+ },
+ {
+  "id": "acp2250-ours",
+  "date": "2026-11-12",
+  "track": "ACP",
+  "checkpoint": "This round, tracker 2,250 + planner, October gains",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU",
+  "trials": 200,
+  "success_pct": 0.0,
+  "door_pct": 84.0,
+  "note": "108 stalls (most 0.2-0.4 m short of a waypoint), 89 falls; goal convention mismatch; re-run pending"
+ }
+]

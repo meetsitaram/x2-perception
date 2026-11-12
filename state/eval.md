@@ -260,6 +260,28 @@ ACP tracker s1 2,250 + planner_mlp (plant `mc_20261024`), MuJoCo 3.15 CPU, nomin
 - Running: ACP 2,250 pair on our apparatus, 200 trials nominal, started 02:26 UTC, bounded loop of `run_acp_apparatus.sh` slices
   (about 50 s wall per trial -> about 3 h). Log `eval/out/acp/handover_pair_s1_002250_mc_20261024_planner/ours_nominal.log`.
 
+- **ACP 2,250 pair on our apparatus, 200 trials nominal (done 03:21 UTC): 0/200** (95 % 0.0-1.9 %), clean 0/200; 108 stalled,
+  89 fell, 3 time limit; reach: door 84 % completed, 4x4s 20.5 %, ramps 6 %, stairs 0 %. 71 of 108 stalls stand 0.20-0.40 m from
+  their waypoint: the adapter's goal shrinks inside 0.3 m (goal_r) and the eval needs 0.20 m. Reported to the coordinator 03:23.
+- Coordinator's decisions (03:25 UTC): (1) after ACP step 2, run the variant "adapter goal convention matched to the eval radius":
+  `ACP_GOAL_R=0.2 ACP_LOOKAHEAD=0.3 RUN_SUFFIX=_goalr02_look03`, 200 trials same seeds; then goal_r 0.2 alone
+  (`RUN_SUFFIX=_goalr02`) to separate the two; report after (1). (2) Fix street_doorway: scan and route check must see every
+  obstacle in the physics; re-check all eight routes; re-run that route for the baseline. (3) Renders.
+- Done for (1): `eval/adapters/acp.py` env options `ACP_GOAL_R`, `ACP_LOOKAHEAD` (default off; hand-over check still ALL PASS,
+  same differences); `run_acp_apparatus.sh` takes `RUN_SUFFIX`.
+- Done for (2), code: `check_routes.py` has `check_floor_obstacles` (every floor-standing box that is not a 4x4, its part below
+  0.30 m; blocked under 0.18 m (legs), "near" under 0.25 m). `adapters/base.py` height_scan reads `app.scan_height` when a course
+  has one. The `ladder.py` change (tile `via` detour (-1.6, 1.0), (-0.6, 1.0) instead of the export point (-1.5, 1.5); `scan_boxes`
+  for all eight step-2 routes; summaries record the scan) is in the scratchpad patch `patch_ladder.py`, to apply only when no
+  ladder run is going (the running ACP step-2 chain re-imports ladder.py every slice). Tested on a copy: all eight routes PASS
+  the new check, the doorway route is 13.6 m / 16 waypoints, the scan reads 0.416 m at the block.
+  If the scratchpad is gone: re-do these three edits by hand from this description.
+- Found by the new check on OUR APPARATUS (held-out route, not changed): leg 10 (button 2 -> ramps, back side) passes 0.16 m from
+  the lower part of a brace at (3.61, 1.48) (point (3.65, 1.72), 0.05-0.30 m up), which the walk raster does not hold (reads 0);
+  legs 7-11 pass 0.19-0.21 m from it and from a leaning board at (2.61, 2.10). NIST: PASS. To the coordinator.
+- The training-map export's own street_front_L4_v0 route runs through the block: a map defect for the Hiking agent (exporter).
+- Running: ACP 2,250 on the eight step-2 routes (chain started 03:22 UTC, `.../ladder/chain2.log`).
+
 ### Remaining list (as given by the coordinator)
 1. (done) collect step 2 for the baseline.
 2. The ACP 2,250 pair on our apparatus, 200 trials, nominal; repeat until it prints DONE: `RUN_LABEL="ACP pair tracker 2250 + planner, plant mc_20261024, current rule, MuJoCo CPU" bash eval/run_acp_apparatus.sh eval/data/handover/acp_2250 handover_pair_s1_002250_mc_20261024_planner ours nominal 200`. Then `python eval/report.py eval/out/acp/handover_pair_s1_002250_mc_20261024_planner/ours_nominal`, beside the baseline's `eval/out/baseline_20261102/ours_nominal_goalshrink` (15/200) and `ours_nominal_goalkeep` (4/200): success and clean success with trial counts and intervals, per-section reach, where trials end (falls and stalls separately), side hits by class (counts only; no force figures). This is the number the user is waiting for: report it to the coordinator as soon as it exists.

@@ -118,6 +118,69 @@ def check_door(app):
     return out, bad
 
 
+LOW_MIN = 0.05       # m: a box standing on the floor whose top is this far above it is an obstacle (eval monitor 2026-11-12)
+ON_FLOOR = 0.10      # m: a box "stands on the floor" when its bottom is within this of the floor under it
+LEG_HALF_W = 0.18    # m: below BODY_LO only the legs pass: feet 0.10 m either side of the centre line plus half a sole (0.06) and 2 cm
+
+
+def floor_boxes(app):
+    """Indices of the physics boxes that stand on the floor and are not 4x4s (which routes must step over): blocks, rocks,
+    plants, furniture, posts and walls. Overhead pieces (door headers, rails) are left out."""
+    out = []
+    for k, b in enumerate(app.boxes):
+        if b.get("cls") == "4x4":
+            continue
+        c = b["center"]
+        g = float(app.height_patch(c[0], c[1], max(0.04, min(b["half"][0], b["half"][1])), np.min))
+        if b["lo"][2] <= g + ON_FLOOR and b["hi"][2] > g + LOW_MIN:
+            b["_floor"] = g
+            out.append(k)
+    return out
+
+
+def _foot_dist(b, x, y):
+    """Horizontal distance from (x, y) to the box (exact footprint for boxes with a vertical axis; a tilted box: its points below BODY_LO)."""
+    from apparatus import quat_mat
+    R = quat_mat(b["quat"])
+    if abs(np.abs(R[2]).max() - 1.0) < 1e-6:
+        p = R.T @ (np.array([x, y, 0.0]) - np.array([b["center"][0], b["center"][1], 0.0]))
+        d = np.maximum(np.abs(p) - np.array(b["half"]), 0.0)
+        d[int(np.argmax(np.abs(R[2])))] = 0.0
+        return float(np.linalg.norm(d))
+    if "_pts" not in b:                                   # a tilted box (a brace, a leaning board): points every 2 cm inside it
+        h = np.array(b["half"])
+        n = [max(2, int(2 * hh / 0.02) + 1) for hh in h]
+        g = np.meshgrid(*[np.linspace(-hh, hh, nn) for hh, nn in zip(h, n)], indexing="ij")
+        Q = np.stack([v.ravel() for v in g], 1) @ R.T + np.array(b["center"])
+        f = b.get("_floor", b["lo"][2])
+        b["_pts"] = Q[(Q[:, 2] > f + LOW_MIN) & (Q[:, 2] < f + BODY_LO)][:, :2]     # the part below the band `check` tests
+    Q = b["_pts"]
+    return float(np.hypot(Q[:, 0] - x, Q[:, 1] - y).min()) if len(Q) else np.inf
+
+
+def check_floor_obstacles(app, half_w=HALF_W, warn=None):
+    """Every leg against every box standing on the floor, at any height above LOW_MIN (the band test in `check` starts 0.30 m
+    up and the step test sees only the raster, so a 0.27 m block on the line passed both): blocked if the centre line comes
+    closer than the legs' half width (LEG_HALF_W) below BODY_LO; closer than `half_w` is appended to `warn`."""
+    P, idx, blocked = app.path(), floor_boxes(app), []
+    for s, (a, b) in enumerate(zip(P[:-1], P[1:])):
+        n = max(2, int(float(np.linalg.norm(b - a)) / DS) + 1)
+        c = a + (b - a) * np.linspace(0, 1, n)[:, None]
+        for k in idx:
+            bx = app.boxes[k]
+            if (c[:, 0].min() > bx["hi"][0] + half_w or c[:, 0].max() < bx["lo"][0] - half_w
+                    or c[:, 1].min() > bx["hi"][1] + half_w or c[:, 1].max() < bx["lo"][1] - half_w):
+                continue
+            dmin = min(_foot_dist(bx, x, y) for x, y in c)
+            if dmin < half_w and warn is not None:
+                warn.append((s, app.waypoints[s]["name"], "%s (top %.2f m) %.2f m from the centre line at (%.2f, %.2f): between the legs' and the body's half width" % (
+                    bx.get("label"), float(bx["hi"][2]), dmin, bx["center"][0], bx["center"][1])))
+            if dmin < LEG_HALF_W:
+                blocked.append((s, app.waypoints[s]["name"], "%s (top %.2f m) %.2f m from the centre line at (%.2f, %.2f)" % (
+                    bx.get("label"), float(bx["hi"][2]), dmin, bx["center"][0], bx["center"][1])))
+    return blocked
+
+
 def check(app: Apparatus, half_w=HALF_W):
     P = app.path()
     rows, blocked = [], []
@@ -144,6 +207,8 @@ def check(app: Apparatus, half_w=HALF_W):
             blocked.append((s, w["name"], "step of %.2f m" % worst_step))
         if clear < half_w:
             blocked.append((s, w["name"], "wall %.2f m from the centre line at (%.2f, %.2f)" % (clear, where[0], where[1])))
+    app.route_warnings = []
+    blocked += check_floor_obstacles(app, half_w, app.route_warnings)
     return rows, blocked
 
 
@@ -222,6 +287,8 @@ if __name__ == "__main__":
         if door:
             print("  door: leaf open %.1f deg; doorway clear %.2f m (y %.2f..%.2f, needs %.2f); route passes at y %s; leaf %.2f m from the route" % (
                 door["open_deg"], door["clear_width"], door["from_y"], door["to_y"], DOOR_MIN, door["route_crosses_at_y"], door["leaf_to_route"]))
+        for wn in getattr(app, "route_warnings", []):
+            print("  near (not a failure): seg %d -> %s: %s" % wn)
         problems = ["seg %d -> %s: %s" % b for b in blocked] + bad_b + bad_d
         if problems:
             print("  FAILED:")

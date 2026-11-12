@@ -321,6 +321,15 @@ labelled contact agree on 95.4 % of body-frames. Observations finite, actor 588,
 11. Stage-2 schedule numbers (eta_obs from 200 iterations after the stage-2 start over 1,500; eta_rew from 1,700 over
     1,500) are ours: the paper gives Eq. 3 without numbers. The replay buffer is in memory and starts empty after every
     restart (refills to about 430,000 samples in about 50 iterations).
+12. Arm clearance data fix (stage 2d, staged for the next needed restart; coordinator 2026-11-12): the references put an
+    arm inside its thigh or the torso on 28-94 % of frames (any penetration) and the simulator collides the robot with
+    itself. We add outward shoulder roll per frame (then elbow extension and outward shoulder yaw where the roll alone,
+    capped at 0.6 rad, is not enough) for at least 1 cm clearance (0 for the shoulder links against the torso), smoothed
+    and rate-limited. The paper uses its references as retargeted. Reason: arm poses the robot reaches only by hitting
+    itself.
+13. Planned for stage 3 (user's eval rule): goal radius 0.2 m for arrival and goal scaling in the goal environments (the
+    paper: 0.5 m success) and routes with sharp heading turns right after a waypoint. Reference environments keep the
+    paper's 0.3 m (Table S4).
 
 ### Code release check
 
@@ -1089,3 +1098,50 @@ to 6,500. eta_obs reaches 1 at iteration 3,950; the eta_rew ramp runs from 3,950
 - Legs in the MJCF: no overlap. Leg geoms are at least 5 cm apart at the default pose and at hip yaw +-0.2 and -0.4; at
   +0.4 (toes out) the closest pair is the two feet at +0.4 cm. The URDF-hull overlaps found for Hiking do not occur in our
   model.
+
+**Arm clearance fix, built and verified, staged as stage 2d** (`code/tools/arm_clear.py` -> `code/cfg/armfix_stage2d_sets.pt`;
+`acp/data.py` `_armfix` in `code_next`, applied when the cfg has `"armfix"`; `cfg/stage2d_sets.json` = stage2c + armfix;
+label cache `labels_stage2d_sets.json.pt` built with the fix; table `eval/clip_quality/arm_clear_stage2d.txt`). Per frame and
+arm: the smallest outward shoulder roll (bisection, at most 0.6 rad) giving at least 1 cm between that arm's geoms and the
+thigh / torso / pelvis geoms the simulator collides (0 cm for the shoulder pitch / roll links against the torso: they sit
+0-7 mm from it at every pose). Where 0.6 rad is not enough (hand in front of the belly, shoulder yaw +-1.3-1.5): elbow
+extension, then outward shoulder yaw. Smoothed (max filter + Hann over +-10 frames, never below the need) and
+rate-limited; joint velocities follow by central differences. Two earlier builds are in `_trash` (the first asked 1 cm of
+the shoulder links; the second left 3.7 % of flat frames).
+
+| Set | Frames | Arm short of clearance by > 1 cm, before -> after | Worst shortfall before -> after (cm) | Mean / max roll added (rad) | Frames with elbow / yaw used | Max added joint step (rad per frame) |
+|---|---|---|---|---|---|---|
+| flat locomotion | 149,379 | 43.8 % -> 0.1 % | 11.1 -> 6.8 | 0.10 / 0.60 | 7,124 / 1,316 | 0.065 |
+| blocks | 149,379 | 43.8 % -> 0.1 % | 11.1 -> 6.8 | 0.10 / 0.60 | 7,124 / 1,316 | 0.065 |
+| chains | 33,953 | 63.5 % -> 0 | 11.1 -> 0 | 0.13 / 0.60 | 528 / 0 | 0.050 |
+| terrain-park stairs | 24,530 | 93.5 % -> 0 | 9.0 -> 0 | 0.14 / 0.20 | 0 | 0.009 |
+| fitted climbs | 28,231 | 36.0 % -> 0 | 9.4 -> 0 | 0.07 / 0.41 | 0 | 0.031 |
+| descents v2 | 13,033 | 27.5 % -> 0 | 8.9 -> 0 | 0.07 / 0.28 | 0 | 0.018 |
+| low risers | 19,643 | 34.3 % -> 0 | 10.1 -> 0 | 0.06 / 0.35 | 0 | 0.014 |
+| ramps | 131,615 | 35.2 % -> 0 | 8.7 -> 0 | 0.04 / 0.28 | 0 | 0.025 |
+| 4x4 | 10,868 | 57.1 % -> 0 | 7.8 -> 0 | 0.07 / 0.17 | 0 | 0.012 |
+| Pico 2x2 | 2,259 | 48.6 % -> 0 | 7.4 -> 0 | 0.06 / 0.17 | 0 | 0.014 |
+
+("Short by > 1 cm" = any penetration for the arm-thigh pairs.) The largest added joint step is 0.065 rad per 50 Hz frame
+(3.3 rad/s), far under the joint speed limits. Independent check through the staged loader (`self_pen.py` on stage2d): arm
+in thigh by more than 1 cm on 0 % of frames in every set (before: 16-91 %); worst remaining 5.5 cm in the 0.1 % of flat /
+blocks frames; arm in torso at most 2.4 cm (was 10 cm). 472,336 of 562,890 frames changed, largest offset 0.80 rad.
+**Swap-in:** at the next restart that is needed for another reason (not a restart of its own): `restart_s2b.sh <it>` with
+`DATA=cfg/stage2d_sets.json`. The staged code (`code_next/acp/data.py`) is checked by the throw-away resume run before the real run
+resumes. The 1,000-iteration live paper eval will show whether tracking changed.
+
+**Goal convention and exact arrival (eval monitor at 2,250 on our apparatus: 0/200, 71 of 108 stalls standing 0.20-0.40 m
+from a waypoint):**
+- What training uses (and the adapter card states, field `goal_command`, r_training 0.3): the goal is the reference root
+  0.5-1.5 s ahead (per-episode lookahead, `LOOKAHEAD` 25-75 frames), (dx, dy) = d / max(|d|, 0.3) in the body-yaw frame,
+  dpsi = goal heading minus robot heading. The 0.3 m is the paper's Table S4 value for reference following. In stage 2 the
+  goal therefore almost never comes to rest inside 0.3 m except at clip ends. A waypoint fed as a fixed target makes
+  the policy treat anything inside 0.3 m as arrived. The card matches training; the monitor's re-run with a lookahead past
+  non-station waypoints is the right adapter for this policy.
+- Stage 2 has no goal environments (the paper's stage 2 is reference-only), so 0.2 m arrival and turns after a waypoint
+  cannot be trained there without leaving the paper. Plan: **stage 3** (the paper's goal environments) with
+  goal radius 0.2 m (arrival disc and goal scaling; the paper uses 0.5 m success, a listed departure for the user's rule),
+  routes with sharp heading turns (+-70-90 degrees) right after a waypoint, station waypoints with the stand-at-goal
+  reward, on the extended-map tiles (section 8). Stage 3 starts at the stage-2 end (budget 6,500, about 12 h at the current
+  speed) or earlier on the switch criterion. Its code is the next CPU work item, written and CPU-tested before then. Until
+  stage 3, any pair handed over keeps r = 0.3 and the reference-lookahead convention in its card.

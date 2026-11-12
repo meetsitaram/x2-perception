@@ -4,7 +4,7 @@
   "tracks": {
    "title": "Team status per agent",
    "description": "One row per agent: state, what is running, newest checkpoint, blocker, next step and when it was last recorded.",
-   "blob": "bd0e540386e71331e9dbdb313bc3fa3e"
+   "blob": "b12b60753f27e9590be729aa0df07b87"
   },
   "targets": {
    "title": "Goal and starting point",
@@ -14,12 +14,12 @@
   "progress": {
    "title": "Training progress points",
    "description": "Iteration, reward, episode length and terrain level recorded from each run's training log.",
-   "blob": "099ef3a0f5df9b89a7612ed7e38a5af2"
+   "blob": "cf3ada9a675b34bbf15c29885beb4845"
   },
   "apparatus_results": {
    "title": "Apparatus eval runs",
    "description": "One row per eval run of a checkpoint on an apparatus by the eval monitor. Empty until the first run.",
-   "blob": "8d9f48b817ed8489ba18b1658226c121"
+   "blob": "59c37c7dfcfbfd225c200dfab1a610d4"
   },
   "g1_results": {
    "title": "G1 reproduction vs the paper",

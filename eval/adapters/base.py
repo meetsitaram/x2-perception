@@ -83,8 +83,8 @@ class View:
         xy = np.atleast_2d(np.asarray(xy_world, float))
         if self.app is None:
             return np.zeros(len(xy))
-        if not with_walls:
-            return self.app.height(xy[:, 0], xy[:, 1])
+        if not with_walls:      # a course with obstacles outside the walk raster carries a scan raster that has them (ladder step 2)
+            return getattr(self.app, "scan_height", self.app.height)(xy[:, 0], xy[:, 1])
         top = 3.0
         o = np.c_[xy, np.full(len(xy), top)]
         return top - self.rays(o, np.tile([0.0, 0.0, -1.0], (len(xy), 1)), far=top + 1.0)

@@ -442,5 +442,41 @@
   "episode_len": 364,
   "terrain_level": 0.49,
   "note": "episodes lengthening"
+ },
+ {
+  "id": "acp-3200",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, stage 2",
+  "iteration": 3200,
+  "total": 6500,
+  "reward": 0.135,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "data set 2c"
+ },
+ {
+  "id": "ssr-r6b-1000",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r6b",
+  "iteration": 1000,
+  "total": 20000,
+  "reward": 1.66,
+  "episode_len": null,
+  "terrain_level": 2.06,
+  "note": "59% of commanded speed; gate passed"
+ },
+ {
+  "id": "hiking-v4-136",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 4 (audit fixes)",
+  "iteration": 136,
+  "total": 30000,
+  "reward": -8.1,
+  "episode_len": 80,
+  "terrain_level": 0.0,
+  "note": "run 4 from scratch"
  }
 ]

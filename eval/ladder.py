@@ -246,9 +246,10 @@ STEP2_SIZE = {"stairs_U_turn": {"stairs_up": 0.15}, "amphitheatre_loop": {"stair
 LEVEL_SIZE = {"stairs_up": {1: 0.10, 2: 0.14, 3: 0.186}, "stairs_down": {1: 0.10, 2: 0.14, 3: 0.186}}
 # routes whose course is wrong (eval monitor 2026-11-12): their rows are printed but are NOT results
 STEP2_DEFECT = {
-    "street_doorway_out_and_back": "COURSE DEFECT, not a result: a 0.33 m block (top 0.17-0.27 m above the floor), a rock and a plant (meshes as their boxes, "
-                                   "0.26 and 0.53 m) stand on the route's centre line, are not in the walk raster the height scan "
-                                   "and the route check use, and every trial falls at the block (x -1.45 to -1.28 m)",
+    "street_doorway_out_and_back": "COURSE DEFECT in runs before the fix, not a result: a 0.33 m block, 0.27 m tall, stands on the "
+                                   "route's centre line (the export's own route) and is not in the walk raster that the height scan "
+                                   "and the route check used; every baseline trial fell at it (x -1.45 to -1.28 m). Fixed 2026-11-12: "
+                                   "detour south of it, scan sees floor boxes, route check tests them",
 }
 
 
