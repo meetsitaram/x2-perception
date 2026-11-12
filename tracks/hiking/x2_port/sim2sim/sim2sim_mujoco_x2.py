@@ -179,8 +179,9 @@ class EnvConfig:
         self.kp, self.kd, self.armature, self.effort, self.vel_limit = (np.zeros(n) for _ in range(5))
         self.max_delay = 0
         for an, ac in rob["actuators"].items():
-            assert ac["class_type"].split(":")[-1] == "DelayedPDActuator", ac["class_type"]
-            self.max_delay = max(self.max_delay, int(ac["max_delay"]))
+            # run 4 trains with ImplicitActuator (no delay); MuJoCo here still applies explicit PD every physics step
+            assert ac["class_type"].split(":")[-1] in ("DelayedPDActuator", "ImplicitActuator"), ac["class_type"]
+            self.max_delay = max(self.max_delay, int(ac.get("max_delay") or 0))
             for i, j in enumerate(self.joints):
                 if any(re.fullmatch(e, j) for e in ac["joint_names_expr"]):
                     self.kp[i] = _match(ac["stiffness"], j)
