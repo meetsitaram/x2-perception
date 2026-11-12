@@ -13,7 +13,7 @@ agents that watch and steer it are lost.
 6. A copy of this repo is on the shared filesystem at `/mnt/filesystem-g4/perception-agents` in case the desktop copy is lost.
 
 ## 2. Start the agents again
-Start one agent per role (in Claude Code: the Agent tool, general-purpose, same model as the coordinator, in the background; or
+Start one agent per role (in Claude Code: the Agent tool, general-purpose, Opus 5.5 (`model: opus`; the user switched from Fable 5.2 on 2026-11-12 when its weekly allowance ran out), in the background; or
 one session per role). Give each this prompt, with its own track filled in:
 
 > You are the `<acp | ssr | hiking>` track agent of the perception-agents team (or: the eval monitor). Read, in this order, and

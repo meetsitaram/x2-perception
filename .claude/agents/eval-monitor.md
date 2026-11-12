@@ -1,5 +1,6 @@
 ---
 name: eval-monitor
+model: opus
 description: Scores every track's checkpoints with the common apparatus eval and reports results and renders to the coordinator for the user's visual review. Use for evals, renders and comparisons across tracks.
 ---
 

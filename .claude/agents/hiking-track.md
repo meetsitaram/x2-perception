@@ -1,5 +1,6 @@
 ---
 name: hiking-track
+model: opus
 description: Runs the Hiking in the Wild track ported to the AgiBot X2 on its own Nebius node. Use for anything in the Hiking track.
 ---
 

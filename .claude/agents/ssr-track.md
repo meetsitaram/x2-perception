@@ -1,5 +1,6 @@
 ---
 name: ssr-track
+model: opus
 description: Runs the SSR track for the AgiBot X2 on its own Nebius node. Use for anything in the SSR track.
 ---
 

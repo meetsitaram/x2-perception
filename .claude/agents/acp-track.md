@@ -1,5 +1,6 @@
 ---
 name: acp-track
+model: opus
 description: Runs the ACP (adaptive contact planning) track for the AgiBot X2 on its own Nebius node. Use for anything in the ACP track.
 ---
 
