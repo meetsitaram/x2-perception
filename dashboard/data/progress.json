@@ -298,5 +298,29 @@
   "episode_len": 736,
   "terrain_level": 0.4,
   "note": "run 2 (from scratch): 2% of commanded speed, standing pattern again"
+ },
+ {
+  "id": "hiking-v2-428",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 2, chest camera and October gains",
+  "iteration": 428,
+  "total": 30000,
+  "reward": 55.4,
+  "episode_len": 894,
+  "terrain_level": 0.97,
+  "note": "run 2: 1% of commanded speed, standing"
+ },
+ {
+  "id": "ssr-r5-140",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r5",
+  "iteration": 140,
+  "total": 20000,
+  "reward": 1.06,
+  "episode_len": null,
+  "terrain_level": 0.32,
+  "note": "run r5: 3% of commanded speed, standing"
  }
 ]

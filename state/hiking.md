@@ -26,6 +26,9 @@ Updated 2026-11-11 23:10 UTC (Hiking track agent). Node `hiking`; address and lo
   permission system and nobody copies them until the user allows it. The copies on the node (`code/x2_port/export_for_eval.py`,
   `code/x2_port/sim2sim/`) are the run-1 versions; do not export a run-2 checkpoint with them. Run-2 renders are made on the
   desktop and shown from there.
+- Nothing under `/mnt/filesystem-g4` is deleted: unwanted files are moved to `tracks/hiking/_trash/<date>/` with a one-line
+  note (`/tmp` on the node is free to use). Helpers get the same rule. `code/x2_port/bench_envs.sh` still removes its scratch
+  run folders with `rm -rf` (it did so on 2026-11-11 before this rule): change that to a move before it is used again.
 - Run 2 runs to iteration 1,000 before any judgement; one line at 500 and 1,000 (signals table below).
 - MuJoCo, run 2 `model_250` (desktop, 14 s flat): stands and shuffles in place drifting backwards, 0.54 m net, mean forward
   speed -0.04 m/s against 0.74 commanded, both feet down 87%, no fall; actions did not depend on the depth image.
@@ -46,7 +49,7 @@ What is known from this node (measured unless marked "estimate"):
   cache (11 GB inside the venv's `isaacsim/kit/cache`) is already warm, so the second instance should only read it, but two
   instances writing it at once is untested. Converted robot USD files go to separate time-stamped folders in `/tmp/IsaacLab`.
 - What a failure of the second instance could do to the first: an out-of-memory error normally hits the process that asks for
-  memory, so the evaluation would die, but training's PhysX buffers also grow now and then and would fail if the card is full
+  memory, so the evaluation would die, but training's own memory use still grows (51 to 57 GB so far) and an allocation of its own would fail if the card is full
   at that moment (the supervisor then resumes from the newest checkpoint, losing up to 250 iterations, about 40 minutes). A
   driver-level fault (Xid) would take both. The supervisor's own scripts are safe: it only refuses to START while another GPU
   job runs, so if training crashes during an evaluation it waits for the evaluation to end and then resumes.
