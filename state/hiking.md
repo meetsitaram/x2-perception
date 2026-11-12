@@ -5,6 +5,37 @@ Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53
 
 ## Hand-over 2026-11-12 (newest first)
 
+- 03:07 **Run 4 `x2_parkour_v4` built and launching** (coordinator's decision after the port audit `state/hiking_port_audit.md`;
+  the iteration-500 continuation of run 3 is cancelled, `continue_v3.sh` is in `_trash`). Task `Instinct-Parkour-Fixed-Amp-X2-v0`
+  = `config/x2/fixed.py` (X2ParkourFixedEnvCfg, subclass of the staged task), from scratch, options a,c,d,f,r,s, stage 500,1500,
+  fall penalty 8, reference starts 0.5, camera randomisation on, 8,192 robots. Launcher `code/x2_port/launch_run4.sh` (tmux
+  `launchrun4`): waits for run 3's `model_500.pt`, stops run 3 through its supervisor, starts run 4, falls back to run 3 on a
+  Traceback / trainer restart / supervisor exit / no iteration 2 in 10 min. Resume run 4: `bash code/x2_port/start_x2_parkour_v4.sh`.
+  Fixes (each a listed departure where it departs from the paper; CPU checks in `code/x2_port/run4/test_run4.py`, census in
+  `perception-agents-work/hiking_run4/census.{py,txt}` on the desktop):
+  a. Discriminator joints: the 12 leg joints only (positions and velocities), base terms unchanged; head, arms, waist dropped.
+  b. Default pose: old (G1 numbers) hip pitch -0.312, knee 0.669, ankle pitch -0.363, hip roll/yaw 0, ankle roll 0, waist 0.
+     New = v2 reference mean, symmetrised: hip pitch -0.136, hip roll -/+0.043, hip yaw +/-0.181, knee 0.379, ankle pitch -0.114,
+     ankle roll +/-0.057 (left/right); waist 0 (reference mean +0.229 is the lean); arms, head unchanged. Pelvis 0.679 m above the
+     soles (MuJoCo FK; was 0.641); spawn 0.75 m (was 0.71).
+  c. Action scale = the G1's per joint type (hip pitch/yaw 0.548, hip roll/knee 0.351, ankles 0.439, ...; was hip/knee 0.261, ankle
+     pitch 0.258). Reference gait action-rate raw sum per 50 Hz step: 0.188 -> 0.093 (all joints), legs 0.173 -> 0.082 (x0.48).
+     The G1 reference with the G1 scale was not computed.
+  d. Self-collision: 20 more filtered pairs: pelvis vs both hip-roll links, and same-side wrist yaw/pitch/roll vs hip
+     pitch/roll/yaw. Census over 3,000 reference frames (MuJoCo convex hulls, not PhysX): pelvis/hip_roll in 50-57% of frames (6 mm
+     median), wrist/hip 6-38% (4-19 mm median); left/right foot hulls 5.2% (22 mm), ankle/knee cross pairs 0-1%: kept on (real leg
+     crossings). Old and new default poses: no overlaps.
+  e. soft_joint_pos_limit_factor 1.0 (was 0.9): the reference reaches the hard limits of hip roll, shoulder roll, ankle roll and
+     elbow (factor needed 1.0); waist pitch would need 1.11 (the reference exceeds the URDF limit), moot with waist out of the AMP
+     input and default 0.
+  f. Actuators: implicit PD, no delay (G1 as run); mc_20261024 gains, limits, armature unchanged. `agibot_x2.py` docstring corrected.
+  g. Options a,c,d,s as run 3 plus f (P 8) and r (0.5), schedule from iteration 0.
+  Installed at 03:06: `staged.py` (with e, f, r; superset, so run 3's resume behaves the same), `fixed.py`, task registration,
+  `supervise_x2.py` (moves its STOP flag to `_trash`); old files in `_trash/2026-11-12/` with notes. `launch_next.sh` already
+  had the Traceback fallback. Not verified: none of the run-4 config has been constructed in Isaac before this launch; the
+  collision census is MuJoCo hulls (PhysX simplifies hulls); the MuJoCo port and `export_for_eval.py` must read run 4's env.yaml
+  (they do: both are env.yaml-driven) but implicit PD is not modelled differently in MuJoCo (explicit PD there).
+
 - 02:55 **Reference-state starts.** The paper's G1 task does not use them: every episode starts from the default pose
   (`reset_root_state_uniform` +-0.1 m, +-0.1 rad yaw, +-0.2 velocities; `reset_joints_by_offset` +-0.15 rad), so the share is 0%
   (`InstinctLab/.../parkour/config/parkour_env_cfg.py` EventCfg; the G1 config changes it only in its PLAY variant). Our X2 task

@@ -1063,3 +1063,29 @@ rollouts on these terrains. Small sample (20-48 episodes per bin).
 (`cfg/stage2c_sets.json`; label cache built; clip_quality in `eval/clip_quality/stage2c_sets.txt`). It goes in through a restart
 that is needed for the data change, at checkpoint 3,000 (armed: `restart_s2b.sh 3000` with `DATA=cfg/stage2c_sets.json`;
 code unchanged). The resume command in `code/ops/README.md` now says stage2c.
+
+**Restart at checkpoint 3,000 (data change to stage 2c), done:** STOP at about 03:00:0x UTC, resume check passed
+(iteration 3,000 to 3,003, stage-2c data on the GPU), real run back at 03:00:45; training was down for under 2 minutes. Data: 1,660 segments,
+187.6 min, **prop slots 94** (69 before: the walled flights of gs2dn_v2 / gs2lo_v1). Speed **65,000-65,700 env-steps/s**
+(70,000 before, -7 % from the extra prop slots), GPU memory 52.1 GB. First live finish rates: descents v2 0.85-0.89, low
+risers 0.91-0.96. **What runs now:** stage 2, `runs/s2_v1`, data `cfg/stage2c_sets.json`, from 3,000. Resume command as
+above with `DATA=cfg/stage2c_sets.json`. Next: live paper eval at 4,000 (armed, `acp-evallive`), then 5,000 and 6,000; budget
+to 6,500. eta_obs reaches 1 at iteration 3,950; the eta_rew ramp runs from 3,950 to 5,450 (the s2_start of 2,250 + 1,700 + 1,500).
+
+**Self-penetration checks (Hiking port audit, 2026-11-12 03:20 UTC; `code/tools/self_pen.py`, output
+`eval/clip_quality/self_pen_stage2c.{txt,json}`; training model's collision geoms, every 5th frame of the stage-2c clips):**
+- Self-collision is **on** in our simulator: 130 of 132 arm-thigh/torso geom pairs and all 465 leg pairs generate contacts.
+- Arm inside thigh in the references (share of frames over 1 cm / over 2 cm, worst): terrain-park stairs **91 % / 83 %,
+  8.0 cm**; chains 42 % / 28 %, 9.6 cm; 4x4 39 % / 26 %; Pico 2x2 33 % / 24 %; ramps 25 % / 16 %; flat and blocks
+  23 % / 11 %, 9.8 cm; fitted stairs 16-18 % / 6-9 %. Arm inside torso: flat, blocks and chains 7-9 % over 1 cm (max 10 cm);
+  none elsewhere.
+- What the tracker is paid for: `track_joint_pos` covers all 31 joints (arms included) and the contact-point terms include
+  the wrists, so the reference asks for arm poses the robot reaches only by pressing the arm into its thigh. The reward at
+  stake is small (an arm 0.2 rad off on two joints costs about 1 % of `track_joint_pos`; sigma_c = 1 m makes the wrist-point
+  terms nearly flat). The contact forces in the rewards are robot-terrain only, so self-contact is never penalised. The
+  real cost is physical: the arm PD pushes against the leg in swing, and hands knock the thighs on hardware.
+  Proposed data fix, not done: in the data build, add shoulder roll per frame until arm-thigh clearance is at least 1 cm.
+  It would go in at the next needed restart.
+- Legs in the MJCF: no overlap. Leg geoms are at least 5 cm apart at the default pose and at hip yaw +-0.2 and -0.4; at
+  +0.4 (toes out) the closest pair is the two feet at +0.4 cm. The URDF-hull overlaps found for Hiking do not occur in our
+  model.

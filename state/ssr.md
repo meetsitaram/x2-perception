@@ -811,3 +811,28 @@ Not verified / open:
   over 500; plus the earlier ones (walking starts, prior speed filter and balancing, reward x dt, camera mount randomisation).
 - Gates: 40 % of commanded speed by 1,000; air time over 0.2 s by 2,000. Report at 700 and 1,000.
 - Stop: `touch /mnt/filesystem-g4/tracks/ssr/runs/STOP`. Old runs kept: `runs/r6/` (stood, stopped at 490), `runs/t_a/`.
+
+## r6b at 700 and the 1,000 restart (coordinator, 03:20 UTC)
+
+- r6b at 700: 58 % of commanded speed (61 % at the switch, 80 % at 560, 68 % at 600); obstacle share 42 % (on its ramp);
+  levels flat 1.8, beam 0.77, ramp 0.34, platform 0.28, stairs 0.05; ends: reached_end 24 %, time limit 39 %, tilt 15 %,
+  side_obstacle 14 %. Touchdown air 0.06 s, flat; style latch (0.15 s) not fired, style still 0.
+- Restart at 1,000 (`runs/queue9.sh`, tmux `ssr9`, automatic): r6b stopped after its log passes 1,005 and resumed from its
+  1,000 checkpoint under the same name. If mean touchdown air time < 0.10 s: `--style_from 1000` (style weight by schedule,
+  0 -> the paper's 0.2 over 500 iterations) and `--feet_air_w 20 --feet_air_min 0.1`; otherwise `--gate_air 0.10` (latch
+  lowered). Code: `scripts/patch_air.py` (backups `_bak_20261112/*.pre_air`), CPU smoke test passed.
+- **Feet-air-time reward (listed departure)**: at each touchdown under a moving command, 20 x clamp(air time - 0.10 s, 0,
+  0.30 s); logged as `feet_air`. Positive only, on purpose: Isaac Lab's form (air - threshold) x first contact charges every
+  short step, which a stander never pays, so it would push back toward standing. Hiking equivalent: `feet_air_time` +0.5
+  (Isaac Lab form, only above 0.15 m/s commanded).
+
+  Per-step value under the new weights (style at its full 0.2; Table 6 as implemented; foothold 0.25 x about 1.0):
+
+  | Gait | Table 6 | foothold | style (0.2 x r_s) | feet_air | total |
+  | --- | --- | --- | --- | --- | --- |
+  | stander | 1.88 | 0.25 | 0.07 (r_s 0.35) | 0 | 2.20 |
+  | shuffler (t_a probe: 3.7 touchdowns/foot/s, air 0.06-0.10 s, step 0.14 m) | 2.77 (2.16 with noise) | 0.25 | 0.00-0.04 (r_s 0.01-0.18, d1 shuffle) | 0 to 0.003 | 3.02-3.06 |
+  | walker, 0.2 s air, 0.6 m/s, 0.25-0.3 m steps (about 2.2 touchdowns/s) | about 2.7-2.9 (estimate) | 0.25 | 0.19 (r_s about 0.93, reference walking) | 2.2 / 50 x 20 x 0.10 = 0.088 | 3.23-3.43 |
+  | walker, 0.3 s air (about 2.0 touchdowns/s) | about 2.7-2.9 | 0.25 | 0.19 | 2.0 / 50 x 20 x 0.20 = 0.16 | 3.30-3.50 |
+
+  Gap walker - shuffler: about +0.2 to +0.45 per step (feet_air 0.09-0.16, style 0.15-0.19), against about 0 without them.
