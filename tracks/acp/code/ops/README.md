@@ -34,3 +34,5 @@ Other entry points: `../tools/paper_eval.py`, `eval_live.sh`, `pair_eval.py`, `h
 | `live_test.sh` | the live-evaluation test: two paper-eval sizes beside training after a checkpoint, with training speed before / during / after |
 
 Next data change (at the next needed restart): `DATA=cfg/stage2c_sets.json` (stage2b + re-fitted stair descents `gs2dn_v2`; built by `../data_build/gen_stairfit_dn.py` on the desktop). Motion recipe: `../MOTIONS.md`.
+
+Staged after that (2026-11-12 03:30 UTC): `DATA=cfg/stage2d_sets.json` = stage2c + the arm clearance fix (`../tools/arm_clear.py` -> `cfg/armfix_stage2d_sets.pt`, applied by `acp/data.py` `_armfix`, which is in `code_next` until installed by `restart_s2b.sh`). Swap in only at a restart needed for another reason.

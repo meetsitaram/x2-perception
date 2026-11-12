@@ -242,6 +242,9 @@ class Discriminators(nn.Module):
         super().__init__()
         self.nets = nn.ModuleList([mlp(AMP_DIM * AMP_FRAMES, [512, 256, 128], 1, act=nn.ReLU) for _ in range(n)])
         self.norm = RunningNorm(AMP_DIM * AMP_FRAMES)
+        self.mask = None                        # optional fixed input mask (not saved; set by train --disc_mask_arms)
 
     def forward(self, x, i):
+        if self.mask is not None:
+            x = x * self.mask
         return self.nets[i](self.norm(x))

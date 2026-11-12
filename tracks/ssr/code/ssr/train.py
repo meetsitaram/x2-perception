@@ -142,6 +142,10 @@ def train(a):
         env._contacts()
         env._update_obs(torch.arange(a.num_envs, device=dev))     # also refreshes the stored foot positions: without it the first step saw the feet jump (one huge slip penalty at iteration 0 in d4 and t_b)
     enc, aux, actor, critics, foot, disc = (m.to(dev) for m in (N.Encoder(a.map_memory), N.Aux(), N.MoEActor(), N.Critics(), N.Foothold(), N.Discriminators()))
+    if a.disc_mask_arms:
+        mk = torch.ones(AMP_DIM, device=dev)
+        mk[22:30], mk[43:51], mk[51:57] = 0.0, 0.0, 0.0           # arm q, arm qd, wrist positions
+        disc.mask = mk.repeat(AMP_FRAMES)
     lr_ppo = 5e-4
     actor.log_std.data.fill_(math.log(a.init_std))
     opt_ppo = torch.optim.Adam(list(actor.parameters()) + list(critics.parameters()), lr=lr_ppo)
@@ -469,6 +473,7 @@ if __name__ == "__main__":
     ap.add_argument("--rsi_min_speed", type=float, default=0.0, help="walking starts only from frames moving forward at least this fast (m/s); 0 = any frame")
     ap.add_argument("--adv_floor", type=float, default=2e-3)
     ap.add_argument("--boot_iters", type=int, default=0, help="early schedule length (earlier runs: 3000); 0 = the paper's rewards from the start")
+    ap.add_argument("--disc_mask_arms", action="store_true", help="deviation: the style discriminators do not see arm joints or wrist positions")
     ap.add_argument("--style_from", type=int, default=0, help="deviation: style weight 0 before this iteration, ramped to --w_style over --gate_ramp; overrides --style_low; 0 = off")
     ap.add_argument("--feet_air_w", type=float, default=0.0, help="deviation: feet-air-time reward weight (per touchdown, W * clamp(air - feet_air_min, 0, 0.4 - feet_air_min)); 0 = off")
     ap.add_argument("--feet_air_min", type=float, default=0.1, help="air time below which a touchdown earns nothing")

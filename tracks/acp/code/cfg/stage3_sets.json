@@ -1,0 +1,72 @@
+{
+ "dir": "/mnt/filesystem-g4/tracks/acp/data/clips",
+ "hmap": "tp_ramp_hmap_x30_40mm.npz",
+ "note": "stage 2 (2026-11-12): as stage 1 without gs2dn_v1 (all 38 clips have the legs solved on the flipped branch), without the one flipped Pico clip, and without chain clips that contain a single step higher than 0.30 m; the 5 % share of the descents went to the terrain-park stairs; stage2b (2026-11-12): ramps and terrain-park stairs with ground_stance (clips whose stance soles sit more than 1.5 cm inside the terrain are lifted by their median stance gap); stage2c (2026-11-12): stair descents back as gs2dn_v2 (re-fitted on the desktop with the feet facing down the stairs, data_build/gen_stairfit_dn.py; 57 clips, |hip yaw| <= 0.74 rad), 5 % share taken back from the terrain-park stairs; plus low-riser flights gs2lo_v1 (risers 10-15 cm, treads 25-32 cm, 39 climbs + 43 descents, data_build/gen_stairfit_low.py; the eval ladder failed 10 cm risers and no fitted flight had a riser under 14 cm) at 0.05, taken from the fitted climbs gst_v1 (0.10 -> 0.07) and terrain-park stairs (0.10 -> 0.08); stage2d (2026-11-12): stage2c + arm clearance fix (armfix_stage2d_sets.pt from tools/arm_clear.py: shoulder roll outward, elbow bend if the roll is capped, so each arm clears thigh and torso by >= 1 cm with the training collision geometry; smoothed, <= 0.10 rad per frame); stage3 (2026-11-12): stage2d + goal tiles (acp/goals.py, data/goals/goal_tiles_v1.json) for the goal environments",
+ "sets": [
+  {
+   "pkl": "x2_loco_flat_train.pkl",
+   "props": "",
+   "weight": 0.2
+  },
+  {
+   "pkl": "x2_loco_blocks_train.pkl",
+   "props": "x2_loco_blocks_props.json",
+   "weight": 0.2
+  },
+  {
+   "pkl": "x2_chains_far.pkl",
+   "props": "x2_chains_far_props.json",
+   "weight": 0.15,
+   "exclude_step_over": 0.3
+  },
+  {
+   "pkl": "tp_stairs_x10_sh2.pkl",
+   "props": "tp_stairs_x10_sh2_props.json",
+   "weight": 0.08,
+   "ground_stance": true
+  },
+  {
+   "pkl": "gst_v1.pkl",
+   "props": "gst_v1_props.json",
+   "weight": 0.07
+  },
+  {
+   "pkl": "gs2dn_v2.pkl",
+   "props": "gs2dn_v2_props.json",
+   "weight": 0.05,
+   "exclude_leg_flip": true
+  },
+  {
+   "pkl": "gs2lo_v1.pkl",
+   "props": "gs2lo_v1_props.json",
+   "weight": 0.05,
+   "exclude_leg_flip": true
+  },
+  {
+   "pkl": "tp_ramp_sh2.pkl",
+   "props": "",
+   "weight": 0.1,
+   "shift": [
+    30.0,
+    0.0
+   ],
+   "ground_stance": true
+  },
+  {
+   "pkl": "tp_t4x4u_y20.pkl",
+   "props": "tp_t4x4u_y20_props.json",
+   "weight": 0.07,
+   "ground_stance": true
+  },
+  {
+   "pkl": "pico_2026-10-29_2x2_train.pkl",
+   "props": "pico_2026-10-29_2x2_props.json",
+   "weight": 0.03,
+   "exclude_leg_flip": true
+  }
+ ],
+ "armfix": "armfix_stage2d_sets.pt",
+ "goal_tiles": {
+  "file": "/mnt/filesystem-g4/tracks/acp/data/goals/goal_tiles_v1.json"
+ }
+}

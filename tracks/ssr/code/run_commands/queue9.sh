@@ -2,9 +2,10 @@
 # r6b restart at iteration 1,000 (coordinator, 2026-11-12 03:20). Continues from r6b's iteration-1,000 checkpoint (same run name).
 # If mean touchdown air time (last 3 logs) < 0.10 s: style by schedule from 1,000 (ramped to the paper's 0.2 over 500) and the
 # feet-air-time reward (W 20 per touchdown x clamp(air - 0.10, 0, 0.30), moving commands only). Otherwise: style latch lowered to 0.10 s.
+# Both branches: the style discriminators no longer see the arms (--disc_mask_arms; port audit 03:25).
 R=/mnt/filesystem-g4/tracks/ssr/runs
 cd /mnt/filesystem-g4/tracks/ssr/code
-BASE="--flat_until 550 --obst0 0.25 --obst_ramp 500 --stage_a 150 --stage_b 400 --w_style 0.2 --style_low 0 --gate_ramp 500 --prior_min_speed 0.2 --rsi_min_speed 0.3 --plant mc_20261024 --camera chest_rs --amp_file data/amp_v2.npz --prior_balance"
+BASE="--flat_until 550 --obst0 0.25 --obst_ramp 500 --stage_a 150 --stage_b 400 --w_style 0.2 --style_low 0 --gate_ramp 500 --prior_min_speed 0.2 --rsi_min_speed 0.3 --plant mc_20261024 --camera chest_rs --amp_file data/amp_v2.npz --prior_balance --disc_mask_arms"
 while true; do
   it=$(tail -1 $R/r6b/log.jsonl | python3 -c "import json,sys; print(json.loads(sys.stdin.read())['it'])")
   [ "$it" -ge 1005 ] && break

@@ -37,6 +37,8 @@ characters.
 | code/cfg/labels_stage2_sets.json.pt | 66,809,265 | 8d8fea0f...cc407e24 | same for stage 2 | same |
 | code/cfg/labels_stage2b_sets.json.pt | 66,809,274 | abc80908...5f3abaed | same for 2b (after the `ground_stance` lift) | same |
 | code/cfg/labels_stage2c_sets.json.pt | 68,451,450 | 56bb452b...29de26ef | same for 2c (with gs2dn_v2) | same (built by `tools/clip_quality.py cfg/stage2c_sets.json`) |
+| code/cfg/armfix_stage2d_sets.pt | 13,596,733 | 25feb324...7aad411e | per-frame offsets of shoulder roll, elbow and shoulder yaw (both arms) so every arm clears its thigh and the torso by >= 1 cm with the training collision geometry; applied to the clip sets by `acp/data.py` when the cfg has `"armfix"` (no new motion, a correction of the references) | `tools/arm_clear.py cfg/stage2d_sets.json 8` (node CPU, about 1 min) |
+| code/cfg/labels_stage2d_sets.json.pt | 70,926,458 | 63d7f19d...fe1cca0c | labels for stage 2d (after the ground lift and the arm fix) | `acp/data.py` (built by `tools/self_pen.py` through the staged loader) |
 | eval/paper_eval/s1_v1_{001250,002000_plant_default,002250_plant_mc_20261024}_rollouts.pt | 1.47 GB each | 54c1d9d7...16dda927, a22ecc4e...750fbbe6, 4c6a9de2...357f011e | the tracker's own rollouts from the paper evaluation: input for the CPU planner jobs (hindsight labels), not reference motion | `tools/paper_eval.py` |
 
 Stage 2 trains the planner online. Its replay buffer holds labels from the tracker's own rollouts, kept in memory and not
@@ -49,7 +51,7 @@ stored on disk.
   Copy the outputs to `data/clips/` with `scp -l` (rate-capped).
 - Stair descents v2: as in the table (desktop).
 - Training data per stage: `cfg/stage1_sets.json`, `cfg/stage2_sets.json`, `cfg/stage2b_sets.json` (2,500-3,000),
-  `cfg/stage2c_sets.json` (from 3,000). Each holds the weights, the filters (`exclude_step_over`, `exclude_leg_flip`,
+  `cfg/stage2c_sets.json` (from 3,000), `cfg/stage2d_sets.json` (2c + arm fix; at the next needed restart). Each holds the weights, the filters (`exclude_step_over`, `exclude_leg_flip`,
   `ground_stance`) and a note saying why each set is in or out. The filters run in `acp/data.py` every time the data is built.
 - Quality checks: `tools/clip_quality.py CFG OUT.json`, `tools/ground_check.py CFG`, `tools/pen_cause.py CFG OUT.json`,
   `tools/pen_shift.py CFG OUT.json` (CPU: `CUDA_VISIBLE_DEVICES=`); results in `eval/clip_quality/`.
