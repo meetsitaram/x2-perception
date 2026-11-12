@@ -514,5 +514,29 @@
   "episode_len": 317,
   "terrain_level": 0.25,
   "note": "steps upright in MuJoCo at 250"
+ },
+ {
+  "id": "ssr-r6b-1540",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r6b",
+  "iteration": 1540,
+  "total": 20000,
+  "reward": 1.7,
+  "episode_len": null,
+  "terrain_level": 4.06,
+  "note": "59% of commanded speed"
+ },
+ {
+  "id": "hiking-v4-530",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 4 (audit fixes)",
+  "iteration": 530,
+  "total": 30000,
+  "reward": -2.02,
+  "episode_len": 440,
+  "terrain_level": 0.45,
+  "note": "26% of commanded speed at 500"
  }
 ]

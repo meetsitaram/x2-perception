@@ -5,6 +5,65 @@ Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53
 
 ## Hand-over 2026-11-12 (newest first)
 
+- 05:10 **Option t changed to threshold 0.05 s, weight 140** (coordinator; SSR uses 0.10 s): run 4's swings are 0.03-0.06 s, so
+  0.10 s gave no gradient. Cap 0.30 s kept. Walker with 0.2-0.25 s swings: 0.07 touchdowns per step x 140 x 0.02 x (0.15..0.20) =
+  **+0.029..+0.039 per control step** (with dt: 2.8 per touchdown per second of clamped air; without dt: weight 2.8). A 0.06 s
+  swing pays 140 x 0.02 x 0.01 = 0.028 per touchdown (a small gradient). Lunger and stander 0. Walker value with t about 10.6-11.6
+  (table below otherwise unchanged). `staged.py.next`, `run4/test_t.py` (pays 0.25 / 0 / 0.30 / 0) and
+  `code/x2_port/continue_v4.sh` updated. continue_v4.sh is uploaded but **not started**: it waits for model_1000, then continues
+  run 4 with t and the measured-air monitor; it falls back to plain run 4 on failure. Start it only if air per touchdown is still
+  under about 0.05 s at 1,000: `tmux new -d -s cont4 "bash code/x2_port/continue_v4.sh"`.
+
+- 05:05 **Option t sized from our own table: weight 200** (coordinator: not SSR's 20, whose rewards are on another scale).
+  Isaac Lab adds weight x dt x raw on the touchdown step, so with dt: 200 x 0.02 = **4.0 per touchdown per second of clamped
+  air time**; without dt the same pay would be weight 4.0. A walker at 0.6 m/s with 0.2-0.25 s swings: about 3.5 touchdowns/s
+  (swing 0.225 s + stance about 0.35 s per foot), i.e. 0.07 touchdowns per control step, each paying 4.0 x (0.10..0.15) =
+  0.40..0.60, so **+0.028..+0.042 per control step**, the size of the walker-stander margin (0.077 - 0.042 = 0.035). A shuffler
+  with 0.03 s swings, a stander and a lunger (feet planted) get 0. Default set in `staged.py.next` (`HIKING_X2_AIR_TD_WEIGHT`,
+  default 200); `test_t.py` passes.
+
+#### Walker, stander, shuffler, lunger per control step at run 4's early values (gamma 0.99), with option t at weight 200
+
+Shuffler = run 4 at iterations 491-500 as measured (task +0.0047 per step excluding the fall penalty: alive 0.019, lin 0.019, yaw
+0.013, wait -0.011, heading -0.008, the rest -0.027; style 0.038; episode 370; falls 60% of ends, fall penalty -8 x 0.6 at the
+end, discounted 0.99^370 = 0.024). Walker, stander, lunger as in the run-3 table above (the walker is the G1 at 5,000 under X2
+early scales; the lunger is run 3 at 278 with the fall penalty of 8).
+
+| | Lunger | Stander | Shuffler (run 4 now) | Walker (0.2-0.25 s swings) |
+|---|---|---|---|---|
+| task + style per step | 0.066 | 0.042 | 0.043 | 0.077 |
+| t per step | 0 | 0 | 0 (swings 0.03-0.06 s) | +0.028..+0.042 |
+| steps until the episode ends | 140 (fall, -8) | 200 (stalled reset) | 370 (60% fall) | 1,000 |
+| discounted value without t | 3.02 | 3.64 | 4.1 | 7.7 |
+| discounted value with t | 3.02 | 3.64 | 4.1 | 10.5-11.9 |
+
+Order now: walker > shuffler > stander > lunger. t widens the walker's lead over the shuffler from 3.6 to 6.4-7.8. The shuffler
+earns nothing from t until its swings pass 0.10 s, so it gets no gradient towards longer swings until it is already partly there.
+That is the risk with a threshold form. The threshold of 0.10 s is SSR's, unchanged.
+
+- 04:55 **Prepared, not applied: option t (touchdown air time, SSR's form) and a measured air time per touchdown** in
+  `config/x2/staged.py.next` and `config/x2/monitor.py.next` (the running files are untouched; both take effect only at a restart,
+  e.g. a continuation from `model_1000`). t: on each touchdown of a robot commanded to move, clamp(swing air time - 0.10, 0, 0.30)
+  summed over the feet, weight `HIKING_X2_AIR_TD_WEIGHT` (default 20; times dt, so a 0.3 s swing pays 0.08 per touchdown, about
+  0.003 per control step at 1.7 touchdowns/s), never negative, beside the paper's `feet_air_time`, not scheduled. Monitor adds
+  `air_per_touchdown_s` (mean air time of the swings that end at that step, moving-commanded robots) and `touchdown_air_ge_0p2`.
+  CPU tests pass: `code/x2_port/run4/test_t.py` (pays 0.20 / 0 / 0.30 cap / 0 for a standing command; monitor mean and share),
+  `test_staged.py`, `test_fall.py`, `test_refstart.py` on the new staged.py. Never built in Isaac.
+  **Which air-time form run 4 uses:** InstinctLab's parkour `feet_air_time` (the paper's): in single stance it pays the shorter of
+  the stance foot's contact time and the swing foot's air time, every step, gated on a moving command; no threshold is subtracted,
+  so it is never negative and short steps are not charged (unlike Isaac Lab's (air - threshold) x first_contact form). It pays
+  little for short shuffles (run 4: 0.036 per episode at 500).
+
+- 04:45 **Run 4 at 500** (iterations 491-500): speed ratio 0.26 (0.18/0.70 m/s), both feet down 60%, no support 6.7%, step rate
+  16.1 Hz, air time 0.0355/ep, air per touchdown about 0.029 s (estimate from the monitor's shares: (single + 2 x no support) / 2
+  over touchdowns per foot; `report_line.py` prints it now), wait -4.18, falls 60%, stalled 28%, time-outs 14%, episode 370, fall
+  penalty -4.9/ep, reference starts 0.5 (from here ramping to 0 at 1,500), D-reward 0.50, level 0.42 (perlin_rough_stand 4.49,
+  perlin_rough 0.95, mesh boxes 0.54, slope 0.52, boxes 0.41, stairs and gaps 0.00-0.01). Trend 300/350/400/450/500: speed
+  0.25/0.28/0.16/0.31/0.26, stalled 38/30/34/31/28%, episode 338/335/336/371/370, air time/ep 0.022/0.027/0.025/0.030/0.036.
+  Run 3 at 500: speed 0.52, falls 80%, 348 steps, air time 0.0125. G1 at 1,000 (equal samples): 687 steps, falls 50%, air time
+  0.049. Drift check (stalled > 40% with speed < 0.2): not met. `model_500.pt` saved. MuJoCo air per touchdown at 250 (flat):
+  mean 0.047 s left, 0.061 s right. Port changes (ImplicitActuator, `run4_player.py`) copied to `code/x2_port/sim2sim/`.
+
 - 04:15 **Run 4 at 250** (iterations 241-250): speed ratio 0.32 (0.23/0.70 m/s), both feet down 63%, no support 9.8%, step rate
   14.9 Hz, air time 0.0195/ep, wait -2.61, falls 67% (root_height 51%, bad_orientation 16%), stalled resets 26%, time-outs 8%,
   episode 279, fall penalty -6.0/ep, reference-start share 0.5 (schedule), style coef 0.075, D-reward 0.48, level 0.14

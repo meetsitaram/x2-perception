@@ -87,8 +87,10 @@ def _tile(ttype, tile_id):
     return meta[0], np.load(D / (ttype + ".npz"), allow_pickle=False)
 
 
-def tile(name, ttype, tile_id, route=0, upto=None, reverse=False, skip=None, back=False):
-    """A course on one tile of the export: its route `route`, optionally cut `upto` metres after the start."""
+def tile(name, ttype, tile_id, route=0, upto=None, reverse=False, skip=None, back=False, via=None, scan_boxes=False):
+    """A course on one tile of the export: its route `route`, optionally cut `upto` metres after the start. `via`: {export
+    waypoint index: [(x, y), ...]} replaces that route point by these (a detour). `scan_boxes`: the height scan sees every
+    physics box that stands on the floor (the walk raster used for the physics leaves them out)."""
     t, z = _tile(ttype, tile_id)
     i = t["index"]
     labels = [str(s) for s in z["labels"]]
@@ -121,7 +123,10 @@ def tile(name, ttype, tile_id, route=0, upto=None, reverse=False, skip=None, bac
             P = np.array(pts)
             zones.append(dict(cls=cls, rect=[float(P[:, 0].min() - 0.05), float(P[:, 1].min() - 0.05), float(P[:, 0].max() + 0.05), float(P[:, 1].max() + 0.05)]))
     r = t["routes"][route]
-    pts = [list(r["start"][:2])] + [list(w[:2]) if isinstance(w, (list, tuple)) else [w["x"], w["y"]] for w in r["waypoints"]]
+    rw = [list(w[:2]) if isinstance(w, (list, tuple)) else [w["x"], w["y"]] for w in r["waypoints"]]
+    if via:
+        rw = [q for k, w in enumerate(rw) for q in ([list(v) for v in via[k]] if k in via else [w])]
+    pts = [list(r["start"][:2])] + rw
     yaw = r["start"][2]
     if reverse:
         pts = pts[::-1]
@@ -162,10 +167,42 @@ def tile(name, ttype, tile_id, route=0, upto=None, reverse=False, skip=None, bac
     extra = dict(beams=need, beam_lines=beam_lines, zones=zones, tile=tile_id, tile_route=route, level=t["level"], realised=t["realised"])
     g = z["height"][i].astype(float)
     c0 = z["cell0_center"] if "cell0_center" in z.files else np.array([-3.99, -3.99])
-    return Course("ladder:" + name, g, float(c0[0]), float(c0[1]), float(z["resolution"]) if "resolution" in z.files else 0.02, boxes,
+    if scan_boxes:
+        extra["scan"] = "walk raster plus every physics box standing on the floor (eval monitor 2026-11-12)"
+    else:
+        extra["scan"] = "walk raster only"
+    course = Course("ladder:" + name, g, float(c0[0]), float(c0[1]), float(z["resolution"]) if "resolution" in z.files else 0.02, boxes,
                   [float(P[0, 0]), float(P[0, 1]), math.degrees(yaw)],
                   [wp(float(p[0]), float(p[1]), hold=(1.0 if k in (len(way) - 1, far_wp) else 0.0),
                       name=("far end: stand 1 s, then turn back" if k == far_wp else None)) for k, p in enumerate(way)], name, extra)   # ends at a station
+    if scan_boxes:
+        add_scan_raster(course)
+    return course
+
+
+def add_scan_raster(course):
+    """course.scan_height: the walk raster raised to the top of every physics box that stands on the floor (blocks, rocks,
+    plants, furniture, posts, walls; not 4x4s, which are in the physics as boxes and handled as beams, and not overhead
+    pieces). Only the height scan reads it (adapters/base.py); the physics height field stays the walk raster."""
+    import check_routes as C
+    sg = course.grid.copy()
+    xs = course.x0 + course.res * np.arange(course.nx)
+    ys = course.y0 + course.res * np.arange(course.ny)
+    for k in C.floor_boxes(course):
+        b = course.boxes[k]
+        i = np.where((xs >= b["lo"][0] - course.res) & (xs <= b["hi"][0] + course.res))[0]
+        j = np.where((ys >= b["lo"][1] - course.res) & (ys <= b["hi"][1] + course.res))[0]
+        for a in i:
+            for c in j:
+                if C._foot_dist(b, xs[a], ys[c]) <= 0.5 * course.res:
+                    sg[a, c] = max(sg[a, c], float(b["hi"][2]))
+    course.scan_grid = sg
+
+    def scan_height(x, y):
+        i, j = course.cell(x, y)
+        return sg[i, j]
+    course.scan_height = scan_height
+    return course
 
 
 def beam_course(name, ttype, tile_id, slanted, before=0.9, after=0.8):
@@ -217,14 +254,15 @@ STEP1 = {
 # ---- step 2: PROPOSED routes (not run until the coordinator confirms the list). Export routes are 5 to 11 m; corridors and
 # dead ends are walked out and back, which gives the turn on the spot and brings them to 13 to 15 m.
 STEP2 = {
-    "street_doorway_out_and_back": lambda: tile("street_doorway_out_and_back", "street_front", "street_front_L4_v0", 0, back=True),
-    "street_out_and_back": lambda: tile("street_out_and_back", "street_front", "street_front_L3_v0", 0, back=True),
-    "corridor_walls_out_and_back": lambda: tile("corridor_walls_out_and_back", "log_corridors", "log_corridors_L3_v0", 0, back=True),
-    "corridor_rails_out_and_back": lambda: tile("corridor_rails_out_and_back", "log_corridors", "log_corridors_L3_v1", 0, back=True),
-    "wedge_field_loop": lambda: tile("wedge_field_loop", "wedges", "wedges_L4_v1", 3),
-    "stairs_U_turn": lambda: tile("stairs_U_turn", "stairs", "stairs_L4_v4", 0),
-    "amphitheatre_loop": lambda: tile("amphitheatre_loop", "stairs", "stairs_L3_v6", 0),
-    "home_dead_end_and_back": lambda: tile("home_dead_end_and_back", "homes", "homes_L3_v0", 2, back=True),
+    "street_doorway_out_and_back": lambda: tile("street_doorway_out_and_back", "street_front", "street_front_L4_v0", 0, back=True, scan_boxes=True,
+                                                  via={0: [(-1.6, 1.0), (-0.6, 1.0)]}),   # round the block on the export route (2026-11-12)
+    "street_out_and_back": lambda: tile("street_out_and_back", "street_front", "street_front_L3_v0", 0, back=True, scan_boxes=True),
+    "corridor_walls_out_and_back": lambda: tile("corridor_walls_out_and_back", "log_corridors", "log_corridors_L3_v0", 0, back=True, scan_boxes=True),
+    "corridor_rails_out_and_back": lambda: tile("corridor_rails_out_and_back", "log_corridors", "log_corridors_L3_v1", 0, back=True, scan_boxes=True),
+    "wedge_field_loop": lambda: tile("wedge_field_loop", "wedges", "wedges_L4_v1", 3, scan_boxes=True),
+    "stairs_U_turn": lambda: tile("stairs_U_turn", "stairs", "stairs_L4_v4", 0, scan_boxes=True),
+    "amphitheatre_loop": lambda: tile("amphitheatre_loop", "stairs", "stairs_L3_v6", 0, scan_boxes=True),
+    "home_dead_end_and_back": lambda: tile("home_dead_end_and_back", "homes", "homes_L3_v0", 2, back=True, scan_boxes=True),
 }
 # what each step-2 route needs: skill -> level that has to be passed in step 1 before the route is scored for a checkpoint
 # (the baseline pair runs every route once, as the reference). From the tiles' own dimensions.
@@ -346,7 +384,7 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
         if part.exists():
             os.remove(part)
         meta = dict(label=label, ladder_step=step, test=test, on="a ladder course below the apparatus (not an apparatus result)", apparatus=course.name, route=course.name,
-                    tile=course.route.get("tile"), simulator="MuJoCo %s (CPU), dt %.4f s" % (mujoco.__version__, X.SIM_DT), adapter=adapter.name,
+                    tile=course.route.get("tile"), scan=course.route.get("scan", "walk raster only"), simulator="MuJoCo %s (CPU), dt %.4f s" % (mujoco.__version__, X.SIM_DT), adapter=adapter.name,
                     checkpoint=str(adapter.checkpoint), observes=adapter.observes, control_dt=adapter.control_dt, protocol=protocol_name,
                     plant=adapter.plant_name or "harness default vendor_20260823 (test fixture)",
                     seeds=[seed0, seed0 + trials - 1], time_limit=TIME_LIMIT_STEP2 if step == 2 else TIME_LIMIT, sections=course.sections,
@@ -381,7 +419,7 @@ def collect(out, step):
         rows.append(dict(test=test, trials=s["trials"], success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
                          side_hits_per_trial=s["side_hits"]["per_trial"], mean_waypoints=s["mean_waypoints"], of=len(course.waypoints), outcomes=s["outcomes"],
                          time_median=(s["time_success"] or {}).get("median"), length_m=round(float(np.linalg.norm(np.diff(course.path(), axis=0), axis=1).sum()), 1),
-                         tile=s.get("tile"), renders=s.get("renders"), defect=STEP2_DEFECT.get(test) if step == 2 else None))
+                         tile=s.get("tile"), renders=s.get("renders"), defect=STEP2_DEFECT.get(test) if step == 2 and "floor" not in str(s.get("scan")) else None, scan=s.get("scan", "walk raster only")))
     if not rows:
         return rows
     plants = sorted({str(json.load(open(out / STEP_DIR[step] / r["test"] / "summary.json")).get("plant")) for r in rows})

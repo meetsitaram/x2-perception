@@ -314,6 +314,16 @@ Found 2026-11-12: such boxes are in the physics but not in the walk raster, so n
 test sees them, and the wall test starts 0.30 m above the ground. `street_doorway_out_and_back` has a block, a rock and a plant on
 its centre line (all baseline trials fall at the block); its rows are marked COURSE DEFECT and are not results until the route is
 fixed (`eval/ladder.py` `STEP2_DEFECT`). The other seven routes have no box on their path.
+**Fixed the same day:** (a) the route check (`check_routes.py`, `check_floor_obstacles`) tests every physics box that stands on the
+floor and is not a 4x4, at every height from 5 cm up to the 0.30 m where the wall band starts. A leg that passes closer than
+0.18 m (the legs' half width: feet 0.10 m either side plus half a sole and 2 cm) is blocked; closer than 0.25 m is printed as
+"near". (b) On step-2 courses the height scan reads a scan raster: the walk raster raised to the top of every such box
+(`ladder.py` `add_scan_raster`, `adapters/base.py`); the physics height field stays the walk raster. Every summary records
+`scan`. (c) `street_doorway_out_and_back` detours south of the block: (-1.6, 1.0), (-0.6, 1.0) replace the export point (-1.5, 1.5),
+13.6 m. All eight routes pass. Step-2 rows run before the fix used the walk raster only for the scan (their `scan` field is
+missing). On the apparatuses the scan is still the walk raster: our route's leg 10 passes 0.16 m from the foot of a brace at
+(3.61, 1.48) that the raster does not hold (blocked by (a); legs 7-11 "near"). It is the held-out route, so it is left to the
+coordinator.
 
 **Plant (user, 2026-11-11):** a policy is always run under the X2 plant it was trained with, taken from its adapter card (name
 and per-joint kp, kd); the harness default is only for test fixtures. Every summary, table and render label states the plant.
