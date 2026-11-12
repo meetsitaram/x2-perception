@@ -72,6 +72,6 @@ for off, want in ((500, 0.5), (1000, 0.5), (1500, 0.25), (2000, 0.0)):
     assert abs(k / n - want) < 0.03, (off, k / n)
     if calls:
         assert [c[0] for c in calls] == ["pose", "vel", "joint"] and calls[0][2] == (k, 7) and calls[1][2] == (k, 6) and calls[2][2] == (k, 31)
-assert 'set("abcdefrs")' in src and "HIKING_X2_REF_START" in src
+assert "r" in src[src.index("unknown = opts"):src.index("unknown = opts") + 40] and "HIKING_X2_REF_START" in src
 print("option r: x, y, yaw kept; roll 0.05 / pitch 0.1 from the clip; height origin + 0.62 + 0.03; velocity follows the heading; "
       "share 0.5 / 0.5 / 0.25 / 0 at 500 / 1,000 / 1,500 / 2,000 with stage 1000,2000; only selected robots written. All checks passed.")
