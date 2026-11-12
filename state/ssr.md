@@ -752,3 +752,8 @@ Not verified / open:
 - Stop everything: `touch /mnt/filesystem-g4/tracks/ssr/runs/QUEUE5_STOP /mnt/filesystem-g4/tracks/ssr/runs/STOP`.
 - Watch: `python3 /mnt/filesystem-g4/tracks/ssr/code/scripts/w.py <run> 10` (speed ratio, support shares, touchdown air
   time, progress, gate, stage ramp, reward, episode length, tilt share, action std).
+- **Motion files** (coordinator, user rule "Motion data and the repo", 01:15): `tracks/ssr/code/MOTIONS.md` lists every
+  source and built prior (path, bytes, sha256, clips and seconds per set, origin, build command, filters, licence line);
+  full numbers in `eval/motion_inventory.json` (`scripts/motion_inventory.py`). The prior files moved out of `code/` to
+  `/mnt/filesystem-g4/tracks/ssr/data/priors/` (01:12 UTC); `code/data/amp*.npz` are symlinks to them, so every command with
+  `--amp_file data/amp_v2.npz` still works. To restore: copy the files back over the links.

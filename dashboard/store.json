@@ -4,7 +4,7 @@
   "tracks": {
    "title": "Team status per agent",
    "description": "One row per agent: state, what is running, newest checkpoint, blocker, next step and when it was last recorded.",
-   "blob": "d7715baedc93a86f5033d859e41b2664"
+   "blob": "4a51eeae52176a464716bcbe3c1bcec7"
   },
   "targets": {
    "title": "Goal and starting point",
