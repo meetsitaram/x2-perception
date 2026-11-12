@@ -1,0 +1,81 @@
+# The plant the DEPLOY BINARY currently implements — reverse-engineered from
+# policy_parameters.hpp and verified to regenerate it byte-for-byte.
+#
+# This is the SEVENTH place the X2 plant lived. The C++ header hardcodes kps[],
+# kds[], x2_action_scale[] and default_angles[]; nothing tied it to the python
+# side, and it had drifted into its own combination:
+#
+#   armature      legacy (H2-derived)        same as legacy_pre20260823
+#   waist_pr eff  48 N.m                     legacy yaml says 36, vendor says 24
+#   wrist_p/r eff 4.8 N.m                    our configs say 6.0 -- and the
+#                                            VENDOR DATASHEET says 4.8, so the
+#                                            DEPLOY is right and the configs
+#                                            are wrong on this one
+#   ankle kp      x1.5 deployment trim baked into kps[]
+#
+# Consequence found 2026-08-23: v12's phi sidecar carries waist_pr action scale
+# 0.6315513 (36 N.m era) while this header applies 0.8420684 (48 N.m era) --
+# every v12 waist command is amplified 1.333x ON THE ROBOT. v0 is immune: it is
+# a direct policy trained in the 48 era, so it matches. That is a candidate root
+# cause for the v12 waist failure ("back is broken"). See
+# docs/experiments/armature_investigation.md.
+#
+# DO NOT "fix" the numbers here to match the vendor plant. This file must keep
+# describing what the SHIPPED BINARY does, so the generator's output can be
+# diffed against the checked-in header. To change robot behaviour, switch the
+# generator to a different plant and rebuild deliberately.
+name: deploy_current
+natural_freq_hz: 10.0
+damping_ratio: 2.0
+
+armature:
+  hip: 0.025101925
+  knee: 0.025101925
+  waist_yaw: 0.010177520
+  waist_pitch: 0.003609725
+  waist_roll: 0.003609725
+  ankle_pitch: 0.003609725
+  ankle_roll: 0.003609725
+  shoulder_pitch: 0.003609725
+  shoulder_roll: 0.003609725
+  shoulder_yaw: 0.003609725
+  elbow: 0.003609725
+  wrist_yaw: 0.003609725
+  wrist_pitch: 0.00425
+  wrist_roll: 0.00425
+  head: 0.00425
+
+effort:
+  hip: 120.0
+  knee: 120.0
+  waist_yaw: 120.0
+  waist_pitch: 48.0            # 48-era; vendor says 24
+  waist_roll: 48.0
+  ankle_pitch: 36.0
+  ankle_roll: 24.0
+  shoulder_pitch: 36.0
+  shoulder_roll: 36.0
+  shoulder_yaw: 24.0
+  elbow: 24.0
+  wrist_yaw: 24.0
+  wrist_pitch: 4.8             # matches the vendor datasheet
+  wrist_roll: 4.8
+  head_yaw: 2.6
+  head_pitch: 0.6
+
+# Deployment PD trim baked into kps[]/kds[]. action_scale deliberately uses the
+# UNSCALED kp, so stiffening shows up as more torque per unit error, not as a
+# rescaled command range.
+deployment_kp_scale:
+  ankle: 1.5
+deployment_kd_scale: {}
+
+default_joint_pos:
+  left_shoulder_roll: 0.2
+  right_shoulder_roll: -0.2
+  left_shoulder_pitch: 0.2
+  right_shoulder_pitch: 0.2
+  hip_pitch: -0.312
+  knee: 0.669
+  ankle_pitch: -0.363
+  elbow: -0.6

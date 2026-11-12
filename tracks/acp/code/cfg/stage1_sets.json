@@ -1,0 +1,12 @@
+{"dir": "/mnt/filesystem-g4/tracks/acp/data/clips", "hmap": "tp_ramp_hmap_x30_40mm.npz",
+ "sets": [
+  {"pkl": "x2_loco_flat_train.pkl", "props": "", "weight": 0.20},
+  {"pkl": "x2_loco_blocks_train.pkl", "props": "x2_loco_blocks_props.json", "weight": 0.20},
+  {"pkl": "x2_chains_far.pkl", "props": "x2_chains_far_props.json", "weight": 0.15},
+  {"pkl": "tp_stairs_x10_sh2.pkl", "props": "tp_stairs_x10_sh2_props.json", "weight": 0.10},
+  {"pkl": "gst_v1.pkl", "props": "gst_v1_props.json", "weight": 0.10},
+  {"pkl": "gs2dn_v1.pkl", "props": "gs2dn_v1q_props.json", "weight": 0.05},
+  {"pkl": "tp_ramp_sh2.pkl", "props": "", "weight": 0.10, "shift": [30.0, 0.0]},
+  {"pkl": "tp_t4x4u_y20.pkl", "props": "tp_t4x4u_y20_props.json", "weight": 0.07},
+  {"pkl": "pico_2026-10-29_2x2_train.pkl", "props": "pico_2026-10-29_2x2_props.json", "weight": 0.03}
+ ]}

@@ -1,0 +1,776 @@
+{
+ "ckpt": "runs/chest/last.pt",
+ "iter": 450,
+ "camera": "chest",
+ "map_memory": false,
+ "rows": [
+  {
+   "terrain": "ramp",
+   "level": 4,
+   "setting": "slope 4 deg",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.1,
+   "peak_force_n": 523.4,
+   "left_lead_pct": 100.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "ramp",
+   "level": 9,
+   "setting": "slope 9 deg",
+   "success": 94.0,
+   "sfr": 96.6,
+   "msr": 96.1,
+   "power_w": 3.7,
+   "peak_force_n": 501.7,
+   "left_lead_pct": 100.0,
+   "v_err": 0.981
+  },
+  {
+   "terrain": "ramp",
+   "level": 14,
+   "setting": "slope 15 deg",
+   "success": 81.0,
+   "sfr": 91.5,
+   "msr": 91.9,
+   "power_w": 11.1,
+   "peak_force_n": 464.2,
+   "left_lead_pct": 92.9,
+   "v_err": 0.961
+  },
+  {
+   "terrain": "ramp",
+   "level": 19,
+   "setting": "slope 20 deg",
+   "success": 66.0,
+   "sfr": 85.1,
+   "msr": 91.8,
+   "power_w": 19.0,
+   "peak_force_n": 446.2,
+   "left_lead_pct": 93.8,
+   "v_err": 1.1
+  },
+  {
+   "terrain": "stairs",
+   "level": 4,
+   "setting": "rise 8 cm, run 37 cm",
+   "success": 93.5,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 6.1,
+   "peak_force_n": 485.3,
+   "left_lead_pct": 0.0,
+   "v_err": 1.002
+  },
+  {
+   "terrain": "stairs",
+   "level": 9,
+   "setting": "rise 12 cm, run 33 cm",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 511.0,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "stairs",
+   "level": 14,
+   "setting": "rise 16 cm, run 29 cm",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 509.4,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "stairs",
+   "level": 19,
+   "setting": "rise 20 cm, run 25 cm",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 512.3,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "beam",
+   "level": 4,
+   "setting": "beam 5 cm tall",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 511.6,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "beam",
+   "level": 9,
+   "setting": "beam 7 cm tall",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 512.0,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "beam",
+   "level": 14,
+   "setting": "beam 10 cm tall",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 516.4,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "beam",
+   "level": 19,
+   "setting": "beam 12 cm tall",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 510.8,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "platform",
+   "level": 4,
+   "setting": "platform 12 cm",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 511.6,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "platform",
+   "level": 9,
+   "setting": "platform 22 cm",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 511.4,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "platform",
+   "level": 14,
+   "setting": "platform 31 cm",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 511.5,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "platform",
+   "level": 19,
+   "setting": "platform 40 cm",
+   "success": 84.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 10.9,
+   "peak_force_n": 465.8,
+   "left_lead_pct": 0.0,
+   "v_err": 1.005
+  },
+  {
+   "terrain": "flat",
+   "level": 4,
+   "setting": "lane with doors and rails",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 511.5,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "flat",
+   "level": 9,
+   "setting": "lane with doors and rails",
+   "success": 93.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 5.7,
+   "peak_force_n": 492.9,
+   "left_lead_pct": 0.0,
+   "v_err": 1.002
+  },
+  {
+   "terrain": "flat",
+   "level": 14,
+   "setting": "lane with doors and rails",
+   "success": 100.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 2.3,
+   "peak_force_n": 512.5,
+   "left_lead_pct": 0.0,
+   "v_err": 1.0
+  },
+  {
+   "terrain": "flat",
+   "level": 19,
+   "setting": "lane with doors and rails",
+   "success": 86.0,
+   "sfr": 100.0,
+   "msr": 100.0,
+   "power_w": 9.8,
+   "peak_force_n": 468.7,
+   "left_lead_pct": 0.0,
+   "v_err": 1.004
+  }
+ ],
+ "gate": {
+  "ramp": [
+   0.03,
+   0.248,
+   0.264,
+   0.252,
+   0.206
+  ],
+  "stairs": [
+   0.03,
+   0.249,
+   0.263,
+   0.252,
+   0.206
+  ],
+  "beam": [
+   0.031,
+   0.25,
+   0.263,
+   0.251,
+   0.206
+  ],
+  "platform": [
+   0.03,
+   0.249,
+   0.263,
+   0.252,
+   0.206
+  ],
+  "flat": [
+   0.03,
+   0.249,
+   0.264,
+   0.252,
+   0.206
+  ]
+ },
+ "tracking": {
+  "+x": {
+   "survive": 100.0,
+   "v_err": 0.802,
+   "yaw_err": 0.078
+  },
+  "-x": {
+   "survive": 100.0,
+   "v_err": 0.802,
+   "yaw_err": 0.005
+  },
+  "+y": {
+   "survive": 100.0,
+   "v_err": 0.306,
+   "yaw_err": 0.082
+  },
+  "-y": {
+   "survive": 100.0,
+   "v_err": 0.305,
+   "yaw_err": 0.076
+  },
+  "+x+y": {
+   "survive": 100.0,
+   "v_err": 0.626,
+   "yaw_err": 0.074
+  },
+  "+x-y": {
+   "survive": 100.0,
+   "v_err": 0.626,
+   "yaw_err": 0.08
+  },
+  "-x+y": {
+   "survive": 100.0,
+   "v_err": 0.628,
+   "yaw_err": 0.069
+  },
+  "-x-y": {
+   "survive": 100.0,
+   "v_err": 0.628,
+   "yaw_err": 0.067
+  },
+  "yaw+": {
+   "survive": 100.0,
+   "v_err": 0.025,
+   "yaw_err": 0.807
+  },
+  "yaw-": {
+   "survive": 100.0,
+   "v_err": 0.024,
+   "yaw_err": 0.809
+  }
+ },
+ "paper": {
+  "stairs": "sim near 100 %; real 100 % (20/20) at 15 / 30 cm",
+  "platform": "real 100 % (20/20) at 40 cm",
+  "beam": "no equivalent terrain",
+  "ramp": "slopes shown, no rate reported",
+  "flat": "no equivalent terrain"
+ },
+ "final_log": {
+  "it": 460,
+  "r_l": 1.607,
+  "r_f": 1.041,
+  "r_s": 0.307,
+  "ep_len_s": 12.65,
+  "level": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "foot_cm": 9.2,
+  "gate_acc": 0.319,
+  "terms": {
+   "lin_vel": 0.3937,
+   "ang_vel": 0.4453,
+   "orientation": 0.4168,
+   "ang_vel_xy": 0.1425,
+   "base_height": 0.358,
+   "action_rate": -0.0713,
+   "smoothness": -0.1,
+   "dof_vel": -0.0097,
+   "dof_torque": -0.0147,
+   "dof_dev": -0.187,
+   "dof_pos_lim": -0.0022,
+   "dof_vel_lim": -0.0,
+   "dof_tau_lim": -0.0017,
+   "stand_still": -0.0009,
+   "single_support": 0.1018,
+   "impact": -0.0064,
+   "slip": -0.0033,
+   "air_time": -0.0,
+   "stumble": -0.0,
+   "lateral": 0.08
+  }
+ },
+ "curve": [
+  {
+   "it": 0,
+   "ep_len": 0.07,
+   "r_l": 1.278,
+   "r_f": 1.0,
+   "r_s": 0.753,
+   "level": 1.49
+  },
+  {
+   "it": 10,
+   "ep_len": 1.36,
+   "r_l": 0.895,
+   "r_f": 0.923,
+   "r_s": 0.714,
+   "level": 1.48
+  },
+  {
+   "it": 0,
+   "ep_len": 0.1,
+   "r_l": 1.285,
+   "r_f": 1.0,
+   "r_s": 0.738,
+   "level": 1.49
+  },
+  {
+   "it": 10,
+   "ep_len": 1.37,
+   "r_l": 0.862,
+   "r_f": 0.917,
+   "r_s": 0.704,
+   "level": 1.49
+  },
+  {
+   "it": 20,
+   "ep_len": 1.39,
+   "r_l": 0.916,
+   "r_f": 0.913,
+   "r_s": 0.684,
+   "level": 1.49
+  },
+  {
+   "it": 30,
+   "ep_len": 1.37,
+   "r_l": 0.98,
+   "r_f": 0.924,
+   "r_s": 0.663,
+   "level": 1.48
+  },
+  {
+   "it": 40,
+   "ep_len": 1.37,
+   "r_l": 1.03,
+   "r_f": 0.929,
+   "r_s": 0.651,
+   "level": 1.48
+  },
+  {
+   "it": 50,
+   "ep_len": 1.36,
+   "r_l": 1.071,
+   "r_f": 0.944,
+   "r_s": 0.654,
+   "level": 1.48
+  },
+  {
+   "it": 60,
+   "ep_len": 1.4,
+   "r_l": 1.104,
+   "r_f": 0.948,
+   "r_s": 0.65,
+   "level": 1.49
+  },
+  {
+   "it": 70,
+   "ep_len": 1.42,
+   "r_l": 1.149,
+   "r_f": 0.959,
+   "r_s": 0.64,
+   "level": 1.48
+  },
+  {
+   "it": 80,
+   "ep_len": 1.48,
+   "r_l": 1.148,
+   "r_f": 0.966,
+   "r_s": 0.628,
+   "level": 1.47
+  },
+  {
+   "it": 90,
+   "ep_len": 1.58,
+   "r_l": 1.183,
+   "r_f": 0.972,
+   "r_s": 0.613,
+   "level": 1.47
+  },
+  {
+   "it": 100,
+   "ep_len": 1.64,
+   "r_l": 1.198,
+   "r_f": 0.97,
+   "r_s": 0.611,
+   "level": 1.46
+  },
+  {
+   "it": 110,
+   "ep_len": 1.76,
+   "r_l": 1.23,
+   "r_f": 0.97,
+   "r_s": 0.606,
+   "level": 1.44
+  },
+  {
+   "it": 120,
+   "ep_len": 1.88,
+   "r_l": 1.254,
+   "r_f": 0.967,
+   "r_s": 0.618,
+   "level": 1.4
+  },
+  {
+   "it": 130,
+   "ep_len": 2.08,
+   "r_l": 1.267,
+   "r_f": 0.963,
+   "r_s": 0.621,
+   "level": 1.33
+  },
+  {
+   "it": 140,
+   "ep_len": 2.33,
+   "r_l": 1.301,
+   "r_f": 0.963,
+   "r_s": 0.626,
+   "level": 1.18
+  },
+  {
+   "it": 150,
+   "ep_len": 2.28,
+   "r_l": 1.336,
+   "r_f": 0.961,
+   "r_s": 0.617,
+   "level": 1.07
+  },
+  {
+   "it": 160,
+   "ep_len": 2.47,
+   "r_l": 1.242,
+   "r_f": 0.975,
+   "r_s": 0.602,
+   "level": 0.93
+  },
+  {
+   "it": 170,
+   "ep_len": 2.74,
+   "r_l": 1.347,
+   "r_f": 0.968,
+   "r_s": 0.605,
+   "level": 0.74
+  },
+  {
+   "it": 180,
+   "ep_len": 2.39,
+   "r_l": 1.315,
+   "r_f": 0.938,
+   "r_s": 0.593,
+   "level": 0.64
+  },
+  {
+   "it": 190,
+   "ep_len": 2.49,
+   "r_l": 1.319,
+   "r_f": 0.979,
+   "r_s": 0.568,
+   "level": 0.57
+  },
+  {
+   "it": 200,
+   "ep_len": 3.38,
+   "r_l": 1.399,
+   "r_f": 0.976,
+   "r_s": 0.565,
+   "level": 0.39
+  },
+  {
+   "it": 210,
+   "ep_len": 3.35,
+   "r_l": 1.237,
+   "r_f": 0.911,
+   "r_s": 0.564,
+   "level": 0.27
+  },
+  {
+   "it": 220,
+   "ep_len": 2.34,
+   "r_l": 1.378,
+   "r_f": 0.977,
+   "r_s": 0.556,
+   "level": 0.26
+  },
+  {
+   "it": 230,
+   "ep_len": 4.06,
+   "r_l": 1.185,
+   "r_f": 0.979,
+   "r_s": 0.518,
+   "level": 0.18
+  },
+  {
+   "it": 240,
+   "ep_len": 3.71,
+   "r_l": 1.304,
+   "r_f": 0.956,
+   "r_s": 0.541,
+   "level": 0.12
+  },
+  {
+   "it": 250,
+   "ep_len": 3.88,
+   "r_l": 1.338,
+   "r_f": 0.988,
+   "r_s": 0.522,
+   "level": 0.09
+  },
+  {
+   "it": 260,
+   "ep_len": 4.96,
+   "r_l": 1.283,
+   "r_f": 0.997,
+   "r_s": 0.488,
+   "level": 0.07
+  },
+  {
+   "it": 270,
+   "ep_len": 5.86,
+   "r_l": 1.293,
+   "r_f": 0.99,
+   "r_s": 0.479,
+   "level": 0.05
+  },
+  {
+   "it": 280,
+   "ep_len": 7.89,
+   "r_l": 1.356,
+   "r_f": 1.011,
+   "r_s": 0.488,
+   "level": 0.03
+  },
+  {
+   "it": 290,
+   "ep_len": 9.48,
+   "r_l": 1.391,
+   "r_f": 1.043,
+   "r_s": 0.474,
+   "level": 0.02
+  },
+  {
+   "it": 300,
+   "ep_len": 9.17,
+   "r_l": 1.376,
+   "r_f": 1.02,
+   "r_s": 0.455,
+   "level": 0.02
+  },
+  {
+   "it": 310,
+   "ep_len": 9.17,
+   "r_l": 1.428,
+   "r_f": 1.029,
+   "r_s": 0.47,
+   "level": 0.01
+  },
+  {
+   "it": 320,
+   "ep_len": 10.17,
+   "r_l": 1.459,
+   "r_f": 1.04,
+   "r_s": 0.457,
+   "level": 0.01
+  },
+  {
+   "it": 330,
+   "ep_len": 10.74,
+   "r_l": 1.463,
+   "r_f": 1.029,
+   "r_s": 0.442,
+   "level": 0.0
+  },
+  {
+   "it": 340,
+   "ep_len": 11.96,
+   "r_l": 1.523,
+   "r_f": 1.058,
+   "r_s": 0.447,
+   "level": 0.0
+  },
+  {
+   "it": 350,
+   "ep_len": 11.94,
+   "r_l": 1.523,
+   "r_f": 1.04,
+   "r_s": 0.424,
+   "level": 0.0
+  },
+  {
+   "it": 360,
+   "ep_len": 12.59,
+   "r_l": 1.541,
+   "r_f": 1.04,
+   "r_s": 0.412,
+   "level": 0.0
+  },
+  {
+   "it": 370,
+   "ep_len": 12.82,
+   "r_l": 1.563,
+   "r_f": 1.056,
+   "r_s": 0.397,
+   "level": 0.0
+  },
+  {
+   "it": 380,
+   "ep_len": 12.9,
+   "r_l": 1.572,
+   "r_f": 1.059,
+   "r_s": 0.385,
+   "level": 0.0
+  },
+  {
+   "it": 390,
+   "ep_len": 13.21,
+   "r_l": 1.549,
+   "r_f": 1.044,
+   "r_s": 0.369,
+   "level": 0.0
+  },
+  {
+   "it": 400,
+   "ep_len": 12.93,
+   "r_l": 1.529,
+   "r_f": 1.04,
+   "r_s": 0.36,
+   "level": 0.0
+  },
+  {
+   "it": 410,
+   "ep_len": 11.98,
+   "r_l": 1.581,
+   "r_f": 1.058,
+   "r_s": 0.354,
+   "level": 0.0
+  },
+  {
+   "it": 420,
+   "ep_len": 12.48,
+   "r_l": 1.55,
+   "r_f": 1.037,
+   "r_s": 0.348,
+   "level": 0.0
+  },
+  {
+   "it": 430,
+   "ep_len": 11.53,
+   "r_l": 1.532,
+   "r_f": 1.018,
+   "r_s": 0.342,
+   "level": 0.0
+  },
+  {
+   "it": 440,
+   "ep_len": 11.58,
+   "r_l": 1.583,
+   "r_f": 1.049,
+   "r_s": 0.336,
+   "level": 0.0
+  },
+  {
+   "it": 450,
+   "ep_len": 12.24,
+   "r_l": 1.599,
+   "r_f": 1.052,
+   "r_s": 0.323,
+   "level": 0.0
+  },
+  {
+   "it": 460,
+   "ep_len": 12.65,
+   "r_l": 1.607,
+   "r_f": 1.041,
+   "r_s": 0.307,
+   "level": 0.0
+  }
+ ]
+}

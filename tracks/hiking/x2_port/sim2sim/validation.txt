@@ -1,0 +1,92 @@
+VALIDATION of sim2sim_mujoco_x2.py against the Isaac recording (robot 0, first 50 control steps after a reset, stair-up tile)
+mujoco 3.16.0; model: 32 bodies, 31 actuators, total mass 41.967 kg; foot = hull
+
+1. PROPRIO, newest-step entries rebuilt from the recorded simulator state (MuJoCo state set from
+   root_pos_w, root_quat_w, joint_pos, joint_vel, root_lin_vel_b, root_ang_vel_b; command and previous action from the recording)
+   error = |rebuilt - recorded observation|, in observation units (after scaling). The recording contains training noise.
+   term                 dim  max abs err  mean abs err  noise bound (scaled)   verdict
+   base_ang_vel           3      0.04981       0.02292                0.0500   within noise
+   projected_gravity      3      0.04955       0.02562                0.0500   within noise
+   velocity_commands      3      0.00000       0.00000                0.0000   within noise
+   joint_pos             31      0.00999       0.00491                0.0100   within noise
+   joint_vel             31      0.02499       0.01243                0.0250   within noise
+   actions               29      0.00000       0.00000                0.0000   within noise
+   (uniform noise of half-width b has mean abs b/2: expected means 0.025, 0.025, 0, 0.005, 0.0125, 0)
+   noise-free checks vs obs_check_sim_state.npz: projected gravity from root_quat_w (wxyz) max err 3.89e-08; MuJoCo pelvis angular velocity read-back 6.66e-16; linear velocity read-back 2.78e-16
+   previous action: obs 'actions' newest entry at step t equals actions[t-1] exactly (max err 0.0e+00); zeros at step 0
+
+2. PROPRIO HISTORY ORDER (recording vs itself): slot i of step t must equal the newest slot of step t-(7-i); before the reset: step-0 value
+   base_ang_vel         oldest-first, newest last: max mismatch 0.0e+00   (newest-first hypothesis: 0.665)
+   projected_gravity    oldest-first, newest last: max mismatch 0.0e+00   (newest-first hypothesis: 0.225)
+   velocity_commands    oldest-first, newest last: max mismatch 0.0e+00   (newest-first hypothesis: 0.740)
+   joint_pos            oldest-first, newest last: max mismatch 0.0e+00   (newest-first hypothesis: 0.758)
+   joint_vel            oldest-first, newest last: max mismatch 0.0e+00   (newest-first hypothesis: 0.793)
+   actions              oldest-first, newest last: max mismatch 0.0e+00   (newest-first hypothesis: 5.407)
+   -> every proprio term is 8 steps [t-7 .. t], oldest first, filled with the first value at reset: CONFIRMED
+   note: the recorded command at step 0 is [0,0,0] (reset observation, command not computed yet); from step 1 it is [0.74, 0, yaw]
+
+3. DEPTH
+   (a) frame order. value range of the recording 0.415..0.668 (x2.5 m = 1.04..1.67 m)
+       frame i of step t == frame i+1 of step t-5: max diff 0.0e+00;   opposite direction: 0.100
+       first step at which frame i changes, i=0..7: [37, 32, 27, 22, 17, 12, 7, 2]
+       -> frames are OLDEST FIRST, the NEWEST is the LAST (index 7); frames are 5 control steps (0.1 s) apart. CONFIRMED from the recording.
+       timing: frame 7 at step 1 is bit-identical to frame 7 at step 0 (max diff 0.0e+00) although the pelvis dropped 3.9 mm,
+       and frame 7 first changes at step 2, frame 6 at step 7, ... : the newest frame of step t is the image of step t-1 (one control step old).
+   (b) comparison with a MuJoCo ray-cast on FLAT ground. The Isaac terrain (stair-up tile, perlin roughness) is not available, so the ground
+       is assumed flat at the height of the lowest sole point while standing (steps 25..49): z = -1.201 m (world); lowest sole at step 0: +0.090 m above it, spread over steps 25..49: 0.1 mm
+       MuJoCo camera (FK from the recorded pose): height above the assumed ground 1.236 m at step 0, 1.163 m at step 49; optical axis 40.0 / 49.8 deg below horizontal
+       lag 0 (recorded newest frame of step t vs MuJoCo flat-ground frame of step t-0): mean abs diff all pixels 0.0058, bottom 6 rows 0.0027, top 6 rows 0.0116  (units of 2.5 m)
+       lag 1 (recorded newest frame of step t vs MuJoCo flat-ground frame of step t-1): mean abs diff all pixels 0.0051, bottom 6 rows 0.0018, top 6 rows 0.0115  (units of 2.5 m)
+       timing check on the steps where the pelvis drops fastest (steps 2..8, bottom 6 rows = nearest ground, flat in both simulators):
+         newest recorded frame of step t vs MuJoCo image of step t-0: mean abs diff 0.00438
+         newest recorded frame of step t vs MuJoCo image of step t-1: mean abs diff 0.00164
+         newest recorded frame of step t vs MuJoCo image of step t-2: mean abs diff 0.00498
+       -> the newest frame is one control step old (lag 1 fits best); the player uses --depth-lag 1 by default.
+       per-row means over steps 1..49 (row 0 = top of the image = far, row 17 = bottom = near), lag 1:
+         row           0      1      2      3      4      5      6      7      8      9     10     11     12     13     14     15     16     17
+         Isaac     0.603  0.597  0.586  0.576  0.565  0.553  0.540  0.527  0.515  0.503  0.493  0.483  0.472  0.462  0.452  0.443  0.434  0.430
+         MuJoCo    0.623  0.616  0.599  0.583  0.568  0.554  0.541  0.528  0.516  0.504  0.493  0.482  0.472  0.462  0.453  0.444  0.435  0.431
+         diff     -0.021 -0.019 -0.013 -0.008 -0.003 -0.001 -0.001 -0.001 -0.001 -0.001 -0.000 +0.000 +0.001 +0.000 -0.000 -0.001 -0.001 -0.001
+       per-column means (col 0 = left), lag 1, every 4th column:
+         Isaac     0.518  0.518  0.516  0.512  0.514  0.512  0.510  0.508
+         MuJoCo    0.521  0.520  0.519  0.518  0.517  0.516  0.514  0.513
+       step  0: centre column, rows 0..17  Isaac  0.621 0.614 0.606 0.614 0.631 0.637 0.626 0.605 0.585 0.568 0.553 0.540 0.526 0.514 0.501 0.489 0.479 0.474
+                                          MuJoCo 0.741 0.729 0.705 0.682 0.660 0.640 0.621 0.603 0.586 0.570 0.555 0.540 0.527 0.514 0.501 0.489 0.478 0.473
+       step 10: centre column, rows 0..17  Isaac  0.629 0.633 0.635 0.621 0.601 0.581 0.565 0.551 0.538 0.525 0.513 0.500 0.489 0.480 0.471 0.461 0.451 0.446
+                                          MuJoCo 0.665 0.656 0.636 0.617 0.599 0.583 0.567 0.552 0.538 0.525 0.512 0.500 0.488 0.477 0.467 0.456 0.447 0.442
+       step 49: centre column, rows 0..17  Isaac  0.594 0.586 0.571 0.557 0.545 0.534 0.522 0.511 0.500 0.491 0.483 0.473 0.463 0.452 0.441 0.430 0.421 0.416
+                                          MuJoCo 0.594 0.587 0.573 0.559 0.546 0.533 0.521 0.510 0.499 0.488 0.478 0.469 0.460 0.451 0.442 0.434 0.426 0.422
+       orientation: correlation of the recorded frame with the MuJoCo frame +0.986; with the MuJoCo frame flipped top-bottom -0.972
+       left/right: (right third - left third) mean depth per step, Isaac vs MuJoCo: correlation over steps +0.859, Isaac range -0.0219..+0.0005, MuJoCo range -0.0220..+0.0003
+       robot's own body in the cropped image (MuJoCo, recorded poses): 0..0 of 576 pixels hit the robot; minimum recorded depth 1.04 m -> no near (own-body) pixels in the recording either
+       uncropped 36x64 image (MuJoCo): pixels on the robot's own body at step 0: 0, at step 49: 0 of 2304
+
+4. ONNX PLUMBING: recorded observations -> policy.onnx (CPU)
+   max |action - actions_onnx| = 1.19e-07;  max |action - Isaac actions (sim state file)| = 9.54e-07;  action magnitude in the recording: mean |a| 0.70, max 3.48
+
+5. DYNAMICS, ONE CONTROL STEP AHEAD (not asked for, used to explain differences): MuJoCo state set to the recorded state of step t
+   (ground: flat plane at the estimated height), Isaac's action of step t applied for one control step, joint positions compared with the recorded step t+1.
+   Isaac randomises the command delay per robot (0..2 physics steps); all three are shown. 'air' = steps 1..3 (robot dropping after the reset,
+   soles above the ground: no contact model involved), 'ground' = steps 8..48.
+   delay 0: joint pos error after one step  step 0 (reset step): rms 0.0133 max 0.0403 rad;  air: rms 0.0037 max 0.0150 rad;  ground: rms 0.0113 max 0.0850 rad (legs rms 0.0178);  air joint vel rms 0.077 rad/s;  ground pelvis z error mean -1.5 mm
+   delay 1: joint pos error after one step  step 0 (reset step): rms 0.0206 max 0.0595 rad;  air: rms 0.0032 max 0.0108 rad;  ground: rms 0.0112 max 0.0769 rad (legs rms 0.0176);  air joint vel rms 0.053 rad/s;  ground pelvis z error mean -1.5 mm
+   delay 2: joint pos error after one step  step 0 (reset step): rms 0.0299 max 0.0782 rad;  air: rms 0.0048 max 0.0194 rad;  ground: rms 0.0121 max 0.0746 rad (legs rms 0.0190);  air joint vel rms 0.061 rad/s;  ground pelvis z error mean -1.5 mm
+   step 0 fits worse than steps 1..3 in every variant (hip pitch and knee move about half / 1.4x as far as in Isaac): the first step after an Isaac
+   reset is not reproduced exactly (cause not identified; the actuator delay buffer at reset is a candidate).
+   for scale: the recorded joints move rms 0.0209 rad per control step (max 0.1401)
+
+6. CLOSED LOOP for 1 s from the recorded initial state, flat ground (plane at the estimated ground height), recorded command per step
+   Isaac recording : pelvis moved 0.067 m in xy over steps 0..49 (x -0.059, y -0.031), height above the assumed ground 0.731 -> 0.677 m, tilt at the end 8.4 deg, max tilt 10.0 deg, mean |action| 0.70
+   MuJoCo foot=hull    delay 0: moved 0.216 m (x -0.207, y -0.060), height 0.731 -> 0.671 m, tilt end 7.6 deg, max 11.8 deg, fell: no, touchdowns 4, mean |action| 0.95, joint pos vs Isaac rms 0.102 rad (first 10 steps 0.042), action vs Isaac rms 1.02 (first 10 steps 0.69)
+   MuJoCo foot=hull    delay 1: moved 0.173 m (x -0.158, y -0.071), height 0.731 -> 0.659 m, tilt end 7.7 deg, max 11.2 deg, fell: no, touchdowns 7, mean |action| 0.89, joint pos vs Isaac rms 0.090 rad (first 10 steps 0.040), action vs Isaac rms 0.92 (first 10 steps 0.61)
+   MuJoCo foot=hull    delay 2: moved 0.201 m (x -0.188, y -0.071), height 0.731 -> 0.673 m, tilt end 6.7 deg, max 11.6 deg, fell: no, touchdowns 5, mean |action| 0.94, joint pos vs Isaac rms 0.095 rad (first 10 steps 0.042), action vs Isaac rms 0.96 (first 10 steps 0.58)
+   MuJoCo foot=spheres delay 0: moved 0.093 m (x -0.088, y -0.031), height 0.731 -> 0.671 m, tilt end 8.9 deg, max 10.1 deg, fell: no, touchdowns 4, mean |action| 0.78, joint pos vs Isaac rms 0.070 rad (first 10 steps 0.029), action vs Isaac rms 0.62 (first 10 steps 0.43)
+   MuJoCo foot=spheres delay 1: moved 0.119 m (x -0.113, y -0.034), height 0.731 -> 0.671 m, tilt end 9.9 deg, max 10.1 deg, fell: no, touchdowns 4, mean |action| 0.80, joint pos vs Isaac rms 0.078 rad (first 10 steps 0.032), action vs Isaac rms 0.68 (first 10 steps 0.45)
+   MuJoCo foot=spheres delay 2: moved 0.116 m (x -0.110, y -0.038), height 0.731 -> 0.671 m, tilt end 9.9 deg, max 10.1 deg, fell: no, touchdowns 4, mean |action| 0.80, joint pos vs Isaac rms 0.076 rad (first 10 steps 0.037), action vs Isaac rms 0.66 (first 10 steps 0.45)
+
+7. DEPTH ENCODER OUTPUT (finding, not a test of the port): 0-depth_encoder.onnx on the 50 recorded Isaac depth stacks
+   latent shape (50, 128), max |latent| = 0, non-zero entries: 0 of 6400
+   action change of policy.onnx when the recorded depth is scaled by 0.8: 0; all depth = 1.0 (nothing within 2.5 m): 0; all depth = 0.0: 3.48
+   -> for realistic depth images the encoder output is exactly zero at this checkpoint (a dead ReLU output layer, by the G1 architecture; not inspected further): the actions do not depend on the depth image.
+      Consequence: flat ground and stairs give bit-identical behaviour until the robot touches a step.
+

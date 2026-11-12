@@ -9,7 +9,8 @@ agents that watch and steer it are lost.
 3. `bash scripts/node_check.sh` (GPU use, disk, shared filesystem), then read the heartbeats:
    `ssh -i ~/.ssh/nebius_corpus -o IdentitiesOnly=yes <user>@<ip> 'cat /mnt/filesystem-g4/status/*.json; tmux ls'`.
 4. Read each `state/<track>.md`: it has what is running, the newest checkpoint and the exact resume and stop commands.
-5. A copy of this repo is on the shared filesystem at `/mnt/filesystem-g4/perception-agents` in case the desktop copy is lost.
+5. Each track's code is in `tracks/<track>/` of this repo (`tracks/README.md` says how to put it back on a node).
+6. A copy of this repo is on the shared filesystem at `/mnt/filesystem-g4/perception-agents` in case the desktop copy is lost.
 
 ## 2. Start the agents again
 Start one agent per role (in Claude Code: the Agent tool, general-purpose, same model as the coordinator, in the background; or
