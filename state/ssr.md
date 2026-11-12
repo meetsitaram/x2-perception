@@ -777,3 +777,37 @@ Not verified / open:
 - Lesson: a queue that waits with `pgrep -f runs/queueN.sh` never ends if the tmux server itself was started with that
   command line (the first `tmux new-session` names the server process). Wait on a lock file or a PID instead.
 - Newest checkpoints: `runs/t_a/last.pt` (iteration 549, moving gait on flat, style 0; not for the common eval yet).
+
+## 02:46-02:55 UTC: r6 stands; cause and switch
+
+- r6 at 420: 5 % of commanded speed, double support 0.86 (t_a: 44 % at 300). Args diff with t_a: only `flat_only` acts
+  (style weight stays 0 until the latch, which never fired; `prior_balance` only affects the discriminator). Equal-iteration
+  logs: both 10 % at 150 (the posture-phase dip); t_a 35 % / r6 8 % at 250; 60 % / 2.5 % at 400. r6's levels start drawn 0-3,
+  obstacle-tile failures (side_obstacle 12 % of ends at 150, tilt 25 % at 250) demote everything to level 0 by 250 and the dip
+  never recovers. **Cause: terrain from iteration 0, not a wrong setting.**
+- New flag `--flat_until N` (`scripts/patch_flat_until.py`, plus a fix noted at its end; backup `_bak_20261112/train.py.pre_flat_until`):
+  flat tile until N, then types redrawn uniformly, all levels 0, every robot reset, curriculum on; a resume after the switch
+  keeps its levels. CPU smoke test from `t_a/last.pt` passed (switch at 550, levels all 0).
+- `runs/queue7.sh` (tmux `ssr7`): at r6 iteration 600, if the mean share of the last three logs is under 15 %, STOP r6 and start
+  **r6b** = copy of `t_a/last.pt` (iteration 549) continued with r6's flags plus `--flat_until 550` (supervisor name r6b,
+  20,000 iterations). Otherwise r6 continues. Gates stay in iteration numbers (40 % by 1,000, air over 0.2 s by 2,000).
+- **Coordinator 02:53: do not wait for 600.** Watcher `ssr7` cancelled; r6 stopped through its supervisor at iteration 490
+  (02:53:52; files kept in `runs/r6/`). New: obstacle-tile share ramp (`scripts/patch_obst.py`, flags `--obst0 --obst_ramp`,
+  log fields `flat_phase`, `obst_share`, `obst_target`; backups `_bak_20261112/*.pre_obst`): at the switch 25 % of robots get
+  obstacle tiles at level 0, the rest stay on the flat type; the target share rises to 0.8 (the paper's uniform mix) over
+  500 iterations, robots moving from flat to an obstacle type (level 0) only when their episode ends. Part of the flat-first
+  departure. CPU smoke test passed.
+
+## Status (2026-11-12 02:57 UTC): r6b running
+
+- **r6b training since 02:55:14 UTC** (tmux `ssr6b`, `runs/queue8.sh`, supervisor, heartbeat "r6b"), resumed from a copy
+  of `t_a/last.pt` (iteration 549) at 550; types at the switch: 477 / 519 / 477 / 500 obstacle (ramp, stairs, beam,
+  platform), 6,219 flat. First iteration: 61 % of commanded speed. Command (from `tracks/ssr/code`):
+  `../env/venv/bin/python scripts/supervise_node.py --name r6b --iters 20000 --num_envs 8192 -- --flat_until 550 --obst0 0.25
+  --obst_ramp 500 --stage_a 150 --stage_b 400 --w_style 0.2 --style_low 0 --gate_air 0.15 --gate_ramp 500 --prior_min_speed 0.2
+  --rsi_min_speed 0.3 --plant mc_20261024 --camera chest_rs --amp_file data/amp_v2.npz --prior_balance`
+- Departures from the paper in r6b: staged schedule (t_a's first 400 iterations); flat phase until 550 with the obstacle
+  share ramped 25 % -> 80 % over 550-1,050; style weight 0 until touchdown air > 0.15 s for 5 iterations, then ramped to 0.2
+  over 500; plus the earlier ones (walking starts, prior speed filter and balancing, reward x dt, camera mount randomisation).
+- Gates: 40 % of commanded speed by 1,000; air time over 0.2 s by 2,000. Report at 700 and 1,000.
+- Stop: `touch /mnt/filesystem-g4/tracks/ssr/runs/STOP`. Old runs kept: `runs/r6/` (stood, stopped at 490), `runs/t_a/`.

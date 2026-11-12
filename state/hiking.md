@@ -5,6 +5,64 @@ Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53
 
 ## Hand-over 2026-11-12 (newest first)
 
+- 02:55 **Reference-state starts.** The paper's G1 task does not use them: every episode starts from the default pose
+  (`reset_root_state_uniform` +-0.1 m, +-0.1 rad yaw, +-0.2 velocities; `reset_joints_by_offset` +-0.15 rad), so the share is 0%
+  (`InstinctLab/.../parkour/config/parkour_env_cfg.py` EventCfg; the G1 config changes it only in its PLAY variant). Our X2 task
+  is the same (run 3 env.yaml: `reset_base`, `reset_robot_joints`). InstinctLab has the machinery (`reset_robot_state_by_reference`,
+  used by the shadowing tasks), and the parkour scene has a motion reference (v2 walking clips, start 0-90% into a clip).
+  **Option r prepared** in `staged.py.next` (with e and f): a share of resets (HIKING_X2_REF_START, default 0.5, held to
+  `hold`, linear to 0 at `end`) takes joint positions/velocities, roll/pitch and body velocities from the reference frame; x, y and yaw
+  stay those of the normal reset (nobody placed off the tile or into an obstacle), height = clip pelvis height + 3 cm, velocities
+  rotated to the robot's heading. CPU test `code/x2_port/test_refstart.py` passes (stubs: pose, heading, velocity rotation,
+  share 0.5/0.5/0.25/0 at 500/1,000/1,500/2,000 with stage 1000,2000; only selected robots written). Not verified: in Isaac
+  (reference joint order assumed = robot's as in the shadowing tasks; a mid-stride pose at clip height on rough tiles may touch the
+  ground; `ensure_link_below_zero_ground` is off in our reference config).
+- 02:55 **Torque saturation of `model_250` in MuJoCo, before the fall only** (`perception-agents-work/hiking_sim2sim_x2/checks/
+  torque_sat_v3_250.{py,txt}`): flat (484 physics steps to the fall at 2.42 s): left ankle pitch 3%, right ankle pitch 2%, nothing
+  else above 0.5%; stairs (344 steps, fall at 1.72 s): left ankle pitch 8%, right 3%. No hip, knee or waist saturation. The
+  clip-wide count (2,305 of 2,800 physics steps with some joint saturated) is almost all after the fall, lying on the ground.
+
+- 03:05 **Prepared, not applied: options e (air time) and f (fall penalty)** in `files_instinctlab/tasks/parkour/config/x2/staged.py.next`
+  (the running `staged.py` is untouched). f = Isaac Lab's own `is_terminated_term` on base_contact|bad_orientation|root_height
+  (time-outs and `stalled` not penalised, several fall terms in one step clamped to 1), -P per fall, P = `HIKING_X2_FALL_PENALTY`
+  (default 8), held to `hold` and linear to 0 at `end`; e now takes `HIKING_X2_AIR_EARLY` (default 4). Tested on the node CPU:
+  `test_fall.py` (stub of the Isaac base class, schedule 1 / 0.5 / 0 at 500 / 1,000 / 1,500, stalled and time-out not penalised,
+  weight -P/dt = -P per fall) and `test_staged.py` pass; py_compile passes. **Never constructed in Isaac** (the regex term lookup
+  and a class-type reward term in this config are untested until the first start; the launcher's fallback catches a Traceback).
+  Continuing from `model_500` works with changed options: the supervisor passes `HIKING_ITER_OFFSET` = checkpoint iteration, and
+  every schedule (rewards and the style coefficient) reads it. With stage `500,1500` unchanged, all early values would start
+  ramping at once, so a continuation should use stage `1000,2000` (every early value held 500 more iterations; continuous at 500).
+  To apply: STOP run 3 after `model_500.pt`, move `staged.py` to `_trash/<date>/`, copy `staged.py.next` over it, `apply.sh`,
+  start the same run name with `HIKING_X2_OPTS=a,c,d,e,f,s HIKING_X2_STAGE=1000,2000 HIKING_X2_FALL_PENALTY=8 HIKING_X2_AIR_EARLY=4`
+  plus run 3's other variables (new start script). At that restart, also swap in `supervise_x2.py.next`.
+- 02:50 The MuJoCo port's scripts (`sim2sim_mujoco_x2.py`, `validate_x2.py`, README with the login path replaced by `~`) copied to
+  `code/x2_port/sim2sim/` (user allowed it: "It's just a script copy without any secrets"); run-1 versions in
+  `_trash/2026-11-12/sim2sim_run1/`. Checked for login, addresses and keys before copying.
+
+#### Walker, stander, lunger per control step under run 3's early values, with and without f (P = 8) and e (x 4)
+
+Per-step reward = task terms (weight x dt x raw) + style (coefficient x D-reward, not times dt). gamma 0.99. Lunger: run 3 measured at
+iterations 269-278 (84% falls, 140 steps; per-term episode sums divided by length). Stander: the earlier table's stander under run
+3's scales, D-reward 0.57 (run 2 at 499), reset by `stalled` at 4 s (200 steps). Walker: the G1 at 5,000 under run 3's scales,
+D-reward 0.51, episode 1,000 steps. Air time for a stepping gait estimated (half the time in single support, mean shorter mode time
+0.15 s: 0.5 x 0.02 x 0.075 = 0.0008 per step); run 3 measures 0.00003 per step.
+
+| | Lunger | Stander | Walker |
+|---|---|---|---|
+| task terms per step | +0.031 (alive 0.019, lin 0.025, yaw 0.017, heading -0.008, wait -0.006, rest -0.016) | -0.001 | +0.039 |
+| style per step (0.075 x D) | +0.035 | +0.043 | +0.038 |
+| air time per step, x 4 under e | 0.0001 | 0 | +0.003 |
+| steps until the episode ends | 140 (fall) | 200 (stalled reset) | 1,000 |
+| discounted value now (sum of 0.99^k x reward) | 0.066 x 75.5 = **4.98** | 0.042 x 86.6 = **3.64** | 0.077 x 100 = **7.7** |
+| with e | 4.99 | 3.64 | 8.0 |
+| with f, P = 8 (discounted 8 x 0.99^140 = 1.96) | **3.02** | 3.64 | 7.7 (a fall after 700 steps costs 0.007) |
+
+Now the ordering is walker > lunger > stander. f with P above about 5.5 ((4.98 - 3.64) / 0.99^140) gives walker > stander > lunger;
+P = 8 leaves a margin of 0.6. e alone adds about 0.3 to a walker's value and almost nothing to a lunger's or stander's, so it is
+a weak lever by itself (the paper's weight 0.5 x dt x seconds is small; x 4 is still about 4% of a walker's per-step reward).
+Caveats: the walker row is the G1, not an X2; the lunger's value assumes the policy keeps its 140-step falls; a larger P pushes
+back toward standing (run 2's outcome), which option d's stall reset and wait penalty are there to stop.
+
 - 02:45 **Run 3 at 250** (`report_line.py`, iterations 241-247): speed ratio 0.52 (0.36/0.70 m/s), both feet down 81%, air time
   0.0038/ep, wait -0.85, falls 84% (root_height 65%, bad_orientation 18%), stalled resets 9.6%, time-outs 7.5%, episode 148,
   style coef 0.075, D-reward 0.464, weighted style 0.035, level 0.18 (perlin_rough_stand 1.86, stairs and gaps 0.00). Trend
