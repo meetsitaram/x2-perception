@@ -216,3 +216,30 @@ has torch for the export):
   `vendor_20260823` with a note; the step tables now state the simulator and the plant of every row (flags mixed plants).
 - Step 2 time limit: 180 s per route (`TIME_LIMIT_STEP2`), the apparatus limit; the routes are 7 to 15.5 m with stations and
   turns on the spot, and the baseline walks about 0.3 m/s on flat ground, so step 1's 60 s would cut them short. Stall 45 s.
+
+## ACP pair 2,250 on ladder step 1 (2026-11-12 01:35 UTC, reported to the coordinator)
+
+ACP tracker s1 2,250 + planner_mlp (plant `mc_20261024`), MuJoCo 3.15 CPU, nominal, 50 trials per test, held-out skill courses
+(`eval/out/acp/handover_pair_s1_002250_mc_20261024_planner/ladder/step1.txt`; copy on the shared filesystem `eval/acp/...`).
+- Flat gate PASSED (six flat tests 50/50).
+- Profile L1/L2/L3: log 50/48/47 (level 3); wedge 50/50/44 (level 2); stairs_up 23/50/50 (none, in-order rule); stairs_down
+  50/50/48 (level 3); corridor 50/50/49 (level 3). Weakest: stairs_up. Baseline for comparison: log 50/19/13, wedge 50/50/49,
+  stairs_up 50/44/50, stairs_down 50/46/35, corridor 50/50/39.
+- 29 falls (27 at the first 10 cm riser of stairs_up L1), 9 stalls, 3 time limits. Clean success ~0 on obstacles.
+- `eval/profile_table.py` -> `eval/out/profile_table.{txt,csv}` (all runs with a profile).
+- Next: step 2 baseline (running since 01:33 UTC, `eval/out/baseline_20261102/ladder/step2.*`), then ACP 2,250 on all eight routes.
+
+## Coordinator decisions (2026-11-12, after the 2,250 step-1 report)
+
+1. Skill profile = highest level passed, plus any lower level that failed (e.g. ACP 2,250 stairs_up "L3 (L1 failed)"); route
+   eligibility on the levels actually passed. Implemented in `eval/ladder.py` (`collect`, `eligible_routes`): a route is held
+   back only if a needed skill has no level passed at its tag or above, or (stairs) its riser is lower than the lowest level
+   passed while a lower level failed. ACP 2,250: eligible street x2, corridors x2, stairs_U_turn (15 cm risers, L2 14 cm passed),
+   home; NOT wedge_field_loop (wedge L3 44/50) nor amphitheatre_loop (12.5 cm risers, between the failed 10 cm L1 and the passed
+   14 cm L2). Baseline: eligible street_out_and_back and wedge_field_loop only (stairs_up L2 failed at 44/50). All eight are run
+   for both pairs anyway, eligibility is reported beside them.
+2. After step 2: ACP 2,250 on our apparatus, 200 trials, nominal (`eval/run_acp_apparatus.sh`), beside the baseline's 15 and 4
+   of 200, with per-section reach and where trials end; then renders (chase + legs: best, median, typical failure) of
+   step-1 stairs_up L1 and of the apparatus run, to the coordinator for review.
+- Render labels now say "MuJoCo, not the training simulator" and carry the protocol and trial count.
+- The ACP hand-over adapter's goal is d / max(|d|, 0.3 m): it shrinks inside 0.3 m by construction (its training convention).

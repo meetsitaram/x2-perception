@@ -917,3 +917,77 @@ the planner-driven robot almost never falls (2 of 108); the 40 % that fail are s
 time is up: they do not keep up with, or do not follow, the route the reference takes (flat locomotion 2 of 12, chains 4
 of 12, ramps 6 of 12; stairs and descents 9-10 of 12). So the gap to close in stage 2 is following the goal under planner
 contacts, not balance. Earlier pairs under the old rule: 46.3 % (1,250), 44.4 % (2,000).
+
+## 14. Restart at checkpoint 2,500, soles in the ground, stair descents v2, live eval (2026-11-12 00:50- UTC; new ACP agent)
+
+The previous ACP agent stopped when its usage ran out; this agent resumed at 00:50 UTC from this file, without restarting the healthy run.
+
+**What runs now:** stage 2, run `runs/s2_v1`, tmux `acp`, resumed at 01:13:37 UTC from `ckpt_002500.pt`, data
+`cfg/stage2b_sets.json`, budget to 6,500. Resume command (also in `code/ops/README.md`):
+`tmux new -d -s acp "ACP_PLANT=mc_20261024 DATA=cfg/stage2b_sets.json EXTRA='--stage 2 --init /mnt/filesystem-g4/tracks/acp/runs/s2_v1/init_from_s1_v1_002250.pt --planner-arch attn --u-obs 200 --u-rew 1700 --n-ann 1500' bash /mnt/filesystem-g4/tracks/acp/code/supervise.sh /mnt/filesystem-g4/tracks/acp/runs/s2_v1 36000 6500"`
+
+**The 2,500 restart** (`code/ops/restart_s2b.sh`: the previous agent's `restart_s2.sh`, with the STOP flag moved to `_trash/<date>/stop_flags/` instead of deleted): STOP seen 01:13:04, the throw-away resume check passed (4,096 robots, iterations 2,500 to 2,503; planner, planner Adam state and stage-2 start 2,250 restored), real run back at 01:13:37. Training was down for under 2 minutes.
+- **Planner in chunks of 4,096 robots** (`acp/planner.py` `DECODE_CHUNK`): GPU memory **51.6 GB** (82-84 before);
+  **70,300-71,000 env-steps/s**, 12.2-12.4 s per iteration (70,700 before). CPU check: chunked and unchunked outputs are
+  identical (max difference 0.0), so nothing learned changes.
+- The replay buffer is in memory and starts empty after a restart: it was at 127k samples by 2,512. Memory with a full
+  buffer (1.5 M) is to be re-checked.
+- **Planner rate:** the paper (by section 1 above) switches contacts per env and per step and gives no slower planner
+  rate, so the planner runs every 50 Hz control step. Not changed; a lower rate needs the coordinator. (The paper text
+  itself was not re-read; this rests on my pipeline notes.)
+
+**Soles inside the ground: cause and fix** (`tools/ground_check.py`, `tools/pen_cause.py`, `tools/pen_shift.py`; outputs
+in `eval/clip_quality/`). Measure = deepest of the four sole corners against the clip's own terrain.
+- Per clip, the median stance gap is small everywhere: terrain-park stairs -0.3 cm, ramps -0.7 cm (11 % of ramp clips
+  under -3 cm), 4x4 -0.2 cm. Base and shifted capture variants are alike (ramps base -0.7, shifted -0.7 cm). So the large
+  figures (16-17 cm) are tails, not whole clips sunk in.
+- Where the deep frames are: stairs, chains and 4x4 have 73-76 % of them with the foot **straddling an edge** (more than
+  3 cm of terrain-height difference under the foot: the toe or heel corner inside the next riser or box). Ramps have 64 %
+  on flat-under-foot stance before the lift: a per-clip vertical offset plus the sole not following the slope.
+- Prop offset? Shifting the terrain horizontally under each clip (grid +-16 cm; the score counts deep frames plus stance
+  frames floating more than 3 cm) gives **no common best shift**. The most common best shift is (0, 0) for stairs and 4x4;
+  the rest scatter to the grid edges in every direction. So it is **not a prop offset**. It is the fit of the retargeted X2
+  foot: the 22 cm sole placed where the human foot was overhangs riser edges, and on ramps the foot stays flatter than the
+  slope. Ramps also carry a per-clip vertical offset.
+- **Fix in the data build** (`acp/data.py` `_ground`, flag `ground_stance` in `cfg/stage2b_sets.json`; in training since
+  2,500): a clip whose median stance gap is below -1.5 cm is lifted by it. 99 of 474 clips lifted, at most 4.3 cm.
+
+| Set (clip_quality rule: corner > 3 cm inside on > 5 % of frames) | Flagged before (stage2) | After (stage2b) | Worst before / after | Deep foot-frames before / after |
+|---|---|---|---|---|
+| ramps (330) | 205 | 177 | 16.4 / 14.2 cm | 36,439 / 14,619 |
+| terrain-park stairs (88) | 53 | 53 | 17.1 / 17.1 cm | 3,862 / 3,820 |
+| 4x4 stepovers (56) | 8 | 8 | 10.4 / 10.4 cm | 220 / 220 |
+| chains (87 after the step filter) | 46 | 46 | 8.3 cm | 1,565 |
+| flat / blocks (419) | 30 | 30 | 11.2 cm | 2,205 (half in swing: retarget through the floor) |
+
+  What remains is edge straddling and slope, which a vertical lift cannot fix. The fix would be a foot-placement re-fit,
+  and I have not done it: low value for training, see the next point.
+- **How the rewards treat a reference contact below the surface:** nothing clamps or projects it. `track_contact_pos_base`
+  and `_global` compare the robot's nine contact points (one sole point per foot, 3.8 cm ahead of the ankle at sole height,
+  not the corners) with the reference's points, through exp(-sum |d|^2 / sigma_c^2) with sigma_c = 1 m (the paper's
+  value). A reference point 5 cm below the floor costs exp(-0.0025): 0.25 % of the term. The robot cannot follow it into
+  the ground; it loses a little reward, and the mimic terms (root height, joints) carry the same offset. The contact
+  targets in the tracker's input come from the same reference points (`data.next`) and are fed as they are. The planner's
+  labels come from the robot's own rollouts, so they are always on the surface.
+
+**Stair descents v2** (desktop CPU; `code/data_build/gen_stairfit_dn.py`). Cause of v1: `gen_stairfit2.py` fits a descent time-reversed as a climb, and
+`stairfit.tread_targets` turns every tread foot "straight up the stairs" while the body faces down, so the hip turned about 180
+degrees. v2 replaces `tread_targets` for descents: the foot faces down the stairs, heel 5 cm short of the next riser (a
+2 cm gap let the heel cut the riser around touchdown: swing clearance -13 to -17 cm in the first trial). Acceptance as
+before plus |hip yaw| <= 1.5 rad and swing clearance >= -3 cm. Result: **57 of 108 fits accepted** (v1: 38). |hip yaw|
+median 0.45 rad, max 0.74 (v1: 3.43); largest joint jump 0.78 rad per frame (v1 1.10; the fitted climbs gst_v1 0.77);
+swing clearance median -1.2 cm, worst -3.0. The node's `clip_quality.py` on `cfg/stage2c_sets.json` agrees: no leg flip,
+no sole-penetration flag. 55 of 57 have a jump over 0.35 rad, the same class as the climbs already in training. Prop slots
+are the same as v1 (26). Files: `data/clips/gs2dn_v2{.pkl,_props.json,_report.json}` (sha256 in `code/MOTIONS.md`).
+**Staged, not in training yet:** `cfg/stage2c_sets.json` (= 2b + gs2dn_v2 at 0.05, terrain-park stairs back to 0.10;
+label cache already built). Swap in at the next needed restart (`DATA=cfg/stage2c_sets.json`).
+
+**Motion recipe:** `code/MOTIONS.md` (coordinator / user rule): every clip and label file with size, sha256, clips and
+minutes, source, builder and command, filters and licence. The upstream desktop builders are copied as text under
+`code/data_build/upstream/` (with their repo commits), and ours under `code/data_build/`. No motion data in `code/`.
+
+**Live evaluation test** (armed: `code/ops/live_test.sh 2750`, tmux `acp-evaltest`): right after `ckpt_002750`, two
+paper-eval sizes one after the other (100 and 334 episodes per set per seed, 3 seeds, oracle contacts), each through
+`tools/eval_live.sh` (flock, 80 GB start check, nice 10, cores 0-3, `EVAL_TIMEOUT` 1,500 s, self-abort under 10 GB free).
+Training speed before / during come from `eval_live.sh`, after from `live_test.sh`. Results go to
+`eval/paper_eval/live_test_2750.log` and `live_s2_v1_002750_per*.live.json`, then here.

@@ -240,9 +240,36 @@ STEP2_NEEDS = {
 }
 
 
-def eligible_routes(profile):
-    """Step-2 routes a checkpoint may run, from its step-1 profile ({skill: {"highest_level_passed": n}})."""
-    return [r for r, need in STEP2_NEEDS.items() if all(profile.get(k, {}).get("highest_level_passed", 0) >= lv for k, lv in need.items())]
+# the route's own size per needed skill, beside the levels' sizes (stairs: riser height in m), to flag a route whose obstacle is
+# smaller than the lowest level passed while a lower level failed (coordinator 2026-11-12)
+STEP2_SIZE = {"stairs_U_turn": {"stairs_up": 0.15}, "amphitheatre_loop": {"stairs_up": 0.125, "stairs_down": 0.125}}
+LEVEL_SIZE = {"stairs_up": {1: 0.10, 2: 0.14, 3: 0.186}, "stairs_down": {1: 0.10, 2: 0.14, 3: 0.186}}
+
+
+def eligible_routes(profile, with_notes=False):
+    """Step-2 routes a checkpoint may run, from its step-1 profile: every needed skill passed at the needed level or a higher one
+    (levels actually passed; a failed lower level does not block). A route whose obstacle is smaller than the lowest level
+    passed, where a lower level failed, is held back and named in the notes."""
+    ok, notes = [], {}
+    for r, need in STEP2_NEEDS.items():
+        good, why = True, []
+        for k, lv in need.items():
+            p = profile.get(k, {})
+            passed = p.get("levels_passed", list(range(1, p.get("highest_level_passed", 0) + 1)))
+            if not any(x >= lv for x in passed):
+                good = False
+                why.append("%s needs L%d, passed %s" % (k, lv, passed or "none"))
+                continue
+            size, low = STEP2_SIZE.get(r, {}).get(k), min(x for x in passed if x >= lv)
+            failed_below = [x for x in p.get("levels_failed", []) if x < low]
+            if size is not None and failed_below and size < LEVEL_SIZE[k][low]:
+                good = False
+                why.append("%s %.3f m is below the lowest level passed (L%d, %.3f m) and L%s failed" % (k, size, low, LEVEL_SIZE[k][low], ",".join(map(str, failed_below))))
+        if good:
+            ok.append(r)
+        else:
+            notes[r] = "; ".join(why)
+    return (ok, notes) if with_notes else ok
 
 
 FLAT = ("flat_walk", "flat_stop_stand", "flat_turn_in_place", "flat_turn_and_return", "flat_backward", "flat_sideways")
@@ -367,22 +394,30 @@ def collect(out, step):
         by = {r["test"]: r for r in rows}
         flat_ok = all(by.get(t, {}).get("success") == by.get(t, {}).get("trials") and by.get(t) for t in FLAT_GATE)
         lines += ["", "FLAT GATE (50 of 50 on %s): %s" % (", ".join(FLAT_GATE), "PASSED" if flat_ok else "NOT PASSED"), "",
-                  "SKILL PROFILE (a level is passed at %d of 50; levels are tried in order)" % PASS,
+                  "SKILL PROFILE (a level is passed at %d of 50; highest level passed, with any lower level that failed)" % PASS,
                   "%-12s %-14s %-22s %-22s %-22s" % ("skill", "highest passed", "level 1", "level 2", "level 3 (apparatus size)")]
         prof = {}
         for sk in SKILLS:
-            cells, best = [], 0
+            # coordinator 2026-11-12: the highest level passed, whatever the lower ones did, plus any lower level that failed
+            cells, best, passed, failed = [], 0, [], []
             for lv in (1, 2, 3):
                 r = by.get("%s_L%d" % (sk, lv))
                 cells.append("%d / %d (clean %d)" % (r["success"], r["trials"], r["clean"]) if r else "not run")
-                if r and r["success"] * 50 >= PASS * r["trials"] and best == lv - 1:
+                if r and r["success"] * 50 >= PASS * r["trials"]:
                     best = lv
-            prof[sk] = dict(highest_level_passed=best, levels=cells)
-            lines.append("%-12s %-14s %-22s %-22s %-22s" % (sk, "level %d" % best if best else "none", *cells))
-        weakest = min(prof, key=lambda k: (prof[k]["highest_level_passed"], sum(int(c.split(" ")[0]) for c in prof[k]["levels"] if c != "not run")))
+                    passed.append(lv)
+                elif r:
+                    failed.append(lv)
+            below = [lv for lv in failed if lv < best]
+            prof[sk] = dict(highest_level_passed=best, levels_passed=passed, levels_failed=failed, failed_below_highest=below, levels=cells)
+            tag = ("L%d" % best if best else "none") + (" (L%s failed)" % ",".join(map(str, below)) if below else "")
+            lines.append("%-12s %-14s %-22s %-22s %-22s" % (sk, tag, *cells))
+        weakest = min(prof, key=lambda k: (prof[k]["highest_level_passed"] - 0.5 * len(prof[k]["failed_below_highest"]), sum(int(c.split(" ")[0]) for c in prof[k]["levels"] if c != "not run")))
         lines.append("weakest skill: %s" % weakest)
+        elig, why = eligible_routes(prof, with_notes=True)
+        lines += ["", "STEP 2 ROUTES ELIGIBLE: %s" % (", ".join(elig) or "none")] + ["  not eligible: %s (%s)" % kv for kv in why.items()]
         j = json.load(open(out / (STEP_DIR[step] + ".json")))
-        j.update(flat_gate_passed=bool(flat_ok), profile=prof, weakest_skill=weakest, pass_mark="%d of 50" % PASS)
+        j.update(flat_gate_passed=bool(flat_ok), profile=prof, weakest_skill=weakest, step2_eligible=elig, step2_not_eligible=why, pass_mark="%d of 50" % PASS)
         json.dump(j, open(out / (STEP_DIR[step] + ".json"), "w"), indent=1)
     open(out / (STEP_DIR[step] + ".txt"), "w").write(chr(10).join(lines) + chr(10))
     return rows

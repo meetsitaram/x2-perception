@@ -5,6 +5,21 @@ Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53
 
 ## Hand-over 2026-11-12 (newest first)
 
+- **01:46 Run 3 `x2_parkour_v3` launched** (`launch_next.sh x2_parkour_v3 a,c,d,s 500,1500 1 0.3 2 0.3`, tmux `launchnext`
+  watching). Run 2 stopped cleanly at `model_1000.pt` through its own supervisor at 01:45:38; kept with all its checkpoints. At
+  01:46:44 Isaac was still starting up (no iteration yet, no Traceback). The launcher falls back to run 2 if iteration 2 is not
+  reached within 10 minutes; result in `runs/x2_parkour_v3/_supervisor/launch.txt`. Resume run 3: `bash
+  code/x2_port/start_x2_parkour_v3.sh` (carries every option, `$HOME` path). `supervise_x2.py` now uses `Path.home()`.
+- **Departures from the paper in run 3** (all scheduled: early value until 500, linear to the paper's value at 1,500): a)
+  `is_alive` x0.3 and `action_rate_l2`, `feet_slide`, `dof_acc_l2`, `feet_flat_ori` x0.2; c) no robots told to stand, minimum
+  forward command 0.6 m/s, targets at least 1.5 m away (whole run, not ramped); d) `dont_wait` x2, plus a `stalled` reset
+  (commanded to move, average speed under 0.1 m/s after 4 s; off from 1,500); s) style coefficient 0.25 x0.3. Also on: camera
+  mount randomisation (first time in Isaac). Plus the run-2 departures (chest RealSense camera, mc_20261024, motion v2).
+- `code/x2_port/MOTIONS.md` written (motion references v1 and v2, the G1 release file, sha256s, build command, licences,
+  backward and sideways clips still open). Copies of the build scripts are in `code/x2_port/motion/`.
+- Isaac evaluation beside training: still not started (plan below), because no checkpoint walks yet. MuJoCo render: no run-2
+  checkpoint moves (at 1,000: speed ratio about 0.02), so nothing has been rendered.
+
 - 01:15 Relaunch planned at run 2's `model_1000.pt` (about 01:50 UTC), coordinator's choice (messages 00:58 and 01:10):
   **options a, c, d**, hold 500, end 1,500, camera randomisation on, **early `is_alive` x 0.3, early `dont_wait` x 2** (not x 4):
   `launch_next.sh x2_parkour_v3 a,c,d 500,1500 1 0.3 2`. Why: SSR's test t_b (moving commands only plus a narrow kernel, our b)

@@ -322,5 +322,29 @@
   "episode_len": null,
   "terrain_level": 0.32,
   "note": "run r5: 3% of commanded speed, standing"
+ },
+ {
+  "id": "acp-2650",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, stage 2",
+  "iteration": 2650,
+  "total": 6500,
+  "reward": 0.136,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "stage 2 from 2,250; 94% of clips finished"
+ },
+ {
+  "id": "ssr-ta-470",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, test t_a (staged)",
+  "iteration": 470,
+  "total": 550,
+  "reward": 1.76,
+  "episode_len": null,
+  "terrain_level": 0.0,
+  "note": "68% of commanded speed under the full reward table"
  }
 ]
