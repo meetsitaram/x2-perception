@@ -21,10 +21,13 @@ t0=$(date +%s)
 ( while kill -0 $$ 2>/dev/null; do nvidia-smi --query-gpu=memory.used,utilization.gpu --format=csv,noheader,nounits; sleep 3; done > "$OUT.gpu.txt" ) &
 mon=$!
 cd "$T/code"
-ACP_PLANT=$PLANT nice -n 10 taskset -c 0-3 timeout 900 "$PY" tools/paper_eval.py "$CK" "$OUT.json" "$PER" > "$OUT.out" 2>&1
+w0=$(grep -c "nefc overflow\|height field collision overflow\|nan" "$RUN/train.out")
+ACP_EVAL_NO_DUMP=1 ACP_PLANT=$PLANT nice -n 10 taskset -c 0-3 timeout 900 "$PY" tools/paper_eval.py "$CK" "$OUT.json" "$PER" > "$OUT.out" 2>&1
 rc=$?
 t1=$(date +%s)
 kill $mon 2>/dev/null
+w1=$(grep -c "nefc overflow\|height field collision overflow\|nan" "$RUN/train.out")
+echo "trainer log warnings (nefc / height-field overflow / nan lines) during the eval: $((w1 - w0))" | tee "$OUT.warn.txt"
 python3 - "$RUN/metrics.jsonl" "$t0" "$t1" "$OUT" "$rc" "$PER" <<'EOF'
 import json, sys, time, calendar
 path, t0, t1, out, rc, per = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], int(sys.argv[5]), int(sys.argv[6])

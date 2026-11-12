@@ -21,6 +21,7 @@ import torch.nn.functional as F
 
 L, Wd, NP, NB = 17, 11, 187, 9
 SIGMA_A, HORIZON, MIN_SEG, SETTLE = 0.1, 75, 10, 5       # Table S5: 0.1 m; 75 steps; 10 steps. SETTLE: ours (steps after onset)
+DECODE_CHUNK = 4096
 FOOT_X, FOOT_Y = 0.8, 0.5                                # target footprint in body-yaw coordinates (Table S5)
 
 
@@ -210,6 +211,10 @@ class Base(nn.Module):
     def decode(self, hist, goal, scan):
         """-> targets (B, 9, 3) in the body-yaw frame relative to the root (zero when occupancy <= 0.5), occupancy (B, 9).
         Top-k decode with k = 1: the target is the scan point with the largest affordance weight."""
+        if scan.shape[0] > DECODE_CHUNK:          # many robots: run in chunks (same result; the attention weights of 36,000
+            parts = [self.decode(hist[a:a + DECODE_CHUNK], goal[a:a + DECODE_CHUNK], scan[a:a + DECODE_CHUNK])   # robots at once took ~35 GB)
+                     for a in range(0, scan.shape[0], DECODE_CHUNK)]
+            return torch.cat([p[0] for p in parts]), torch.cat([p[1] for p in parts])
         logp, occ = self(hist, goal, scan)
         i = logp.argmax(-1)                                                  # (B, 9)
         tgt = torch.gather(self.points(scan), 1, i.unsqueeze(-1).expand(-1, -1, 3))

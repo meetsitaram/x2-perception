@@ -100,7 +100,7 @@ def main():
         goal = m.root_p[m.clip_end[clip]][:, :2]
         final_d = torch.full((N,), 1e9, device=dev)
         with torch.no_grad():
-            dump = dict(hist=[], scan=[], goal=[], c=[], pts=[], root=[], alive=[]) if seed == 0 else None
+            dump = dict(hist=[], scan=[], goal=[], c=[], pts=[], root=[], alive=[]) if seed == 0 and not os.environ.get("ACP_EVAL_NO_DUMP") else None
             for step_i in range(int(m.clip_len.max()) + 2):
                 ao, _co = env.observe()
                 if dump is not None:      # rollout record for the stage-2 planner's hindsight labels (state before the step)

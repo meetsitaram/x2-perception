@@ -102,6 +102,7 @@ class Dataset:
         self.clip_w = w / w.sum()
         self.clip_set = sid
         self.set_names = [s["pkl"].replace(".pkl", "") for s in cfg["sets"]]
+        self.grounded = self._ground([si for si, s in enumerate(cfg["sets"]) if s.get("ground_stance")])
         if cache and os.path.exists(cache):
             lab = torch.load(cache, map_location=dev)
             assert lab["contact"].shape[0] == m.num_frames, "label cache does not match the clip sets"
@@ -120,6 +121,35 @@ class Dataset:
         P, Rb, V, W = P[..., i, :], Rb[..., i, :, :], V[..., i, :], W[..., i, :]
         off = mv3(Rb, self.point)
         return P + off, V + torch.cross(W, off, dim=-1), Rb, P
+
+    def _ground(self, sets):
+        """Data-build fix for clips whose stance soles sit inside their terrain (cfg flag "ground_stance" per set): if the
+        median gap of the lowest sole corner of the feet in stance is below -1.5 cm, the whole clip is lifted by that amount.
+        Returns (clips lifted, clips checked, largest lift in m)."""
+        if not sets:
+            return (0, 0, 0.0)
+        m, T = self.motion, self.terrain
+        link = self.kin.body_index(["left_ankle_roll_link", "right_ankle_roll_link"])
+        lifted, checked, most = 0, 0, 0.0
+        for c in torch.isin(self.clip_set, torch.tensor(sets, device=self.device)).nonzero().squeeze(-1).tolist():
+            a, b = int(m.clip_start[c]), int(m.clip_end[c]) + 1
+            f = torch.arange(a, b, device=self.device)
+            P, Rb, V, W = self.kin.forward(*m.ref_state(f))
+            P, Rb, V, W = P[:, link], Rb[:, link], V[:, link], W[:, link]
+            cp = P[:, :, None, :] + mv3(Rb[:, :, None, :, :], self.corners)
+            h = T.height(cp[..., 0].reshape(len(f), 8), cp[..., 1].reshape(len(f), 8), m.clip_id[f]).reshape(len(f), 2, 4)
+            gap = (cp[..., 2] - h).amin(-1)
+            off = mv3(Rb, self.point[:2])
+            st = ((V + torch.cross(W, off, dim=-1)).norm(dim=-1) < V_CONTACT) & (gap.abs() < 0.08)
+            checked += 1
+            if int(st.sum()) < 10:
+                continue
+            md = float(gap[st].median())
+            if md < -0.015:
+                m.root_p[a:b, 2] -= md
+                lifted += 1; most = max(most, -md)
+        print(f"[data] ground_stance: {lifted} of {checked} clips lifted (largest {100 * most:.1f} cm)", flush=True)
+        return (lifted, checked, most)
 
     def _label(self):
         m, T = self.motion, self.terrain

@@ -4,7 +4,7 @@
 # Never more than one Isaac instance: training is stopped first (it resumes from its newest checkpoint afterwards).
 T=/mnt/filesystem-g4/tracks/hiking
 NAME=$1; IT=$2; BUDGET=$3; TERRAINS=$4; N=${5:-1000}; shift 5
-RUN=$T/runs/$NAME; PY=/home/NODE_USER/hiking-env/bin/python
+RUN=$T/runs/$NAME; PY=$HOME/hiking-env/bin/python
 OUT=$T/eval/paper_eval/${NAME}_$IT; mkdir -p $OUT
 until ls $RUN/*/model_$IT.pt >/dev/null 2>&1; do sleep 10; done
 CK=$(ls $RUN/*/model_$IT.pt | head -1)

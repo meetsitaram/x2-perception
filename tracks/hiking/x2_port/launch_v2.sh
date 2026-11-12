@@ -1,7 +1,7 @@
 #!/bin/bash
 # Stop run 1, check the run-2 task once in Isaac (gains read back, depth frames dumped), start run 2 from scratch.
 # If the check fails, run 1 is restarted so the GPU is not left idle.
-T=/mnt/filesystem-g4/tracks/hiking; PY=/home/NODE_USER/hiking-env/bin/python; OUT=$T/runs/_smoke_v2; mkdir -p $OUT
+T=/mnt/filesystem-g4/tracks/hiking; PY=$HOME/hiking-env/bin/python; OUT=$T/runs/_smoke_v2; mkdir -p $OUT
 TASK=Instinct-Parkour-TorsoCam-Amp-X2-v0
 bash $T/code/x2_port/apply.sh > /dev/null
 T0=$(date +%s)

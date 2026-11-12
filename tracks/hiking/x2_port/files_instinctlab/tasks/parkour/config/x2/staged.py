@@ -10,7 +10,7 @@ Options are read from the environment when the config is built (the supervisor p
   HIKING_ITER_OFFSET  set by the supervisor to the checkpoint iteration a resume starts from, so schedules continue after a restart
                    (the env's step counter restarts at zero in each process).
 
-  a  staged rewards: `is_alive` x 0.3 early; the penalties a first step pays (`action_rate_l2`, `feet_slide`, `dof_acc_l2`,
+  a  staged rewards: `is_alive` x 0.3 early (HIKING_X2_ALIVE_EARLY overrides the 0.3; run 3 uses 0.3); the penalties a first step pays (`action_rate_l2`, `feet_slide`, `dof_acc_l2`,
      `feet_flat_ori`) x 0.2 early.
   b  tracking: linear-tracking kernel std 0.25 early (zero speed pays exp(-0.63^2/0.25^2) = 0.002 for a 0.63 m/s command; the
      paper's 0.5 pays 0.20); yaw tracking multiplied by forward progress (v_x / (0.5 x commanded v_x), clipped to 0..1) for robots
@@ -18,9 +18,11 @@ Options are read from the environment when the config is built (the supervisor p
   c  commands: no robots told to stand and a higher minimum speed (0.6 m/s) for the whole run (not scheduled: these are config
      values read once); targets are redrawn until they are at least 1.5 m from the robot, so the command is not zero from the start
      (about 15% of robots otherwise). The stand column keeps its zero commands.
-  d  not moving: `dont_wait` x 4 early; and an early termination `stalled`: a robot commanded to move whose average speed since
+  d  not moving: `dont_wait` x 4 early (HIKING_X2_WAIT_EARLY overrides the 4; run 3 uses 2); and an early termination `stalled`: a robot commanded to move whose average speed since
      the episode start is under 0.1 m/s after 4 s is reset. The termination is switched off at `end`.
   e  `feet_air_time` x 4 early.
+  s  style reward coefficient (0.25) x 0.3 early (HIKING_X2_STYLE_EARLY), patched into the trainer's WasabiPPO.
+     Every staged run (with or without s) logs `style_coef` and `style_reward_weighted` per step.
 Every option is a listed deviation from the paper, with its schedule; the run's state file must say which were on.
 """
 from __future__ import annotations
@@ -164,16 +166,51 @@ def feet_air_time_staged(env, command_name: str, vel_threshold: float, sensor_cf
     return mdp.feet_air_time(env, command_name=command_name, vel_threshold=vel_threshold, sensor_cfg=sensor_cfg) * _s(env, early_scale)
 
 
+
+# ---- s: style reward coefficient (patches the trainer's WasabiPPO class; logs the weighted style reward per step) ----
+def install_style_schedule(algo_cls, early: float):
+    """Before every env step set `discriminator_reward_coef` = base x schedule(iteration, early); iteration = HIKING_ITER_OFFSET
+    + env steps since this process started / 24 (the same count as the env's). With early = 1.0 the coefficient is unchanged.
+    After the step adds `style_coef` and `style_reward_weighted` (coef x D-reward, what PPO adds to each step's reward, not
+    multiplied by dt) to the trainer's per-step log ("Mean step ..."). Installs once per process."""
+    if getattr(algo_cls, "_hiking_style_installed", False):
+        return
+    orig = algo_cls.process_env_step
+
+    def process_env_step(self, rewards, dones, infos, next_obs, next_extra_obs):
+        if not hasattr(self, "_hiking_style_base"):
+            self._hiking_style_base = float(self.discriminator_reward_coef)
+            self._hiking_style_steps = 0
+        hold, end = _stage()
+        it = float(os.environ.get("HIKING_ITER_OFFSET", "0")) + self._hiking_style_steps / STEPS_PER_ITERATION
+        coef = self._hiking_style_base * schedule(it, early, hold, end)
+        self.discriminator_reward_coef = coef
+        self._hiking_style_steps += 1
+        out = orig(self, rewards, dones, infos, next_obs, next_extra_obs)
+        step = infos.get("step") if isinstance(infos, dict) else None
+        if step is not None and "discriminator_reward" in step:
+            step["style_coef"] = torch.tensor(float(coef))
+            step["style_reward_weighted"] = coef * step["discriminator_reward"]
+        return out
+
+    algo_cls.process_env_step = process_env_step
+    algo_cls._hiking_style_installed = True
+# ---- end s ----
+
+
 @configclass
 class X2ParkourStagedEnvCfg(X2ParkourTorsoCamEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         opts = _opts()
-        unknown = opts - set("abcde")
+        unknown = opts - set("abcdes")
         assert not unknown, "unknown HIKING_X2_OPTS: %s" % sorted(unknown)
+        from instinct_rl.algorithms.wasabi import WasabiPPO
+        install_style_schedule(WasabiPPO, float(os.environ.get("HIKING_X2_STYLE_EARLY", "0.3")) if "s" in opts else 1.0)
         r = self.rewards.rewards
         if "a" in opts:
-            r.is_alive = RewTerm(func=is_alive_staged, weight=r.is_alive.weight)
+            r.is_alive = RewTerm(func=is_alive_staged, weight=r.is_alive.weight,
+                                 params={"early_scale": float(os.environ.get("HIKING_X2_ALIVE_EARLY", "0.3"))})
             r.action_rate_l2 = RewTerm(func=action_rate_staged, weight=r.action_rate_l2.weight)
             r.feet_slide = RewTerm(func=feet_slide_staged, weight=r.feet_slide.weight, params=dict(r.feet_slide.params))
             r.dof_acc_l2 = RewTerm(func=dof_acc_staged, weight=r.dof_acc_l2.weight, params=dict(r.dof_acc_l2.params))
@@ -195,7 +232,8 @@ class X2ParkourStagedEnvCfg(X2ParkourTorsoCamEnvCfg):
                     rng["lin_vel_x"] = (max(rng["lin_vel_x"][0], 0.6), rng["lin_vel_x"][1])
             self.commands.base_velocity = new
         if "d" in opts:
-            r.dont_wait = RewTerm(func=dont_wait_staged, weight=r.dont_wait.weight, params=dict(r.dont_wait.params))
+            r.dont_wait = RewTerm(func=dont_wait_staged, weight=r.dont_wait.weight,
+                                  params=dict(r.dont_wait.params, early_scale=float(os.environ.get("HIKING_X2_WAIT_EARLY", "4.0"))))
             self.terminations.stalled = DoneTerm(func=stalled, params={"command_name": "base_velocity"})
         if "e" in opts:
             r.feet_air_time = RewTerm(func=feet_air_time_staged, weight=r.feet_air_time.weight, params=dict(r.feet_air_time.params))

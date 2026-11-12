@@ -31,6 +31,7 @@ EPS_H = 0.03              # support height tolerance (paper-silent)
 SIG_V, SIG_W, SIG_G, SIG_H, SIG_D, SIG_F = 0.25, 0.25, 0.01, 0.01, 0.03, 0.0625
 H_TARGET, T_AIR, D_Y_MIN, EPS_CMD = 0.68, 0.4, 0.22, 0.15
 PUSH_STEPS = int(12.0 / X.CONTROL_DT)
+GATED_TERMS = ("orientation", "ang_vel", "base_height", "ang_vel_xy", "lateral")   # t_e: posture/alive-like terms a stander collects
 CORE_TERMS = ("lin_vel", "ang_vel", "orientation", "ang_vel_xy", "base_height", "lateral", "dof_dev", "stand_still")   # tracking + posture: the set run d2 moved with
 SAMPLE_K = torch.tensor([-1.0, 0.0, 1.0])  # imagined landing: Gaussian-weighted 3 x 3 stencil
 
@@ -170,6 +171,9 @@ class SSREnv:
         self.flat_only = False                  # diagnosis: every robot on the open flat tile
         self.only_terms = None                  # diagnosis: keep only these locomotion terms
         self.v_min, self.sig_v = 0.0, SIG_V      # command curriculum (not in the paper): minimum commanded speed and tracking kernel width, set per iteration by train
+        self.prog_gate = 0.0                    # t_e (not in the paper): weight of the forward-progress gate on GATED_TERMS for robots with a moving command
+        self.v_ema = torch.zeros(n, 2, device=dev)   # base planar velocity (body frame), 0.5 s moving average, for the progress gate
+        self.prog = torch.ones(n, device=dev)
         self.late_scale = 1.0                   # staged schedule (not in the paper): factor on every term outside CORE_TERMS, 0 -> 1 early in training
         self.cnt = {}                           # raw counts for the log (termination causes, touchdown support)
         self.reset(torch.arange(n, device=dev))
@@ -384,6 +388,7 @@ class SSREnv:
         self.push[ids] = PUSH_STEPS
         self.stall_pos[ids] = self.qpos[ids, :2]
         self.air[ids], self.single_t[ids] = 0.0, 0.0
+        self.v_ema[ids] = 0.0
         self.contact_prev[ids] = False
         self.reset_ids = ids
 
@@ -609,6 +614,10 @@ class SSREnv:
                 g_[k_] = g_.get(k_, 0.0) + float((torch.nan_to_num(v_) * wk).sum() / nw)
             g_["n"] = g_.get("n", 0) + 1
         touchdown = contact & ~self.contact_prev & (self.air > 0.0)
+        mtd = touchdown & (self.cmd[:, :2].norm(dim=-1) > EPS_CMD)[:, None]      # air time of each touchdown under a moving command
+        self.cnt["air_n"] = self.cnt.get("air_n", 0) + mtd.sum()
+        self.cnt["air_sum"] = self.cnt.get("air_sum", 0) + (self.air * mtd.float()).sum()
+        self.cnt["air_long"] = self.cnt.get("air_long", 0) + (mtd & (self.air > 0.2)).sum()
         if self.tiles:                                               # support ratio at touchdown (paper Sec. 4.2: MSR, SFR), off slopes
             td = touchdown & ~((self.type == T.SLOPE) | self.free)[:, None]
             sr = 1.0 - self.rho_c
@@ -680,6 +689,16 @@ class SSREnv:
             air_bonus=self.air_bonus * (self.air.clamp(max=T_AIR) * first.float()).sum(-1) * (~still).float(),   # early training only: gets stepping started
             imitate=self._imitation(q_rel),
         )
+        self.v_ema += 0.04 * (v[:, :2] - self.v_ema)
+        cn = cmd[:, :2].norm(dim=-1)
+        mov = cn > EPS_CMD
+        prog = ((self.v_ema * cmd[:, :2]).sum(-1) / cn.clamp(min=1e-3) ** 2).clamp(0.0, 1.0)   # share of the commanded speed actually made good
+        self.prog = torch.where(mov, prog, torch.ones_like(prog))
+        self.cnt["prog_sum"] = self.cnt.get("prog_sum", 0) + (prog * mov).sum()
+        self.cnt["prog_n"] = self.cnt.get("prog_n", 0) + mov.sum()
+        if self.prog_gate > 0.0:
+            gf = 1.0 - self.prog_gate * (1.0 - self.prog)
+            terms.update({k_: terms[k_] * gf for k_ in GATED_TERMS})
         if self.late_scale < 1.0:
             terms = {k_: (v_ if k_ in CORE_TERMS else v_ * self.late_scale) for k_, v_ in terms.items()}
         if self.only_terms is not None:

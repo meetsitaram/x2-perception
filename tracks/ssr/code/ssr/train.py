@@ -171,6 +171,7 @@ def train(a):
     log_f = open(out / "log.jsonl", "a")
     t_start = time.time()
     done_stats = {"ret": [], "len": []}
+    gate_start, gate_hits, air_td = (ck.get("gate_start") if a.resume else None), 0, 0.0   # t_e progress gate: iteration its ramp-off began
     for it in range(start, a.iters):
         t0 = time.time()
         B = dict(hist=z0(H, PROP_DIM), depth=z0(DEPTH_N, DEPTH_N), obs=z0(N.ACTOR_DIM), priv=z0(PRIV_DIM), a=z0(21), mu=z0(21), logp=z0(), v=z0(3), r=z0(3),
@@ -185,7 +186,10 @@ def train(a):
         env.v_min = a.cmd_min0 * (1.0 - cf)
         env.sig_v = 0.25 if a.sig_v0 <= 0 else a.sig_v0 + (0.25 - a.sig_v0) * cf
         env.stuck_term = a.stuck_term and (a.stuck_until <= 0 or it < a.stuck_until)
+        env.prog_gate = 0.0 if a.prog_gate <= 0 else a.prog_gate * (1.0 if gate_start is None else max(0.0, 1.0 - (it - gate_start) / max(a.gate_ramp, 1)))
         w[2] = a.w_style * ramp
+        if a.style_low >= 0:                         # t_f: style held low until real swing appears, then ramped to full
+            w[2] = w[2] * (a.style_low if gate_start is None else min(1.0, a.style_low + (1.0 - a.style_low) * (it - gate_start) / max(a.gate_ramp, 1)))
         env.gait = {}
         env.cnt = {}
         sty_sum, sty_n = torch.zeros(5, device=dev), torch.zeros(5, device=dev)
@@ -366,6 +370,12 @@ def train(a):
                                         style_reward=round((sty_sum[i] / sty_n[i].clamp(min=1)).item(), 4), share=round((sty_n[i] / sty_n.sum()).item(), 3))
             d_real += dr.mean().item() / 5
             d_fake += df.mean().item() / 5
+        cnt_ = env.cnt
+        air_td = float(cnt_.get("air_sum", 0.0)) / max(float(cnt_.get("air_n", 0.0)), 1.0)
+        gate_hits = gate_hits + 1 if air_td > a.gate_air else 0
+        if (a.prog_gate > 0 or a.style_low >= 0) and gate_start is None and gate_hits >= 5:
+            gate_start = it + 1
+            print("progress gate: touchdown air time", round(air_td, 3), "for 5 iterations; ramping the gate off from", gate_start, flush=True)
         if it % a.log_every == 0:
             lv = [round(env.level[(env.type == c) & ~env.free].float().mean().item(), 2) for c in range(5)]
             cnt = {k_: float(v_) for k_, v_ in env.cnt.items()}
@@ -378,7 +388,7 @@ def train(a):
                          foothold=dict(touchdowns=cnt.get("td_n", 0.0), msr=round(cnt.get("td_support", 0.0) / max(cnt.get("td_n", 0.0), 1.0), 4),
                                        sfr=round(cnt.get("td_safe", 0.0) / max(cnt.get("td_n", 0.0), 1.0), 4)),
                          levels_by_type=dict(zip(T.TYPES, lv)), level_max_share=round((env.level[~env.free] >= T.NLEVEL - 1).float().mean().item(), 4),
-                         samples_per_s=round(N_ * Tn / max(time.time() - t0, 1e-6)), num_envs=N_, gpu_util=gu, gpu_mem_mb=gm)
+                         samples_per_s=round(N_ * Tn / max(time.time() - t0, 1e-6)), num_envs=N_, air_td=round(air_td, 3), air_long_share=round(float(cnt.get("air_long", 0.0)) / max(float(cnt.get("air_n", 0.0)), 1.0), 3), prog_mean=round(float(cnt.get("prog_sum", 0.0)) / max(float(cnt.get("prog_n", 0.0)), 1.0), 3), prog_gate=round(env.prog_gate, 3), gate_start=gate_start, w_style_now=round(float(w[2]), 4), gpu_util=gu, gpu_mem_mb=gm)
             rec = dict(it=it, dt=round(time.time() - t0, 2), elapsed_h=round((time.time() - t_start) / 3600, 3), r_l=round(rs[0], 3), r_f=round(rs[1], 3), r_s=round(rs[2], 3),
                        ep_ret=round(float(np.mean(done_stats["ret"])) if done_stats["ret"] else 0.0, 2), ep_len_s=round(float(np.mean(done_stats["len"]) if done_stats["len"] else 0.0) * 0.02, 2),
                        n_done=len(done_stats["len"]), level=lv, kl=round(kl_m, 4), lr=lr_ppo, pi=round(pi_l, 4), v=round(v_l, 3), std=round(actor.std().mean().item(), 3),
@@ -394,7 +404,7 @@ def train(a):
         if it % a.save_every == 0 or it == a.iters - 1:
             ck = dict(iter=it, enc=enc.state_dict(), aux=aux.state_dict(), actor=actor.state_dict(), critics=critics.state_dict(), foot=foot.state_dict(), disc=disc.state_dict(),
                       opt_ppo=opt_ppo.state_dict(), opt_enc=opt_enc.state_dict(), opt_foot=opt_foot.state_dict(), opt_disc=opt_disc.state_dict(), level=env.level.cpu(), type=env.type.cpu(),
-                      guide_on=env.guide_on, args=vars(a))
+                      guide_on=env.guide_on, gate_start=gate_start, args=vars(a))
             torch.save(ck, out / "last.tmp")
             if (out / "last.pt").exists():
                 os.replace(out / "last.pt", out / "prev.pt")      # the newest two are always kept
@@ -440,6 +450,10 @@ if __name__ == "__main__":
     ap.add_argument("--rsi_min_speed", type=float, default=0.0, help="walking starts only from frames moving forward at least this fast (m/s); 0 = any frame")
     ap.add_argument("--adv_floor", type=float, default=2e-3)
     ap.add_argument("--boot_iters", type=int, default=0, help="early schedule length (earlier runs: 3000); 0 = the paper's rewards from the start")
+    ap.add_argument("--style_low", type=float, default=-1.0, help="t_f (deviation): style weight x this until touchdown air time > --gate_air for 5 iterations, then ramped to full over --gate_ramp; -1 = off")
+    ap.add_argument("--prog_gate", type=float, default=0.0, help="t_e (deviation): multiply orientation, yaw, base height, roll/pitch rate and lateral terms by 1 - g(1 - progress) for robots with a moving command; 0 = off")
+    ap.add_argument("--gate_air", type=float, default=0.2, help="with --prog_gate: start ramping the gate off once mean touchdown air time exceeds this for 5 iterations")
+    ap.add_argument("--gate_ramp", type=int, default=500, help="with --prog_gate: iterations over which the gate ramps off")
     ap.add_argument("--stuck_term", action="store_true", help="end episodes that make no progress (not in the paper)")
     ap.add_argument("--imit_w", type=float, default=0.0)
     train(ap.parse_args())
