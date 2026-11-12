@@ -346,5 +346,41 @@
   "episode_len": null,
   "terrain_level": 0.0,
   "note": "68% of commanded speed under the full reward table"
+ },
+ {
+  "id": "acp-2790",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, stage 2",
+  "iteration": 2790,
+  "total": 6500,
+  "reward": 0.137,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "94% of clips finished"
+ },
+ {
+  "id": "ssr-r6-140",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r6 (staged)",
+  "iteration": 140,
+  "total": 20000,
+  "reward": 1.33,
+  "episode_len": null,
+  "terrain_level": 0.28,
+  "note": "9% of commanded speed, early dip expected"
+ },
+ {
+  "id": "hiking-v3-118",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 3 (staged)",
+  "iteration": 118,
+  "total": 30000,
+  "reward": 2.02,
+  "episode_len": 92,
+  "terrain_level": 0.0,
+  "note": "run 3 from scratch"
  }
 ]

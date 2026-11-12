@@ -5,6 +5,14 @@ Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53
 
 ## Hand-over 2026-11-12 (newest first)
 
+- 02:05 Third Hiking agent resumed. Run 3 training (heartbeat 01:58 iteration 10, 0 Tracebacks, one trainer start since the
+  01:50:59 supervisor start). `launch_next.sh` already falls back on a Traceback (checked: it greps the new part of train.log);
+  nothing to change there. `supervise_x2.py` STOP handling: patched copy `code/x2_port/supervise_x2.py.next` (moves an old STOP to
+  `_trash/<date>/` with a NOTES.txt line instead of `unlink`; py_compile passes). Not swapped in: the running supervisor keeps
+  the old code; at the next supervisor restart that happens anyway, move `supervise_x2.py` to `_trash/<date>/` and copy `.next`
+  over it, then `bash code/x2_port/start_x2_parkour_v3.sh`. `report_line.py` now also prints style coefficient, D-reward and
+  weighted style reward (run 2 has no `style_coef` field: nan there; its weighted style is 0.25 x D-reward).
+
 - 01:48 Correction: the 01:46 launch went back to run 2 after 20 s. Cause: `launch_next.sh` counted 'start pid' lines, and
   the supervisor's own "supervisor start pid" line also matched, so it saw a restart at once. Fixed to count ' start pid N from
   iteration' only. The stale STOP flag was moved to `_trash/2026-11-12/`. Relaunched at 01:47:44; run 3's supervisor started

@@ -643,7 +643,8 @@ air time over 0.2 s and step length over 0.25 m at 0.6 m/s with the full Table 6
 
 | Test | Flags | Iterations | Result |
 | --- | --- | --- | --- |
-| t_a staged schedule | `--stage_a 150 --stage_b 400` (tracking + posture only until 150, the rest ramped in by 400) | 550 | pending |
+| t_a staged schedule | `--stage_a 150 --stage_b 400` (tracking + posture only until 150, the rest ramped in by 400) | 550 (00:53-01:54 UTC) | **moves under the full table** (first SSR run to do so). Share of commanded speed: 5 % (80, the d2-like dip), 10 % (150), 20 % (200), 44 % (300), 60 % (400, ramp 1.0), 79 % (540); touchdowns/s (both feet) 11 -> 8.5, single support 0.38 -> 0.60, tilt ends 1 %, r_l 1.97. Probe at 549, 0.6 m/s, no noise: 0.50 m/s, single 0.70, 3.7 touchdowns/foot/s, air time median 0.10 s, step length 0.14 m, clearance 1.9 cm, Table 6 score 2.77/step (stander 1.88, tapper 2.36); with noise 0.49 m/s, air 0.08 s, step 0.12 m. Not yet the 0.2 s / 0.25 m swing; improving. Led to r6 |
+| t_c, t_d, t_e, t_f | | | **not run**: coordinator (01:55) chose r6 once t_a moved; the code for t_e/t_f stays (`--prog_gate`, `--style_low`) |
 | t_b command curriculum | `--cmd_cur_iters 200 --cmd_min0 0.5 --sig_v0 0.06` (no command under 0.5 m/s and a narrow tracking kernel, so zero speed pays nothing, until 200; released by 400) | 500 (ended by a STOP file at 190, 00:52 UTC) | **fail, stands**: vx 0.007 of 0.76 m/s (1-3% from 100 on), double support 0.89, tracking term 0.03/step; probe at 150 (0.6 m/s): 0.005 m/s, air 0.02 s, step 0.002 m. The stander still gets about 1.4/step from orientation 0.44, yaw kernel 0.41, base height 0.37, roll/pitch rate 0.12, lateral 0.08, single support 0.12 (taps); tilt 42% of episode ends |
 | t_e progress gate (coordinator, 01:00 UTC; deviation) | `--prog_gate 1.0 --gate_air 0.2 --gate_ramp 300`: orientation, yaw kernel, base height, roll/pitch rate, lateral x (1 - g(1 - progress)), progress = clip(0.5 s mean velocity along the command / commanded speed, 0, 1), only under a moving command (> 0.15 m/s); gate ramps off over 300 iterations once mean touchdown air time > 0.2 s for 5 iterations (`runs/queue5.sh`, tmux `ssrq`, after t_a) | 650 | pending |
 | t_c no-progress termination | `--stuck_term --stuck_until 300` | 450 | pending |
@@ -757,3 +758,22 @@ Not verified / open:
   full numbers in `eval/motion_inventory.json` (`scripts/motion_inventory.py`). The prior files moved out of `code/` to
   `/mnt/filesystem-g4/tracks/ssr/data/priors/` (01:12 UTC); `code/data/amp*.npz` are symlinks to them, so every command with
   `--amp_file data/amp_v2.npz` still works. To restore: copy the files back over the links.
+
+## Status (2026-11-12 02:00 UTC): r6 running
+
+- **r6 training since 01:59:46 UTC** (tmux `ssr6`, `runs/queue6.sh`, supervisor, heartbeat run "r6"). Command (from
+  `tracks/ssr/code`): `../env/venv/bin/python scripts/supervise_node.py --name r6 --iters 20000 --num_envs 8192 -- --stage_a 150
+  --stage_b 400 --w_style 0.2 --style_low 0 --gate_air 0.15 --gate_ramp 500 --prior_min_speed 0.2 --rsi_min_speed 0.3 --plant
+  mc_20261024 --camera chest_rs --amp_file data/amp_v2.npz --prior_balance`. Full method with the terrain curriculum, from
+  scratch. Listed departures from the paper: (1) staged schedule (tracking + posture only until 150, other Table 6 terms ramped
+  linearly to full by 400); (2) style weight 0 until mean touchdown air time > 0.15 s for 5 iterations, then ramped to the
+  paper's 0.2 over 500 iterations (`gate_start`, `w_style_now` in the log); plus the earlier ones (walking starts, prior speed
+  filter and balancing, rew_scale, per-episode camera mount randomisation). Advantage normalisation: joint (as t_a), not r5's
+  separate.
+- Gates (coordinator): 40 % of commanded speed by 1,000; air time over 0.2 s by 2,000. If cadence stays at about 5
+  touchdowns per foot per second at 1,500, add a feet-air-time reward as a listed departure.
+- To resume after a crash the supervisor does it itself; by hand: the same command (it resumes from `runs/r6/last.pt`).
+- Stop: `touch /mnt/filesystem-g4/tracks/ssr/runs/STOP`. Leftover flags `QUEUE4_STOP`, `QUEUE5_STOP` are harmless.
+- Lesson: a queue that waits with `pgrep -f runs/queueN.sh` never ends if the tmux server itself was started with that
+  command line (the first `tmux new-session` names the server process). Wait on a lock file or a PID instead.
+- Newest checkpoints: `runs/t_a/last.pt` (iteration 549, moving gait on flat, style 0; not for the common eval yet).
