@@ -382,5 +382,29 @@
   "episode_len": 92,
   "terrain_level": 0.0,
   "note": "run 3 from scratch"
+ },
+ {
+  "id": "ssr-r6-420",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r6 (staged)",
+  "iteration": 420,
+  "total": 20000,
+  "reward": 1.47,
+  "episode_len": null,
+  "terrain_level": 0.0,
+  "note": "5% of commanded speed"
+ },
+ {
+  "id": "hiking-v3-302",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 3 (staged)",
+  "iteration": 302,
+  "total": 30000,
+  "reward": 4.78,
+  "episode_len": 165,
+  "terrain_level": 0.26,
+  "note": "lunging, 84% falls at 250"
  }
 ]
