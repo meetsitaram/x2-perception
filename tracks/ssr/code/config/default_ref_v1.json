@@ -1,0 +1,17 @@
+{
+ "source": "eval/port_audit.json reference_vs_default.flat mean, L/R symmetrised",
+ "default_q": {
+  "right_hip_pitch_joint": -0.081,
+  "left_hip_pitch_joint": -0.081,
+  "right_hip_roll_joint": 0.0325,
+  "left_hip_roll_joint": -0.0325,
+  "right_hip_yaw_joint": -0.2095,
+  "left_hip_yaw_joint": 0.2095,
+  "right_knee_joint": 0.3195,
+  "left_knee_joint": 0.3195,
+  "right_ankle_pitch_joint": -0.06,
+  "left_ankle_pitch_joint": -0.06,
+  "right_ankle_roll_joint": -0.0525,
+  "left_ankle_roll_joint": 0.0525
+ }
+}

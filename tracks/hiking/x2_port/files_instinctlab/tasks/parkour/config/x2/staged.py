@@ -31,6 +31,10 @@ Options are read from the environment when the config is built (the supervisor p
      stay those of the normal reset (spawn point and yaw), so nobody is placed off the tile or into an obstacle: x, y and yaw
      from `reset_base`, height = spawn origin height + the clip's own pelvis height + 3 cm, velocities rotated from the
      clip's heading to the robot's.
+  t  touchdown air time (SSR's form): on each touchdown of a robot commanded to move (> 0.1 m/s or a turn), pays
+     clamp(air time of that swing - 0.05 s, 0, 0.30) (SSR uses 0.10 s; 0.05 here so the 0.03-0.06 s swings of run 4 get a gradient), summed over the feet; weight HIKING_X2_AIR_TD_WEIGHT (default 140, sized from the per-step table in state/hiking.md; the
+     reward manager multiplies by dt, so a 0.3 s swing pays 140 x 0.02 x 0.25 = 0.7 per touchdown). Never negative, so short steps cost nothing
+     (Isaac Lab's (air - threshold) form charges them). Beside the paper's `feet_air_time`, not instead of it. Not scheduled.
   s  style reward coefficient (0.25) x 0.3 early (HIKING_X2_STYLE_EARLY), patched into the trainer's WasabiPPO.
      Every staged run (with or without s) logs `style_coef` and `style_reward_weighted` per step.
 Every option is a listed deviation from the paper, with its schedule; the run's state file must say which were on.
@@ -176,6 +180,18 @@ def feet_air_time_staged(env, command_name: str, vel_threshold: float, sensor_cf
     return mdp.feet_air_time(env, command_name=command_name, vel_threshold=vel_threshold, sensor_cfg=sensor_cfg) * _s(env, early_scale)
 
 
+# ---- t: touchdown air time ----
+def feet_air_touchdown_positive(env, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float = 0.05, cap: float = 0.30,
+                                min_cmd: float = 0.1) -> torch.Tensor:
+    sensor = env.scene.sensors[sensor_cfg.name]
+    first = sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
+    air = sensor.data.last_air_time[:, sensor_cfg.body_ids]
+    pay = ((air - threshold).clamp(min=0.0, max=cap) * first).sum(dim=1)
+    cmd = env.command_manager.get_command(command_name)
+    moving = (torch.norm(cmd[:, :2], dim=1) > min_cmd) | (cmd[:, 2].abs() > min_cmd)
+    return pay * moving
+
+
 # ---- r: reference-state starts ----
 def _yaw(q):  # wxyz -> yaw
     w, x, y, z = q.unbind(-1)
@@ -275,7 +291,7 @@ class X2ParkourStagedEnvCfg(X2ParkourTorsoCamEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         opts = _opts()
-        unknown = opts - set("abcdefrs")
+        unknown = opts - set("abcdefgrstkyzowv")  # g: v4j graded contact (2026-11-12 20:20)
         assert not unknown, "unknown HIKING_X2_OPTS: %s" % sorted(unknown)
         from instinct_rl.algorithms.wasabi import WasabiPPO
         install_style_schedule(WasabiPPO, float(os.environ.get("HIKING_X2_STYLE_EARLY", "0.3")) if "s" in opts else 1.0)
@@ -298,10 +314,10 @@ class X2ParkourStagedEnvCfg(X2ParkourTorsoCamEnvCfg):
             for k, v in old.__dict__.items():
                 if k != "class_type" and hasattr(new, k):
                     setattr(new, k, v)
-            new.rel_standing_envs = 0.0
+            new.rel_standing_envs = float(os.environ.get("HIKING_X2_STAND_SHARE", "0.0"))  # paper 0.05; run 4 0.0 until 1,875
             for name, rng in new.velocity_ranges.items():
                 if rng["lin_vel_x"][1] > 0:
-                    rng["lin_vel_x"] = (max(rng["lin_vel_x"][0], 0.6), rng["lin_vel_x"][1])
+                    rng["lin_vel_x"] = (max(rng["lin_vel_x"][0], float(os.environ.get("HIKING_X2_VX_MIN", "0.6"))), rng["lin_vel_x"][1])
             self.commands.base_velocity = new
         if "d" in opts:
             r.dont_wait = RewTerm(func=dont_wait_staged, weight=r.dont_wait.weight,
@@ -310,6 +326,10 @@ class X2ParkourStagedEnvCfg(X2ParkourTorsoCamEnvCfg):
         if "e" in opts:
             r.feet_air_time = RewTerm(func=feet_air_time_staged, weight=r.feet_air_time.weight,
                                       params=dict(r.feet_air_time.params, early_scale=float(os.environ.get("HIKING_X2_AIR_EARLY", "4.0"))))
+        if "t" in opts:
+            r.feet_air_touchdown = RewTerm(func=feet_air_touchdown_positive, weight=float(os.environ.get("HIKING_X2_AIR_TD_WEIGHT", "140.0")),
+                                           params={"command_name": "base_velocity",
+                                                   "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link")})
         if "r" in opts:  # added last, so it runs after reset_base and reset_robot_joints
             from isaaclab.managers import EventTermCfg as EventTerm
             self.events.reset_from_reference = EventTerm(func=reset_from_reference_staged, mode="reset",
@@ -318,3 +338,47 @@ class X2ParkourStagedEnvCfg(X2ParkourTorsoCamEnvCfg):
             step_dt = self.sim.dt * self.decimation
             r.fall_penalty = RewTerm(func=fall_penalty_staged, weight=-float(os.environ.get("HIKING_X2_FALL_PENALTY", "8.0")) / step_dt,
                                      params={"term_keys": FALL_TERMS})
+        if "y" in opts:  # turn in place (keep.py); after c (the far-target command)
+            from .keep import TurnFarTargetPoseVelocityCommandCfg, dont_turn_wait
+            old = self.commands.base_velocity
+            new = TurnFarTargetPoseVelocityCommandCfg()
+            for k, v in old.__dict__.items():
+                if k != "class_type" and hasattr(new, k):
+                    setattr(new, k, v)
+            new.turn_share = float(os.environ.get("HIKING_X2_TURN_SHARE", "0.15"))
+            self.commands.base_velocity = new
+            r.dont_turn_wait = RewTerm(func=dont_turn_wait, weight=-0.5, params={"command_name": "base_velocity"})
+        if "w" in opts:  # routes on the extended map's tiles (routes.py); after y, whose turner logic it keeps
+            from .routes import RouteFarTargetPoseVelocityCommandCfg
+            old = self.commands.base_velocity
+            new = RouteFarTargetPoseVelocityCommandCfg()
+            for k, v in old.__dict__.items():
+                if k != "class_type" and hasattr(new, k):
+                    setattr(new, k, v)
+            new.route_share = float(os.environ.get("HIKING_X2_ROUTE_SHARE", "0.7"))
+            self.commands.base_velocity = new
+        if "v" in opts:  # v4k: slow forward / slow yaw caps, still turns (slow.py); after w, whose route logic it keeps
+            from .slow import SlowRouteFarTargetPoseVelocityCommandCfg, turn_effort, turn_drift
+            old = self.commands.base_velocity
+            new = SlowRouteFarTargetPoseVelocityCommandCfg()
+            for k, v in old.__dict__.items():
+                if k != "class_type" and hasattr(new, k):
+                    setattr(new, k, v)
+            self.commands.base_velocity = new
+            if hasattr(r, "dont_turn_wait"):
+                r.dont_turn_wait = None
+            r.turn_effort = RewTerm(func=turn_effort, weight=-0.5, params={"command_name": "base_velocity"})
+            r.turn_drift = RewTerm(func=turn_drift, weight=float(os.environ.get("HIKING_X2_TURN_DRIFT_WEIGHT", "-2.0")),
+                                   params={"command_name": "base_velocity"})
+        if "z" in opts:  # stop: charge planar speed under a stand command (keep.py)
+            from .keep import stop_motion
+            r.stop_motion = RewTerm(func=stop_motion, weight=float(os.environ.get("HIKING_X2_STOP_WEIGHT", "-2.0")),
+                                    params={"command_name": "base_velocity"})
+        if "o" in opts:  # overspeed: charge forward speed above the forward command (keep.py)
+            from .keep import overspeed
+            r.overspeed = RewTerm(func=overspeed, weight=float(os.environ.get("HIKING_X2_OVERSPEED_WEIGHT", "-2.0")),
+                                  params={"command_name": "base_velocity"})
+        if "k" in opts:  # keep terrain levels across restarts (keep.py)
+            from isaaclab.managers import CurriculumTermCfg as CurrTerm
+            from .keep import level_keeper
+            self.curriculum.level_keeper = CurrTerm(func=level_keeper)

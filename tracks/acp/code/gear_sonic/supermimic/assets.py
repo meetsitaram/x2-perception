@@ -155,6 +155,13 @@ def build_x2(plant_name: str | None = None, mjcf_path: pathlib.Path = MJCF_PATH,
         add_walls(spec, walls)
     if foot_terrain:
         _add_terrain_feet(spec)
+    # X2_EXCLUDE_PAIRS=hip (coordinator, shared-model decision 2026-11-12, audit state/ssr_port_audit.md): the pelvis /
+    # hip-roll convex hulls overlap up to 10.9 mm while the real meshes keep about 5 mm over the whole hip-roll range,
+    # so that contact does not exist on the robot. Same variable name as the eval's second model.
+    import os as _os
+    if "hip" in _os.environ.get("X2_EXCLUDE_PAIRS", "").split(","):
+        for side in ("left", "right"):
+            ex = spec.add_exclude(); ex.bodyname1 = "pelvis"; ex.bodyname2 = f"{side}_hip_roll_link"
     model = spec.compile()
     jids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, n) for n in names]
     assert [int(model.jnt_qposadr[i]) for i in jids] == list(range(7, 7 + NUM_HINGES)), "hinges must follow the free joint in qpos"

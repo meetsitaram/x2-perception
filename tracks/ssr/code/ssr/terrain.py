@@ -5,6 +5,7 @@ Height queries (`HeightMap`) are nearest-cell lookups on the GPU; `depth` ray-ma
 """
 from __future__ import annotations
 
+import os
 import numpy as np
 import torch
 
@@ -124,6 +125,199 @@ def generate(seed: int = 0) -> dict:
             lane[c, r] = h
     vision = dict(z=v, x0=-BORDER, y0=-BORDER, res=RES)
     return dict(z=z, x0=-BORDER, y0=-BORDER, res=RES, base=0.1, vision=vision, lane=lane)
+
+
+EXT_DIR = "/mnt/filesystem-g4/data/terrains/extended_v1"
+EXT_STAIRS_INSET = "/mnt/filesystem-g4/data/terrains/extended_v1_2_stairs_inset"   # v13: stair foot 2.5-3 m inside the tile, 700 routes
+EXT_PROP_ROUTES = "/mnt/filesystem-g4/data/terrains/extended_v1_1_prop_routes"     # v13: 1,116 approach-shape routes on prop tiles
+
+
+def _box_near(p, B):
+    """2D distance from p to each oriented box (world [x,y,z,hx,hy,hz,qw,qx,qy,qz]) and the closest point on it."""
+    c, h = B[:, :2], np.abs(B[:, 3:5])
+    yaw = 2.0 * np.arctan2(B[:, 9], B[:, 6])
+    cs, sn = np.cos(yaw), np.sin(yaw)
+    d = p[None] - c
+    lx, ly = cs * d[:, 0] + sn * d[:, 1], -sn * d[:, 0] + cs * d[:, 1]
+    qx, qy = np.clip(lx, -h[:, 0], h[:, 0]), np.clip(ly, -h[:, 1], h[:, 1])
+    q = c + np.stack((cs * qx - sn * qy, sn * qx + cs * qy), -1)
+    return np.linalg.norm(p[None] - q, axis=1), q
+
+
+def _stations(rts, pb, h, gcx, gcy, rng, per_tile):
+    """Wall stations (SSR v13, from the apparatus legs 2026-11-12): the buttons sit 0.19-0.33 m from a wall face, so the robot must
+    stop with its pelvis about 0.35-0.40 m from a wall, turn in place there and leave along it. For a route whose target is
+    0.35-1.5 m from a tall wall box: an approach route = the route + a last segment straight at the wall to a point 0.15-0.22 m
+    from the face (the hold radius 0.20 then stops the pelvis 0.35-0.42 m from it), and a departure route = start at that point
+    facing the wall, back along the route to its start. Checks: other boxes >= 0.30 m from the new segment, level floor."""
+    if not pb or per_tile <= 0 or not rts:
+        return []
+    B = np.array(pb, np.float64)
+    wall = (B[:, 2] - np.abs(B[:, 5]) < 0.30) & (B[:, 2] + np.abs(B[:, 5]) > 0.80)
+    if not wall.any():
+        return []
+
+    def hz(x, y):
+        i = int(np.clip(round((x - gcx + 3.99) / 0.02), 0, 399)); j = int(np.clip(round((y - gcy + 3.99) / 0.02), 0, 399))
+        return h[max(i - 13, 0):i + 14, max(j - 13, 0):j + 14]
+    out, used = [], []
+    for ro in rng.permutation(len(rts)):
+        r = rts[ro]
+        if len(out) >= 2 * per_tile:
+            break
+        T = np.array(r["wp"][-1], np.float64)
+        if any(np.linalg.norm(T - u) < 1.0 for u in used):
+            continue
+        dist, q = _box_near(T, B)
+        dist = np.where(wall, dist, 9e9)
+        k = int(np.argmin(dist))
+        if not 0.35 <= dist[k] <= 1.5:
+            continue
+        n = (T - q[k]) / dist[k]
+        S = q[k] + n * rng.uniform(0.15, 0.22)
+        ok = True
+        for s_ in np.linspace(0.0, 1.0, 12):
+            dP, _ = _box_near(T + s_ * (S - T), B)
+            dP[k] = 9e9
+            if dP.min() < 0.30:
+                ok = False
+                break
+        if not ok:
+            continue
+        pS, pT = hz(*S), hz(*T)
+        if float(pS.max() - pS.min()) > 0.03 or abs(float(pS.mean()) - float(pT.mean())) > 0.03:
+            continue
+        L = float(np.linalg.norm(S - T))
+        used.append(T)
+        yaw_in = float(np.arctan2(-n[1], -n[0]))
+        out.append(dict(tile=r["tile"], start=r["start"], wp=list(r["wp"]) + [(float(S[0]), float(S[1]))], length=r["length"] + L, station=1))
+        back = [tuple(w) for w in r["wp"][:-1]][::-1] + [(float(r["start"][0]), float(r["start"][1]))]
+        out.append(dict(tile=r["tile"], start=(float(S[0]), float(S[1]), yaw_in), wp=back, length=r["length"] + L, station=2))
+    return out
+
+
+def _slope_turns(rts, h, gcx, gcy, rng, per_tile, lo=8.0, hi=22.0):
+    """Slope turn stations (SSR v14, from apparatus leg 5 on 2026-11-12: a turn in place on a 16 deg side-sloped wedge): a route
+    goes from its start along an existing route to the first point (>= 1.0 m along) whose 0.5 m patch is a plane sloped lo-hi deg,
+    then back to its start. The waypoint law turns the robot in place there (heading error > 60 deg: vx 0, |wz| up to 1)."""
+    if per_tile <= 0 or not rts:
+        return []
+    ii_ = np.arange(-12, 13) * 0.02
+    GX, GY = np.meshgrid(ii_, ii_, indexing="ij")
+    A = np.stack((GX.ravel(), GY.ravel(), np.ones(GX.size)), -1)
+    out = []
+    for ro in rng.permutation(len(rts)):
+        if len(out) >= per_tile:
+            break
+        r = rts[ro]
+        pts = [np.array(r["start"][:2], np.float64)] + [np.array(w, np.float64) for w in r["wp"]]
+        along, hit = 0.0, None
+        for j in range(len(pts) - 1):
+            a, b = pts[j], pts[j + 1]
+            L = float(np.linalg.norm(b - a))
+            for s_ in np.arange(0.0, L, 0.1):
+                P = a + (b - a) * (s_ / max(L, 1e-6))
+                if along + s_ < 1.0:
+                    continue
+                i = int(round((P[0] - gcx + 3.99) / 0.02)); k = int(round((P[1] - gcy + 3.99) / 0.02))
+                if not (12 <= i < 388 and 12 <= k < 388):
+                    continue
+                z = h[i - 12:i + 13, k - 12:k + 13].astype(np.float64).ravel()
+                c, *_ = np.linalg.lstsq(A, z, rcond=None)
+                res = z - A @ c
+                ang = float(np.degrees(np.arctan(np.hypot(c[0], c[1]))))
+                if lo <= ang <= hi and float(np.abs(res).max()) < 0.015:
+                    hit = (j, P)
+                    break
+            if hit:
+                break
+            along += L
+        if not hit:
+            continue
+        j, P = hit
+        fwd = [tuple(map(float, w)) for w in pts[1:j + 1]] + [(float(P[0]), float(P[1]))]
+        back = [tuple(map(float, w)) for w in pts[1:j + 1]][::-1] + [(float(pts[0][0]), float(pts[0][1]))]
+        L = float(sum(np.linalg.norm(np.subtract(q2, q1)) for q1, q2 in zip([tuple(pts[0])] + fwd[:-1], fwd)))
+        out.append(dict(tile=r["tile"], start=r["start"], wp=fwd + back, length=2.0 * L, station=3))
+    return out
+
+
+def add_extended(r: dict, types=("tight_spots", "log_corridors", "homes", "street_front", "stairs"), variants=2, gap=2.0, start_clear=0.35, min_along=0.0, stairs_inset=False, prop_routes=False, slope_turns=0, stations=0) -> dict:
+    """Append extended_v1 tiles to a raster made by generate(): see scripts/patch_ext.py. Returns r with r["ext"] metadata."""
+    import json
+    z, v = r["z"], r["vision"]["z"]
+    x_base = len(TYPES) * TILE_X + gap                                # local x where the extended block starts (raster x0 = -BORDER)
+    ncol = len(types) * variants
+    nx_new = _i(BORDER) * 2 + _i(x_base + ncol * 8.0) + 1
+    if nx_new > z.shape[0]:
+        pad = nx_new - z.shape[0]
+        z = np.concatenate((z, np.zeros((pad, z.shape[1]), np.float32)), 0)
+        v = np.concatenate((v, np.zeros((pad, v.shape[1]), np.float32)), 0)
+    tiles, routes = [], []
+    for ti, t in enumerate(types):
+        _dir = EXT_STAIRS_INSET if (stairs_inset and t == "stairs") else EXT_DIR
+        dat = np.load(f"{_dir}/{t}.npz")
+        meta = json.load(open(f"{_dir}/{t}.json"))["tiles"]
+        for m_ in meta:
+            m_["level"] = int(m_["level"]); m_["index"] = int(m_["index"])
+        _xf = f"{EXT_PROP_ROUTES}/{t}_routes_extra.json"
+        if prop_routes and t != "stairs" and os.path.exists(_xf):
+            _x = json.load(open(_xf))["tiles"]
+            for m_ in meta:
+                m_["routes"] = list(m_["routes"]) + list(_x.get(m_["tile_id"], {}).get("routes", []))
+        _rng = np.random.default_rng(1000 + ti)
+        for lvl in range(10):
+            cand = [m for m in meta if m["level"] == lvl and any(ro["clearance_m"][0] >= start_clear and ro["min_clearance_along_route_m"] >= min_along for ro in m["routes"])]
+            for k in range(variants):
+                if not cand:
+                    continue
+                m = cand[k % len(cand)]
+                col, row = ti * variants + k, lvl
+                cx, cy = x_base + col * 8.0 + 4.0, row * 8.0 + 4.0          # tile centre in local raster coordinates
+                h, top, mask = dat["height"][m["index"]], dat["height_top"][m["index"]], dat["obstacle_mask"][m["index"]]
+                floor = np.where(~mask & (top - h <= 0.30), top, h).astype(np.float32)
+                vis = (floor + 1.3 * mask).astype(np.float32)
+                n8 = _i(8.0)
+                gx = (np.arange(n8) + 0.5) * RES - 4.0                      # SSR cell centres in tile coordinates
+                ii = np.clip(np.round((gx + 3.99) / 0.02).astype(int), 0, 399)
+                i0, j0 = _i(BORDER + cx - 4.0), _i(BORDER + cy - 4.0)
+                z[i0:i0 + n8, j0:j0 + n8] = floor[np.ix_(ii, ii)]
+                v[i0:i0 + n8, j0:j0 + n8] = vis[np.ix_(ii, ii)]
+                gcx, gcy = cx, cy                                           # tile centre in world coordinates: raster index _i(BORDER + cx) is world x = cx (fixed 2026-11-12 17:20: was cx - BORDER, routes 2 m off their tiles)
+                tid = len(tiles)
+                tiles.append(dict(type=ti, name=t, level=lvl, tile_id=m["tile_id"], centre=(gcx, gcy)))
+                pb, i_ = [], m["index"]                                     # physical tall boxes (role 2) and tall meshes as boxes, world coords
+                bs = dat["box_start"]
+                for bi in range(int(bs[i_]), int(bs[i_ + 1])):
+                    c_, h_ = dat["box_center"][bi], dat["box_half"][bi]
+                    if int(dat["box_role"][bi]) == 2 and c_[2] - abs(h_).max() < 1.6:
+                        pb.append([gcx + float(c_[0]), gcy + float(c_[1]), float(c_[2])] + [float(x) for x in h_] + [float(x) for x in dat["box_quat"][bi]])
+                if "mesh_start" in dat.files:
+                    ms = dat["mesh_start"]
+                    for mi in range(int(ms[i_]), int(ms[i_ + 1])):
+                        c_, h_ = dat["mesh_aabb_center"][mi], dat["mesh_aabb_half"][mi]
+                        if int(dat["mesh_role"][mi]) == 2 and c_[2] - h_[2] < 1.6:
+                            pb.append([gcx + float(c_[0]), gcy + float(c_[1]), float(c_[2])] + [float(x) for x in h_] + [1.0, 0.0, 0.0, 0.0])
+                tiles[-1]["phys"] = pb
+                _n0 = len(routes)
+                for ro in m["routes"]:
+                    sx, sy = ro["start"][0], ro["start"][1]                 # start must fit the X2 (arms 0.28 m from its centre line) and be level
+                    if ro["clearance_m"][0] < start_clear or ro["min_clearance_along_route_m"] < min_along:
+                        continue
+                    ci, cj = int(round((sx + 3.99) / 0.02)), int(round((sy + 3.99) / 0.02))
+                    patch = h[max(ci - 13, 0):ci + 14, max(cj - 13, 0):cj + 14]
+                    if float(patch.max() - patch.min()) > 0.03:
+                        continue
+                    wp = [(gcx + a, gcy + b) for a, b in ro["waypoints"]]
+                    routes.append(dict(tile=tid, start=(gcx + ro["start"][0], gcy + ro["start"][1], ro["start"][2]), wp=wp, length=ro["length_m"]))
+                if stations:
+                    routes.extend(_stations(routes[_n0:], pb, h, gcx, gcy, _rng, stations))
+                if slope_turns:
+                    _base = [ro for ro in routes[_n0:] if not ro.get("station")]
+                    routes.extend(_slope_turns(_base, h, gcx, gcy, _rng, slope_turns))
+    r["z"], r["vision"]["z"] = z, v
+    r["ext"] = dict(types=list(types), variants=variants, tiles=tiles, routes=routes)
+    return r
 
 
 class HeightMap:

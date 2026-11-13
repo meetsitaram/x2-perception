@@ -13,7 +13,7 @@ from acp.data import Dataset
 from gear_sonic.supermimic.assets import build_x2
 from scipy.spatial.transform import Rotation as Rot
 
-CLEAR, ROLL_MAX, ELBOW_MAX, W, MAX_STEP = 0.01, 0.6, 0.6, 10, 0.10
+CLEAR, ROLL_MAX, ELBOW_MAX, W, MAX_STEP = float(os.environ.get("ARM_CLEAR", "0.01")), 0.6, 0.6, 10, 0.10
 cfg = sys.argv[1]; workers = int(sys.argv[2]) if len(sys.argv) > 2 else 8
 x2 = build_x2("mc_20261024"); M = x2.model
 JN = ["left_shoulder_roll_joint", "left_elbow_joint", "right_shoulder_roll_joint", "right_elbow_joint", "left_shoulder_yaw_joint", "right_shoulder_yaw_joint"]

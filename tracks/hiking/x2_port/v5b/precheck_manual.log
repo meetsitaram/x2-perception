@@ -1,0 +1,4 @@
+motion 18982 frames 380 s, pelvis z median 0.677, style joints std 0.313
+isaac term signature check passed on the 4 weighted terms
+discriminator 330 -> 550 inputs: dropped on load (model_7250.pt)
+PRECHECK PASS

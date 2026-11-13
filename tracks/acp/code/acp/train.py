@@ -83,6 +83,7 @@ def main():
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ckpt-every", type=int, default=250)
+    ap.add_argument("--latest-minutes", type=float, default=20.0, help="also write latest.pt when this many minutes passed since the last save (backup rule: at least every 30 min); 0 = off")
     ap.add_argument("--log-every", type=int, default=10)
     ap.add_argument("--njmax", type=int, default=300)
     ap.add_argument("--nconmax", type=int, default=64)
@@ -94,6 +95,14 @@ def main():
     ap.add_argument("--planner-init", default="", help="planner weights from acp.planner train (optional)")
     ap.add_argument("--rec-envs", type=int, default=3000)
     ap.add_argument("--replay", type=int, default=1500000)
+    ap.add_argument("--eta-obs-max", type=float, default=1.0, help="ceiling of the planner-contact share: 1 - this = reference-contact floor (departure, 2026-11-12)")
+    ap.add_argument("--ramp-gate", type=float, default=0.0, help="points: hold the eta ramp while a gated set's finish EMA is this far under its value at the ramp start; 0 = off")
+    ap.add_argument("--freeze-planner", default="", help="checkpoint whose planner is loaded and kept fixed (no online updates; 2026-11-12)")
+    ap.add_argument("--probe-envs", type=int, default=0, help="envs that always use planner contacts (planner-only finish per set is logged as probe/finish/<set>)")
+    ap.add_argument("--gate-backoff", type=int, default=3, help="eta_hold added per iteration under base - 2 gate (probe signal); 1 = hold only, no back-off (2026-11-12)")
+    ap.add_argument("--gate-rebase", action="store_true", help="drop the gate base carried in the checkpoint; it is re-learned after 100 updates (2026-11-12)")
+    ap.add_argument("--gate-signal", default="train", choices=["train", "probe"], help="ramp gate signal: training finish (all envs) or the planner-only probe envs")
+    ap.add_argument("--ramp-gate-sets", default="x2_loco_flat_train,x2_loco_blocks_train")
     ap.add_argument("--u-obs", type=int, default=200); ap.add_argument("--u-rew", type=int, default=700); ap.add_argument("--n-ann", type=int, default=1000)
     ap.add_argument("--bench", type=int, default=0, help="only step the environment this many iterations and print the throughput")
     args = ap.parse_args()
@@ -142,6 +151,9 @@ def main():
         popt = torch.optim.Adam(pl.parameters(), lr=1e-4)        # Table S5
         if ck is not None and ck.get("popt") is not None:
             popt.load_state_dict(ck["popt"])
+        if args.freeze_planner:
+            pl.load_state_dict(torch.load(args.freeze_planner, map_location=dev, weights_only=False)["planner"])
+            print(f"[stage 2] planner frozen at {args.freeze_planner}", flush=True)
         pl.eval()
         env.planner = pl
         env.rec = P.Recorder(min(args.rec_envs, N), hd, dev)
@@ -165,14 +177,40 @@ def main():
     metf = open(os.path.join(args.run, "metrics.jsonl"), "a")     # one row per iteration: every paper term, raw and weighted
     cnt, gpu = {}, {}
     t_it = time.time()
+    t_saved = time.time()
+    gate_ids = [i for i, nm in enumerate(data.set_names) if nm in args.ramp_gate_sets.split(",")]
+    gate_ema = {g: None for g in gate_ids}; gate_n = {g: 0 for g in gate_ids}
+    if args.stage >= 2 and args.probe_envs > 0:
+        env.probe = torch.zeros(N, dtype=torch.bool, device=dev); env.probe[torch.randperm(N, device=dev)[:args.probe_envs]] = True
+        print(f"[stage 2] probe envs {args.probe_envs} (planner contacts always); gate signal {args.gate_signal}", flush=True)
+    eta_hold = int(ck.get("eta_hold", 0)) if ck is not None else 0
+    gate_base = {int(k): v for k, v in (ck.get("gate_base") or {}).items()} if ck is not None else {}
+    if ck is not None and ck.get("gate_signal", "train") != args.gate_signal:
+        gate_base = {}                                            # a base from another signal does not carry over
+    if args.gate_rebase: gate_base = {}
     for it in range(it0, args.iters):
         it_acc = {}
         if args.stage == 2:                                       # Eq. 3: linear schedules, the reward one starts later
-            u = it - s2_start
-            env.eta_obs = min(1.0, max(0.0, (u - args.u_obs) / args.n_ann))
+            if args.ramp_gate > 0 and it > it0:                       # per-set gate on the ramp (2026-11-12)
+                sd, sf = (it_p_done, it_p_fin) if args.gate_signal == "probe" else (it_set_done, it_set_fin)
+                for g in gate_ids:
+                    if float(sd[g]) > 0:
+                        r = float(sf[g] / sd[g]); gate_ema[g] = r if gate_ema[g] is None else 0.98 * gate_ema[g] + 0.02 * r; gate_n[g] += 1
+                if args.gate_signal == "probe":                          # planner-only finish: base = best EMA seen after 100 updates;
+                    ready = [g for g in gate_ids if gate_n[g] >= 100]      # hold the ramp under base - gate, back it off under base - 2 gate
+                    for g in ready: gate_base[g] = max(gate_base.get(g, 0.0), gate_ema[g])
+                    if any(gate_ema[g] < gate_base[g] - 2 * args.ramp_gate / 100 for g in ready): eta_hold += args.gate_backoff
+                    elif any(gate_ema[g] < gate_base[g] - args.ramp_gate / 100 for g in ready): eta_hold += 1
+                elif it - s2_start - eta_hold <= args.u_obs:
+                    if all(gate_ema[g] is not None for g in gate_ids): gate_base = dict(gate_ema)
+                elif gate_base and any(gate_ema[g] is not None and gate_ema[g] < gate_base[g] - args.ramp_gate / 100 for g in gate_ids):
+                    eta_hold += 1
+            u = it - s2_start - eta_hold
+            env.eta_obs = min(args.eta_obs_max, max(0.0, (u - args.u_obs) / args.n_ann))
             env.eta_rew = min(1.0, max(0.0, (u - args.u_rew) / args.n_ann))
             env.plan_stats.zero_()
         it_set_done, it_set_fin = torch.zeros(nset, device=dev), torch.zeros(nset, device=dev)
+        it_p_done, it_p_fin = torch.zeros(nset, device=dev), torch.zeros(nset, device=dev)
         with torch.no_grad():
             for s in range(STEPS):
                 ac.an.update(ao); ac.cn.update(co)
@@ -200,6 +238,8 @@ def main():
                     it_acc[k] = it_acc.get(k, 0.0) + info[k]
                 it_acc["reward"] = it_acc.get("reward", 0.0) + r.mean()
                 it_set_done.index_add_(0, info["set"], info["done_mask"].float()); it_set_fin.index_add_(0, info["set"], info["finished_mask"].float())
+                if getattr(env, "probe", None) is not None:
+                    it_p_done.index_add_(0, info["set"], (info["done_mask"] & env.probe).float()); it_p_fin.index_add_(0, info["set"], (info["finished_mask"] & env.probe).float())
                 ep["done"] += float(info["done"]); ep["term"] += float(info["term"]); ep["fin"] += float(info["finished"]); ep["bad"] += float(info["bad"])
                 set_done.index_add_(0, info["set"], info["done_mask"].float()); set_fin.index_add_(0, info["set"], info["finished_mask"].float())
             steps_log += B
@@ -256,7 +296,7 @@ def main():
         n = it + 1
         if args.stage == 2:                                       # planner: hindsight samples in, ten updates of 4,096 (Table S5)
             pstat = dict(aff=0.0, occ=0.0, new=env.rec.flush(replay), updates=0)
-            if replay.size >= 1000:
+            if replay.size >= 1000 and not args.freeze_planner:
                 pl.train()
                 for _ in range(10):
                     lp, la, lo = P.planner_loss(pl, *replay.sample(4096))
@@ -286,7 +326,7 @@ def main():
             mrow["weight/" + k] = round(wts[k], 6)
         if args.stage == 2:
             ps = [float(x) for x in env.plan_stats]
-            mrow.update({"stage2/eta_obs": round(env.eta_obs, 4), "stage2/eta_rew": round(env.eta_rew, 4), "stage2/iteration": n - s2_start,
+            mrow.update({"stage2/eta_obs": round(env.eta_obs, 4), "stage2/eta_rew": round(env.eta_rew, 4), "stage2/eta_hold": eta_hold, "stage2/iteration": n - s2_start,
                          "planner/loss_affordance": round(pstat["aff"], 5), "planner/loss_occupancy": round(pstat["occ"], 5),
                          "planner/updates": pstat["updates"], "planner/new_samples": pstat["new"], "planner/replay_size": replay.size,
                          "planner/recorded_episodes": env.rec.episodes, "planner/recorded_successes": env.rec.successes,
@@ -309,6 +349,8 @@ def main():
                      "ppo/value_mean": round(float(buf["v"].mean()), 4), "ppo/return_mean": round(float(ret.mean()), 4)})
         for i in range(nset):
             mrow["finish/" + data.set_names[i]] = round(float(it_set_fin[i] / it_set_done[i].clamp(min=1)), 3)
+            if getattr(env, "probe", None) is not None:
+                mrow["probe/finish/" + data.set_names[i]] = round(float(it_p_fin[i] / it_p_done[i].clamp(min=1)), 3); mrow["probe/episodes/" + data.set_names[i]] = int(it_p_done[i])
             mrow["episodes/" + data.set_names[i]] = int(it_set_done[i])
         metf.write(json.dumps(mrow) + "\n"); metf.flush()
         t_it = now
@@ -335,14 +377,19 @@ def main():
             ep = dict(done=0.0, term=0.0, fin=0.0, bad=0.0)
             set_done.zero_(); set_fin.zero_()
             t_log, steps_log = time.time(), 0
-        if n % args.ckpt_every == 0 or n == args.iters:
+        save_num = n % args.ckpt_every == 0 or n == args.iters
+        save_latest = save_num or (args.latest_minutes > 0 and time.time() - t_saved >= 60.0 * args.latest_minutes)
+        if save_latest:
             ck = dict(model=ac.state_dict(), opt=opt.state_dict(), lr=lr, it=n, phase=env.phase.clone(), actor_dim=env.actor_dim,
                       critic_dim=env.critic_dim, act_dim=A, data=args.data, joint_names=env.x2.joint_names, stage=args.stage,
                       planner=pl.state_dict() if pl is not None else None, popt=popt.state_dict() if popt is not None else None,
-                      planner_arch=args.planner_arch if pl is not None else None, s2_start=s2_start)
-            path = os.path.join(args.run, f"ckpt_{n:06d}.pt")
-            torch.save(ck, path + ".tmp"); os.replace(path + ".tmp", path)
-            torch.save(ck, latest + ".tmp"); os.replace(latest + ".tmp", latest)
+                      planner_arch=args.planner_arch if pl is not None else None, s2_start=s2_start, x2_exclude_pairs=os.environ.get("X2_EXCLUDE_PAIRS", ""), eta_hold=eta_hold, gate_base=gate_base, gate_signal=args.gate_signal)
+            if save_num:
+                path = os.path.join(args.run, f"ckpt_{n:06d}.pt")
+                torch.save(ck, path + ".tmp"); os.replace(path + ".tmp", path)
+            torch.save(ck, latest + ".tmp"); os.replace(latest + ".tmp", latest); t_saved = time.time()
+            if not save_num:
+                print(f"[save] latest.pt at iteration {n} (time-based, every {args.latest_minutes} min)", flush=True)
     heartbeat(args.heartbeat, state="finished", stage=args.stage, run=os.path.abspath(args.run), iteration=args.iters, iterations=args.iters,
               newest_checkpoint=os.path.abspath(os.path.join(args.run, f"ckpt_{args.iters:06d}.pt")))
 

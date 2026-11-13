@@ -37,7 +37,7 @@ def main():
     DEV = os.environ.get("PROBE_DEVICE", "cuda:0")
     dev = torch.device(DEV)
     n = a.num
-    env = SSREnv(n, DEV, train=False, tiles=True)
+    env = SSREnv(n, DEV, train=False, tiles=True, camera=os.environ.get("PROBE_CAMERA", "chest_rs"))   # was the default head camera until 2026-11-12 05:05
     env.flat_only = True
     ck = torch.load(a.ckpt, map_location=dev, weights_only=False)
     enc, aux, actor = N.Encoder(False).to(dev), N.Aux().to(dev), N.MoEActor().to(dev)

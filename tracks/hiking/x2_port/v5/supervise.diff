@@ -1,0 +1,25 @@
+--- a/x2_port/supervise_x2.py	2026-11-12 15:33:25.492523200 -0800
++++ b/x2_port/supervise_x2.py	2026-11-12 15:33:25.529598800 -0800
+@@ -37,6 +37,9 @@
+ OUT.mkdir(parents=True, exist_ok=True)
+ STOP = OUT / "STOP"
+ ITER = re.compile(rb"Learning iteration (\d+)/(\d+)")
++sys.path.insert(0, "/mnt/filesystem-g4/tools")
++from simcheck import alarm  # sim_fault_share in the heartbeat (TRACK_RULES)
++TERMS = re.compile(rb"Episode_Termination/(\w+):\s+(-?[\d.]+)")
+ KEYS = {
+     "reward": re.compile(rb"Mean reward:\s+(-?[\d.]+)"),
+     "episode_length": re.compile(rb"Mean episode length:\s+(-?[\d.]+)"),
+@@ -93,6 +96,12 @@
+     m = ITER.findall(b)
+     if m:
+         out["iteration"] = int(m[-1][0])
++    ends = {}
++    for k, v in TERMS.findall(b):                # newest value of every termination term (counts per episode end window)
++        ends[k.decode()] = float(v)
++    if ends:
++        tot = sum(ends.values())
++        out.update(alarm.fields_from_shares({k: v / tot for k, v in ends.items()} if tot > 0 else {}, sim_keys=("sim_fault",)))
+     for k, rx in KEYS.items():
+         m = rx.findall(b)
+         if m:

@@ -43,11 +43,13 @@ A_CLIP = 8.0
 
 
 class AMPData:
-    def __init__(self, device, min_speed=0.0, file="data/amp.npz", balance=False):
+    def __init__(self, device, min_speed=0.0, file="data/amp.npz", balance=False, q_shift=None, turn_min=0.0):
         z = np.load(ROOT / file)
         self.frames, self.valid, self.weight, self.fed = [], [], [], {}
         for name in T.TYPES:
             f = torch.as_tensor(z[name], device=device, dtype=torch.float32)
+            if q_shift is not None:                         # step 2: frames store q - plant default; re-express against the new default
+                f[:, 9:30] += torch.as_tensor(q_shift, device=device, dtype=torch.float32)
             f = torch.cat((f, M.amp(f)))                    # mirrored copy
             n = len(z[name])
             st = z[name + "_starts"]
@@ -59,7 +61,12 @@ class AMPData:
                 sp = np.linalg.norm(z[name][:, 3:5], axis=1)
                 win = np.convolve(sp, np.ones(AMP_FRAMES) / AMP_FRAMES)[AMP_FRAMES - 1:]     # mean speed of the window starting at each frame
                 win = np.concatenate((win, np.zeros(n - len(win))))[:n]
-                ok &= win >= min_speed
+                keep = win >= min_speed
+                if turn_min > 0:                            # deviation (2026-11-12): turning windows (|yaw rate| >= turn_min) stay even when slow
+                    wz_ = np.convolve(np.abs(z[name][:, 8]), np.ones(AMP_FRAMES) / AMP_FRAMES)[AMP_FRAMES - 1:]
+                    wz_ = np.concatenate((wz_, np.zeros(n - len(wz_))))[:n]
+                    keep |= wz_ >= turn_min
+                ok &= keep
             sp_w = np.convolve(np.linalg.norm(z[name][:, 3:5], axis=1), np.ones(AMP_FRAMES) / AMP_FRAMES)[AMP_FRAMES - 1:]
             sp_w = np.concatenate((sp_w, np.zeros(n - len(sp_w))))[:n]
             wt = np.ones(n)
@@ -124,8 +131,35 @@ def train(a):
     out = pathlib.Path(a.out_root or os.environ.get("SSR_RUNS") or ROOT / "runs") / a.name
     out.mkdir(parents=True, exist_ok=True)
     (out / "args.json").write_text(json.dumps(vars(a)))
-    env = SSREnv(a.num_envs, dev, seed=a.seed, camera=a.camera, map_memory=a.map_memory)
-    amp = AMPData(dev, a.prior_min_speed, a.amp_file, a.prior_balance)
+    if a.excl_pelvis_hiproll:
+        os.environ["X2_EXCL_PELVIS_HIPROLL"] = "1"
+    if a.default_from_ref:
+        os.environ["X2_DEFAULT_FROM_REF"] = "1"
+    if a.action_scale_paper:
+        os.environ["X2_ACTION_SCALE_PAPER"] = "1"
+    if a.ext_frac > 0:                               # extended terrain map (user decision 2026-11-12)
+        from ssr import terrain as T_
+        _r = T_.add_extended(T_.generate(a.seed), types=tuple(a.ext_types.split(",")), variants=a.ext_variants, min_along=a.ext_min_clear, stairs_inset=a.ext_stairs_inset, prop_routes=a.ext_prop_routes, stations=a.ext_stations, slope_turns=a.ext_slope_turns)
+        env = SSREnv(a.num_envs, dev, seed=a.seed, camera=a.camera, map_memory=a.map_memory, raster=_r, tiles=True, ext_phys=a.ext_phys)
+        env.ext_type[:] = torch.randint(0, len(_r["ext"]["types"]), (a.num_envs,), device=dev)
+        print("extended map:", len(_r["ext"]["tiles"]), "tiles,", len(_r["ext"]["routes"]), "routes, raster", _r["z"].shape, flush=True)
+    else:
+        env = SSREnv(a.num_envs, dev, seed=a.seed, camera=a.camera, map_memory=a.map_memory)
+    if a.dof_dev_ref:
+        _pa = json.load(open(ROOT.parent / "eval/port_audit.json"))["reference_vs_default"]["flat"]
+        _ref = env.q0.clone()
+        for _i, _n in enumerate(__import__("ssr.x2", fromlist=["NAMES21"]).NAMES21[:12]):
+            _ref[_i] = float(_pa[_n]["mean"])
+        env.q_dev_ref = _ref
+        print("dof_dev measured from the reference mean leg pose:", [round(float(v_), 3) for v_ in _ref[:12]], flush=True)
+    if a.excl_pelvis_hiproll:
+        print("pelvis / hip-roll contacts excluded: nexclude =", env.x2.model.nexclude, flush=True)
+    _shift = None
+    if a.default_from_ref:
+        _x = env.x2
+        _shift = (_x.default_q_plant - _x.default_q)[_x.idx21]
+        print("default leg pose from the reference mean; prior shifted by", [round(float(v_), 3) for v_ in _shift[:12]], flush=True)
+    amp = AMPData(dev, a.prior_min_speed, a.amp_file, a.prior_balance, q_shift=_shift, turn_min=a.prior_turn_min)
     print("motion prior as fed to each discriminator (window mean planar speed, m/s):", json.dumps(amp.fed), flush=True)
     print("motion prior windows kept:", amp.kept, flush=True)
     if a.rsi_frac > 0:
@@ -135,6 +169,15 @@ def train(a):
     env.stuck_term = a.stuck_term
     env.flat_only = a.flat_only or a.flat_until > 0
     env.feet_air_w, env.feet_air_min = a.feet_air_w, a.feet_air_min
+    env.omni_frac, env.omni_turn, env.omni_slow = a.omni_frac, a.omni_turn, a.omni_slow
+    env.swing_h_w, env.swing_h_target = a.swing_h_w, a.swing_h_target
+    env.back_scale, env.drift_w = a.back_scale, a.drift_w
+    env.creep_w, env.ext_hold_r = a.creep_w, a.ext_hold_r
+    env.rel_kernel = a.rel_kernel
+    env.edge_stop_p = a.edge_stop
+    env.side_soft = a.side_soft
+    env.ext_frac = a.ext_frac
+    env.resample_steps = int(round(a.resample_s / 0.02)) if a.resample_s > 0 else 0
     env.only_terms = set(a.only_terms.split(",")) if a.only_terms else None
     if a.flat_only or a.flat_until > 0:
         env.reset(torch.arange(a.num_envs, device=dev))
@@ -206,6 +249,8 @@ def train(a):
         cf = 1.0 if a.cmd_cur_iters <= 0 else min(1.0, max(0.0, (it - a.cmd_cur_iters) / a.cmd_cur_iters))   # command curriculum: held until cmd_cur_iters, released by 2x
         env.v_min = a.cmd_min0 * (1.0 - cf)
         env.sig_v = 0.25 if a.sig_v0 <= 0 else a.sig_v0 + (0.25 - a.sig_v0) * cf
+        if a.sig_v_to > 0:                           # deviation (r6d, 2026-11-12): velocity kernel narrowed for slow commands, ramped from sig_v_from over sig_v_ramp iterations
+            env.sig_v = 0.25 + (a.sig_v_to - 0.25) * min(1.0, max(0.0, (it - a.sig_v_from) / max(a.sig_v_ramp, 1)))
         env.stuck_term = a.stuck_term and (a.stuck_until <= 0 or it < a.stuck_until)
         env.prog_gate = 0.0 if a.prog_gate <= 0 else a.prog_gate * (1.0 if gate_start is None else max(0.0, 1.0 - (it - gate_start) / max(a.gate_ramp, 1)))
         w[2] = a.w_style * ramp
@@ -411,7 +456,7 @@ def train(a):
                          foothold=dict(touchdowns=cnt.get("td_n", 0.0), msr=round(cnt.get("td_support", 0.0) / max(cnt.get("td_n", 0.0), 1.0), 4),
                                        sfr=round(cnt.get("td_safe", 0.0) / max(cnt.get("td_n", 0.0), 1.0), 4)),
                          levels_by_type=dict(zip(T.TYPES, lv)), level_max_share=round((env.level[~env.free] >= T.NLEVEL - 1).float().mean().item(), 4),
-                         samples_per_s=round(N_ * Tn / max(time.time() - t0, 1e-6)), num_envs=N_, air_td=round(air_td, 3), air_long_share=round(float(cnt.get("air_long", 0.0)) / max(float(cnt.get("air_n", 0.0)), 1.0), 3), prog_mean=round(float(cnt.get("prog_sum", 0.0)) / max(float(cnt.get("prog_n", 0.0)), 1.0), 3), prog_gate=round(env.prog_gate, 3), gate_start=gate_start, flat_phase=bool(env.flat_only), obst_share=round(float((env.type != T.FLAT).float().mean()), 3), obst_target=env.obst_target, w_style_now=round(float(w[2]), 4), gpu_util=gu, gpu_mem_mb=gm)
+                         samples_per_s=round(N_ * Tn / max(time.time() - t0, 1e-6)), num_envs=N_, air_td=round(air_td, 3), air_long_share=round(float(cnt.get("air_long", 0.0)) / max(float(cnt.get("air_n", 0.0)), 1.0), 3), prog_mean=round(float(cnt.get("prog_sum", 0.0)) / max(float(cnt.get("prog_n", 0.0)), 1.0), 3), prog_gate=round(env.prog_gate, 3), gate_start=gate_start, flat_phase=bool(env.flat_only), obst_share=round(float((env.type != T.FLAT).float().mean()), 3), obst_target=env.obst_target, w_style_now=round(float(w[2]), 4), gpu_util=gu, gpu_mem_mb=gm, ext=env.ext_stats(), edge_stop=dict(start=cnt.get("es_start", 0.0), done=cnt.get("es_done", 0.0)))
             rec = dict(it=it, dt=round(time.time() - t0, 2), elapsed_h=round((time.time() - t_start) / 3600, 3), r_l=round(rs[0], 3), r_f=round(rs[1], 3), r_s=round(rs[2], 3),
                        ep_ret=round(float(np.mean(done_stats["ret"])) if done_stats["ret"] else 0.0, 2), ep_len_s=round(float(np.mean(done_stats["len"]) if done_stats["len"] else 0.0) * 0.02, 2),
                        n_done=len(done_stats["len"]), level=lv, kl=round(kl_m, 4), lr=lr_ppo, pi=round(pi_l, 4), v=round(v_l, 3), std=round(actor.std().mean().item(), 3),
@@ -473,6 +518,36 @@ if __name__ == "__main__":
     ap.add_argument("--rsi_min_speed", type=float, default=0.0, help="walking starts only from frames moving forward at least this fast (m/s); 0 = any frame")
     ap.add_argument("--adv_floor", type=float, default=2e-3)
     ap.add_argument("--boot_iters", type=int, default=0, help="early schedule length (earlier runs: 3000); 0 = the paper's rewards from the start")
+    ap.add_argument("--ext_frac", type=float, default=0.0, help="extended map: share of tile robots on route tiles (user decision 2026-11-12); 0 = off")
+    ap.add_argument("--ext_types", default="tight_spots,log_corridors,homes,street_front,stairs")
+    ap.add_argument("--ext_variants", type=int, default=2)
+    ap.add_argument("--ext_stairs_inset", action="store_true", help="v13: stair tiles from extended_v1_2_stairs_inset (foot inside the tile, 700 routes)")
+    ap.add_argument("--ext_prop_routes", action="store_true", help="v13: add extended_v1_1_prop_routes (approach shapes on beams, beam fields, blocks, logs, wedges)")
+    ap.add_argument("--ext_slope_turns", type=int, default=0, help="v14: slope turn stations per tile (out to a 8-22 deg plane, turn in place, back); 0 = off")
+    ap.add_argument("--back_scale", type=float, default=1.0, help="v14 (user rule 2026-11-12): lin_vel reward x this while moving backward (< 1); also no backward commands on slope tiles; 1 = off")
+    ap.add_argument("--creep_w", type=float, default=0.0, help="v14: weight of the progress share under 0.10-0.35 m/s commands (the stop-and-stand fix); 0 = off")
+    ap.add_argument("--ext_hold_r", type=float, default=0.20, help="v14: route end hold radius (the eval disc is 0.20; 0.10 trains arriving inside it)")
+    ap.add_argument("--drift_w", type=float, default=0.0, help="v14: penalty weight on planar speed under a stand or turn-in-place command; 0 = off")
+    ap.add_argument("--ext_stations", type=int, default=0, help="v13: wall stations per tile (approach to 0.15-0.22 m of a wall face + departure); 0 = off")
+    ap.add_argument("--ext_phys", type=int, default=0, help="extended map: K physical wall boxes per world, contact graded by body part (user rule 2026-11-12); 0 = vision-only walls")
+    ap.add_argument("--ext_min_clear", type=float, default=0.0, help="extended map: drop routes whose least obstacle clearance along the route is under this (m); 0.39 = the X2 fits (SSR 2026-11-12)")
+    ap.add_argument("--side_soft", type=float, default=0.0, help="deviation: side-obstacle 0.06 m band costs this per step instead of ending the episode (only overlap ends it); 0 = off")
+    ap.add_argument("--prior_turn_min", type=float, default=0.0, help="deviation: keep prior windows with mean |yaw rate| >= this even under --prior_min_speed; 0 = off")
+    ap.add_argument("--edge_stop", type=float, default=0.0, help="deviation: share of tile episodes that stop for 2 s at the first down edge (>= 0.15 m drop 0.45 m ahead)")
+    ap.add_argument("--rel_kernel", action="store_true", help="deviation: velocity and yaw kernels narrowed for small commands (width x (max(|c|, c_min) / c_ref)^2, c_ref 0.6 m/s / 0.8 rad/s, c_min 0.3 / 0.4)")
+    ap.add_argument("--swing_h_w", type=float, default=0.0, help="deviation: swing-height reward weight (sum over swing feet of min(h / target, 1) x min(|v_xy|, 1), moving commands); 0 = off")
+    ap.add_argument("--swing_h_target", type=float, default=0.10)
+    ap.add_argument("--omni_frac", type=float, default=0.1, help="share of omnidirectional robots (0.1 = as before)")
+    ap.add_argument("--omni_turn", type=float, default=0.0, help="deviation: share of omni robots told to turn in place (|wz| 0.3-1.2)")
+    ap.add_argument("--omni_slow", type=float, default=0.0, help="deviation: share of omni robots told to walk slowly forward (0.1-0.4 m/s)")
+    ap.add_argument("--resample_s", type=float, default=0.0, help="deviation: new command every this many seconds within an episode; 0 = one per episode")
+    ap.add_argument("--sig_v_to", type=float, default=0.0, help="deviation: velocity kernel width ramped from 0.25 to this; 0 = off")
+    ap.add_argument("--sig_v_from", type=int, default=0)
+    ap.add_argument("--sig_v_ramp", type=int, default=300)
+    ap.add_argument("--action_scale_paper", action="store_true", help="paper Table 14 action scales (0.25 / 0.2); NOT to be run without the user's agreement (plant rule)")
+    ap.add_argument("--default_from_ref", action="store_true", help="deviation (step 2, fresh runs only): default leg pose = reference mean")
+    ap.add_argument("--excl_pelvis_hiproll", action="store_true", help="deviation (step 1): no pelvis / hip-roll link contacts")
+    ap.add_argument("--dof_dev_ref", action="store_true", help="deviation (step 1): dof_dev from the reference mean leg pose")
     ap.add_argument("--disc_mask_arms", action="store_true", help="deviation: the style discriminators do not see arm joints or wrist positions")
     ap.add_argument("--style_from", type=int, default=0, help="deviation: style weight 0 before this iteration, ramped to --w_style over --gate_ramp; overrides --style_low; 0 = off")
     ap.add_argument("--feet_air_w", type=float, default=0.0, help="deviation: feet-air-time reward weight (per touchdown, W * clamp(air - feet_air_min, 0, 0.4 - feet_air_min)); 0 = off")

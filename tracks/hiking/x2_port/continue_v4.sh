@@ -19,7 +19,7 @@ mv $D/staged.py $TR/staged.py.run4_$H && mv $D/staged.py.next $D/staged.py && no
 mv $D/monitor.py $TR/monitor.py.run4_$H && mv $D/monitor.py.next $D/monitor.py && note "$TR/monitor.py.run4_$H: monitor without the measured air time per touchdown"
 bash $X/apply.sh > /dev/null
 ENVV="HIKING_X2_OPTS=a,c,d,f,r,s,t HIKING_X2_STAGE=500,1500 HIKING_X2_CAM_RAND=1 HIKING_X2_ALIVE_EARLY=0.3 HIKING_X2_WAIT_EARLY=2 HIKING_X2_STYLE_EARLY=0.3 HIKING_X2_FALL_PENALTY=8 HIKING_X2_REF_START=0.5 HIKING_X2_AIR_TD_WEIGHT=140"
-printf '#!/bin/bash\n# Resume %s with the options of its continuation at 1,000 (continue_v4.sh, option t added).\ntmux new -d -s hiking_x2 "%s %s %s/supervise_x2.py --task Instinct-Parkour-Fixed-Amp-X2-v0 --name %s --total 30000 --num_envs 8192 2>&1 | tee -a %s/runs/%s_supervisor_tmux.log"\n' \
+printf '#!/bin/bash\n# Resume %s with the options of its continuation at 1,000 (continue_v4.sh, option t added).\ntmux new -d -s hiking_x2 "%s %s %s/supervise_x2.py --task Instinct-Parkour-Fixed-Amp-X2-v0 --name %s --total 30000 --num_envs 8192 --save_interval 125 2>&1 | tee -a %s/runs/%s_supervisor_tmux.log"\n' \
   $NAME "$ENVV" '$HOME/hiking-env/bin/python' $X $NAME $T $NAME > $X/start_x2_parkour_v4b.sh
 LOG0=$(stat -c %s $S/train.log 2>/dev/null || echo 0)
 SUP0=$(grep -c ' start pid [0-9]* from iteration' $S/supervisor.log 2>/dev/null); SUP0=${SUP0:-0}

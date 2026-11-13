@@ -1,0 +1,3 @@
+#!/bin/bash
+# Resume x2_parkour_v4 with the options of its continuation at 1,000 (continue_v4.sh, option t added).
+tmux new -d -s hiking_x2 "HIKING_X2_OPTS=a,c,d,f,r,s,t HIKING_X2_STAGE=500,1500 HIKING_X2_CAM_RAND=1 HIKING_X2_ALIVE_EARLY=0.3 HIKING_X2_WAIT_EARLY=2 HIKING_X2_STYLE_EARLY=0.3 HIKING_X2_FALL_PENALTY=8 HIKING_X2_REF_START=0.5 HIKING_X2_AIR_TD_WEIGHT=140 $HOME/hiking-env/bin/python /mnt/filesystem-g4/tracks/hiking/code/x2_port/supervise_x2.py --task Instinct-Parkour-Fixed-Amp-X2-v0 --name x2_parkour_v4 --total 30000 --num_envs 8192 --save_interval 125 2>&1 | tee -a /mnt/filesystem-g4/tracks/hiking/runs/x2_parkour_v4_supervisor_tmux.log"

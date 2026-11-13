@@ -15,6 +15,7 @@ from __future__ import annotations
 import sys
 import time
 
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -216,8 +217,15 @@ class Base(nn.Module):
                      for a in range(0, scan.shape[0], DECODE_CHUNK)]
             return torch.cat([p[0] for p in parts]), torch.cat([p[1] for p in parts])
         logp, occ = self(hist, goal, scan)
-        i = logp.argmax(-1)                                                  # (B, 9)
-        tgt = torch.gather(self.points(scan), 1, i.unsqueeze(-1).expand(-1, -1, 3))
+        k = int(os.environ.get("ACP_DECODE_K", "1"))              # 1 = top-1 (default); k > 1: affordance-weighted mean of the top-k points (CPU test)
+        if k > 1:
+            v, i = logp.topk(k, -1)                                          # (B, 9, k)
+            w = torch.softmax(v, -1).unsqueeze(-1)
+            P = self.points(scan).unsqueeze(1).expand(-1, i.shape[1], -1, -1)
+            tgt = (torch.gather(P, 2, i.unsqueeze(-1).expand(-1, -1, -1, 3)) * w).sum(2)
+        else:
+            i = logp.argmax(-1)                                              # (B, 9)
+            tgt = torch.gather(self.points(scan), 1, i.unsqueeze(-1).expand(-1, -1, 3))
         p = torch.sigmoid(occ)
         return tgt * (p > 0.5).unsqueeze(-1), p
 
@@ -300,6 +308,8 @@ def train(data_path, out, arch="attn", epochs=30, lr=1e-4, batch=4096, threads=1
     val = (envs % 10) == 0                                                   # a tenth of the episodes held out
     tr, va = (~val).nonzero().squeeze(-1), val.nonzero().squeeze(-1)
     net = build(arch, hist.shape[1])
+    if os.environ.get("PLANNER_INIT"):            # fine-tune from an existing planner (2026-11-12)
+        net.load_state_dict(torch.load(os.environ["PLANNER_INIT"], map_location="cpu", weights_only=False)["net"])
     net.h_mu.copy_(hist[tr].mean(0)); net.h_sd.copy_(hist[tr].std(0).clamp(min=1e-3))
     net.s_mu.copy_(scan[tr].mean()); net.s_sd.copy_(scan[tr].std().clamp(min=1e-3))
     opt = torch.optim.Adam(net.parameters(), lr=lr)                          # Table S5: Adam 1e-4, 4,096 samples per update

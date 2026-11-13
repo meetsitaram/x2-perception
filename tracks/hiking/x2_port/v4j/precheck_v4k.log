@@ -1,0 +1,2 @@
+opts allowed: abcdefgkorstvwyz | terrain: /mnt/filesystem-g4/tracks/hiking/data/extended_v4k single_beams routes 268 | motion: /mnt/filesystem-g4/tracks/hiking/data/motion_v4/x2_parkour_motion_without_run_v4.yaml 41371 frames
+PRECHECK PASS

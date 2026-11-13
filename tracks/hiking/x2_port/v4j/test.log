@@ -1,0 +1,13 @@
+PASS body groups: feet 2, legs 10, trunk 12, arms 8
+PASS graded cost: strong 1-4 per body; arm free under 30 N and 0.5 s, then 0.25 x
+PASS torso termination: lying on something ends, wall push does not
+PASS box tests: inside depth and planar distance with a rotated box
+PASS stairs merged: 60 inset tiles + 20 amphitheatre at extended_v1 rows, boxes / heights / meshes match; routes by kind {"straight": 76, "side_left": 57, "side_right": 76, "oblique": 47, "far_straight": 56, "cross": 63, "L": 40, "C": 57, "S": 76, "descend": 76, "side_down": 76, "v1": 41}
+PASS route table on the merged set (one layout, 90 cells): 231 routes on 90 cells
+PASS homes: route starts in this layout 35, planar distance to props rising 0.25 m+ : p5 0.40, share under 0.34 m 0.000
+PASS tight_spots: route starts in this layout 18, planar distance to props rising 0.25 m+ : p5 0.32, share under 0.34 m 0.111
+PASS stairs: route starts in this layout 65, planar distance to props rising 0.25 m+ : p5 0.53, share under 0.34 m 0.000
+PASS side law: walks sideways through 3 waypoints in 9.8 s (kinematic)
+PASS lateral vy: clipped side offset within 1 m, none behind or far
+PASS motion v3: v2 unchanged in the first 20001 frames, 6390 frames added (128 s), quaternions unit, planar speed max 1.14 m/s at seams
+ALL PASS

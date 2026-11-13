@@ -49,7 +49,7 @@ def wrap(a):
 
 class SSREnv:
     def __init__(self, num_envs: int, device="cuda:0", raster: dict | None = None, vision: dict | None = None,
-                 walls: list | None = None, train: bool = True, spawn=None, camera: str = "head", map_memory: bool = False, tiles: bool | None = None, njmax: int = 900, nconmax: int = 150, seed: int = 0):
+                 walls: list | None = None, train: bool = True, spawn=None, camera: str = "head", map_memory: bool = False, tiles: bool | None = None, njmax: int = 900, nconmax: int = 150, ext_phys: int = 0, seed: int = 0):
         self.N, self.dev, self.train = num_envs, torch.device(device), train
         self.spawn = spawn
         self.camera, self.map_memory = camera, map_memory
@@ -60,6 +60,12 @@ class SSREnv:
         if self.tiles and "vision" in self.raster:             # side obstacles: seen in depth and in the critic's map, touching one ends the episode
             self.obst = (self.hmap.vz - self.hmap.z) > 0.25
             self.lane = torch.as_tensor(self.raster["lane"], device=device)
+        self.ext_phys = int(ext_phys)
+        if self.ext_phys:
+            nconmax = max(nconmax, 30)                                 # wall boxes add broadphase pairs
+        self._wall0 = len(walls or [])
+        if self.ext_phys:
+            walls = (walls or []) + [dict(center=(0.0, 0.0, -20.0 - 0.5 * i), half=(0.05, 0.05, 0.05), quat=(1.0, 0.0, 0.0, 0.0)) for i in range(self.ext_phys)]
         self.x2 = X.build(self.raster, walls)
         m = self.x2.model
         d = mujoco.MjData(m)
@@ -69,6 +75,8 @@ class SSREnv:
         with wp.ScopedDevice(str(self.dev)):
             batch = {k: num_envs for k in ("geom_friction", "body_ipos", "body_mass", "body_inertia", "actuator_gainprm",
                                            "actuator_biasprm")}
+            if self.ext_phys:
+                batch.update({k: num_envs for k in ("geom_pos", "geom_quat", "geom_size", "geom_aabb", "geom_rbound")})
             self.mm = mjw.put_model(m, batch_sizes=batch)
             self.dd = mjw.put_data(m, d, nworld=num_envs, njmax=njmax, nconmax=nconmax)
         dd, mm = self.dd, self.mm
@@ -77,6 +85,8 @@ class SSREnv:
         self.xpos, self.xmat, self.tau = t(dd.xpos), t(dd.xmat), t(dd.actuator_force)
         self.friction, self.ipos, self.mass, self.inertia = t(mm.geom_friction), t(mm.body_ipos), t(mm.body_mass), t(mm.body_inertia)
         self.gain, self.bias = t(mm.actuator_gainprm), t(mm.actuator_biasprm)
+        if self.ext_phys:
+            self.g_pos, self.g_quat, self.g_size, self.g_aabb, self.g_rb = (t(mm.geom_pos), t(mm.geom_quat), t(mm.geom_size), t(mm.geom_aabb), t(mm.geom_rbound))
         self.c_geom, self.c_world, self.c_adr = t(dd.contact.geom), t(dd.contact.worldid), t(dd.contact.efc_address)
         self.c_frame, self.c_fric, self.efc_f = t(dd.contact.frame), t(dd.contact.friction), t(dd.efc.force)
         self.nacon = t(dd.nacon)
@@ -114,6 +124,15 @@ class SSREnv:
             if b in X.TERMINATE_BODIES:
                 term[g] = True
         self.geom_side, self.geom_term = side, term
+        self.geom_wall = torch.zeros(m.ngeom, device=dev, dtype=torch.bool)
+        self.geom_cls = torch.zeros(m.ngeom, device=dev, dtype=torch.long)     # 0 world, 1 forearm / hand, 2 any other robot body
+        for g in range(m.ngeom):
+            b = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_BODY, m.geom_bodyid[g]) or ""
+            if m.geom_bodyid[g] > 0:
+                self.geom_cls[g] = 1 if ("elbow" in b or "wrist" in b or "hand" in b) else 2
+        self.wall_ids = torch.tensor([mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_GEOM, f"wall_{self._wall0 + i}") for i in range(self.ext_phys)], device=dev, dtype=torch.long)
+        if self.ext_phys:
+            self.geom_wall[self.wall_ids] = True
         self.robot_geoms = torch.tensor(np.nonzero(m.geom_bodyid > 0)[0], device=dev)
         self.friction[:, (m.geom_bodyid == 0), 0] = 0.2         # terrain low, so max-combination gives the robot's value
 
@@ -140,6 +159,7 @@ class SSREnv:
         self.contact_prev = torch.zeros(n, 2, dtype=torch.bool, device=dev)
         self.F = z(2, 3)
         self.term_force = z()
+        self.wall_f, self.arm_t = z(3), z()
         self.cam_pos, self.cam_rpy, self.cam_fov = z(3), z(3), z(2)
         self.motor = torch.ones(n, device=dev)
         rays = T.camera_rays(DEPTH_N, (cam.get("fov_h", self.cam_fov0), self.cam_fov0), dev)
@@ -177,10 +197,23 @@ class SSREnv:
         self.feet_air_w, self.feet_air_min = 0.0, 0.1   # feet-air-time reward (not in the paper; off unless --feet_air_w)
         self.obst_target = None                 # obstacle-tile share ramp after the flat phase (None = types fixed)
         self.late_scale = 1.0                   # staged schedule (not in the paper): factor on every term outside CORE_TERMS, 0 -> 1 early in training
+        self.q_dev_ref = None                   # step 1 (not in the paper): dof_dev measured from this pose (21) instead of the default
+        self.side_soft = 0.0                    # side obstacles: 0 = touch within 0.06 m ends the episode; W > 0 = only overlap ends it, the band costs W per step
+        self.edge_stop_p = 0.0                  # share of tile episodes with a stop at a down edge (deviation; --edge_stop)
+        self.es_armed = torch.zeros(n, dtype=torch.bool, device=dev)
+        self.es_timer = torch.zeros(n, dtype=torch.long, device=dev)
+        self.es_speed = torch.zeros(n, device=dev)
+        self.rel_kernel = False                 # relative-error velocity kernels for small commands (deviation; --rel_kernel)
+        self.swing_h_w, self.swing_h_target = 0.0, 0.10   # swing-height reward (deviation; off unless --swing_h_w)
+        self.creep_w, self.ext_hold_r = 0.0, 0.20   # v14: slow-command progress pay (0.10-0.35 m/s); route hold radius (eval disc 0.20)
+        self.back_scale, self.drift_w = 1.0, 0.0   # v14 deviations (user rule 2026-11-12): backward motion pays less; drift under a stand / turn-in-place command costs
+        self.omni_frac, self.omni_turn, self.omni_slow, self.resample_steps = 0.1, 0.0, 0.0, 0   # command mix (deviations, default = as before)
+        self._ext_setup()
         self.cnt = {}                           # raw counts for the log (termination causes, touchdown support)
         self.reset(torch.arange(n, device=dev))
         self.refresh()
         self._contacts()
+        self._wall_timer()
         self._update_obs(torch.arange(n, device=dev))
 
     # ---------------------------------------------------------------- helpers
@@ -249,6 +282,7 @@ class SSREnv:
     def _contacts(self):
         self.F[:] = 0.0
         self.term_force[:] = 0.0
+        self.wall_f[:] = 0.0
         n = int(self.nacon[0].item()) if self.nacon.dim() else int(self.nacon.item())
         n = min(n, self.c_adr.shape[0])
         if n == 0:
@@ -263,15 +297,24 @@ class SSREnv:
             fr = fr.reshape(-1, 3, 3)
         fc = torch.stack((f.sum(1), mu * (f[:, 0] - f[:, 1]), mu * (f[:, 2] - f[:, 3])), -1)
         Fw = (fr.transpose(-1, -2) @ fc[..., None]).squeeze(-1)
+        w0, w1 = self.geom_wall[geom[:, 0]], self.geom_wall[geom[:, 1]]
+        nw = ~(w0 | w1)
+        if self.ext_phys:                                              # wall contacts graded by body part (user rule 2026-11-12)
+            cls = self.geom_cls[torch.where(w0, geom[:, 1], geom[:, 0])]
+            okw = (w0 | w1) & (cls > 0)
+            self.wall_f.view(-1).index_add_(0, w[okw] * 3 + cls[okw], fc[okw, 0])
         for col in (0, 1):
             s = self.geom_side[geom[:, col]]
-            ok = s >= 0
+            ok = (s >= 0) & nw
             ix = w[ok] * 2 + s[ok]
             Fflat = self.F.view(-1, 3)
             for d in range(3):
                 Fflat[:, d].index_add_(0, ix, Fw[ok, d].abs() if d == 2 else Fw[ok, d])
-        t_ok = self.geom_term[geom[:, 0]] | self.geom_term[geom[:, 1]]
+        t_ok = (self.geom_term[geom[:, 0]] | self.geom_term[geom[:, 1]]) & nw
         self.term_force.index_add_(0, w[t_ok], fc[t_ok, 0])
+
+    def _wall_timer(self):
+        self.arm_t = torch.where(self.wall_f[:, 1] > 1.0, self.arm_t + X.CONTROL_DT, torch.zeros_like(self.arm_t))
 
     def set_rsi(self, frames, frac=0.5, min_speed=0.0):
         """Reference state initialization: `frac` of the walking episodes start from captured flat-walking frames (63-D AMP frames)."""
@@ -283,7 +326,7 @@ class SSREnv:
         """Pose and velocities from a random walking frame, heading as commanded, lowest foot on the ground; commanded speed = the frame's."""
         n = len(ids)
         self.rsi_idx[ids] = -1
-        pick = (self._u(n, lo=0.0, hi=1.0) < self.rsi_frac) & ~self.free[ids] & (self.speed[ids] >= 0)
+        pick = (self._u(n, lo=0.0, hi=1.0) < self.rsi_frac) & ~self.free[ids] & ~self.ext[ids] & (self.speed[ids] >= 0)
         rid = ids[pick]
         k = len(rid)
         if k == 0:
@@ -316,7 +359,7 @@ class SSREnv:
     def _terrain_reset(self, ids):
         n = len(ids)
         r = self._u(n, lo=0.0, hi=1.0)
-        self.free[ids] = (r < 0.1) & self.train
+        self.free[ids] = (r < self.omni_frac) & self.train
         typ = self.type[ids]
         lvl = self.level[ids]
         free = self.free[ids]
@@ -333,7 +376,7 @@ class SSREnv:
 
     def _command_reset(self, ids):
         n, typ = len(ids), self.type[ids]
-        vlo = torch.where(typ == T.SLOPE, -1.0 * torch.ones(n, device=self.dev), torch.zeros(n, device=self.dev))
+        vlo = torch.where(typ == T.SLOPE, -1.0 * torch.ones(n, device=self.dev), torch.zeros(n, device=self.dev)) * (1.0 if self.back_scale >= 1.0 else 0.0)   # v14: no backward travel commands on terrain
         vhi = torch.where(typ == T.SLOPE, torch.ones(n, device=self.dev), 1.2 * torch.ones(n, device=self.dev))
         hmax = torch.tensor([80.0, 30.0, 30.0, 15.0, 30.0], device=self.dev)[typ] * math.pi / 180
         self.speed[ids] = vlo + (vhi - vlo) * self._u(n, lo=0.0, hi=1.0)
@@ -347,6 +390,14 @@ class SSREnv:
             fi = ids[f]
             k = len(fi)
             self.cmd[fi] = torch.stack((self._u(k), self._u(k) * 0.4, self._u(k) * 1.2), -1)
+            if self.omni_turn > 0 or self.omni_slow > 0:            # deviation (2026-11-12): turn-in-place and slow-forward commands for the omnidirectional robots
+                u2 = self._u(k, lo=0.0, hi=1.0)
+                tu = u2 < self.omni_turn
+                sl = (u2 >= self.omni_turn) & (u2 < self.omni_turn + self.omni_slow)
+                wz = torch.sign(self._u(k)) * self._u(k, lo=0.3, hi=1.2)
+                z0 = torch.zeros(k, device=self.dev)
+                self.cmd[fi] = torch.where(tu[:, None], torch.stack((z0, z0, wz), -1), self.cmd[fi])
+                self.cmd[fi] = torch.where(sl[:, None], torch.stack((self._u(k, lo=0.1, hi=0.4), z0, z0), -1), self.cmd[fi])
 
     def reset(self, ids):
         n = len(ids)
@@ -358,7 +409,7 @@ class SSREnv:
                 if not self.ep.sum():
                     self.level[ids] = torch.randint(0, 4, (n,), device=self.dev, generator=self.gen)
             if self.obst_target is not None and not self.flat_only:     # move robots from the flat type to obstacle tiles as their episodes end
-                fl = ids[self.type[ids] == T.FLAT]
+                fl = ids[(self.type[ids] == T.FLAT) & ~self.ext[ids]]
                 need = int(self.obst_target * self.N) - int((self.type != T.FLAT).sum())
                 if need > 0 and len(fl):
                     cv = fl[:need]
@@ -371,6 +422,19 @@ class SSREnv:
             yaw = self.heading[ids]
             rev = (self.speed[ids] < 0) & ~self.free[ids]             # backward walks on slopes start at the far end
             x = torch.where(rev, 2 * self.origin[ids, 0] + T.TILE_X - x, x)
+            if self.ext_on:
+                self.ext[ids] = False
+                if self.train and self.ext_frac > 0 and not self.flat_only and self.obst_target is None and self.ep.sum() > 0:
+                    ex = (self._u(n, lo=0.0, hi=1.0) < self.ext_frac) & ~self.free[ids]
+                    if bool(ex.any()):
+                        eid = ids[ex]
+                        self.ext[eid] = True
+                        ex_x, ex_y, ex_yaw = self._ext_pick(eid)
+                        self.speed[eid] = 0.0
+                        self.heading[eid] = ex_yaw
+                        self.type[eid] = torch.where(self.ext_stairs[self.ext_type[eid]], torch.full_like(self.type[eid], T.STAIRS), torch.where(self.ext_beam[self.ext_type[eid]], torch.full_like(self.type[eid], T.BEAM), torch.where(self.ext_slope[self.ext_type[eid]], torch.full_like(self.type[eid], T.SLOPE), torch.where(self.ext_plat[self.ext_type[eid]], torch.full_like(self.type[eid], T.PLATFORM), torch.full_like(self.type[eid], T.FLAT)))))
+                        x = torch.where(ex, torch.zeros_like(x), x); y = torch.where(ex, torch.zeros_like(y), y); yaw = torch.where(ex, torch.zeros_like(yaw), yaw)
+                        x[ex], y[ex], yaw[ex] = ex_x, ex_y, ex_yaw
         else:
             x, y, yaw = self.spawn[:, 0][ids], self.spawn[:, 1][ids], self.spawn[:, 2][ids]
         self._mask_t.zero_()
@@ -400,6 +464,7 @@ class SSREnv:
         self.v_ema[ids] = 0.0
         self.contact_prev[ids] = False
         self.reset_ids = ids
+        self._ext_walls(ids)
 
     def _domain_randomize(self, ids):
         n, u = len(ids), self._u
@@ -468,7 +533,7 @@ class SSREnv:
             best = torch.min(best, torch.where(hit, tk, best))
         return best
 
-    def _touches_obstacle(self, radius=0.06):
+    def _touches_obstacle(self, radius=0.06, log=True):
         """A limb's centre within `radius` of side-obstacle cells (five probe points). Trains the robot to keep its arms and legs clear."""
         p = self.xpos[:, self.side_ids]
         off = torch.tensor([[0.0, 0.0], [radius, 0.0], [-radius, 0.0], [0.0, radius], [0.0, -radius]], device=self.dev)
@@ -476,7 +541,8 @@ class SSREnv:
         j = torch.round((p[..., 1, None] + off[:, 1] - self.hmap.y0) / self.hmap.res).long().clamp(0, self.hmap.ny - 1)
         # only limbs at wall height: below the top of the terrain step under them they would be inside the ground anyway
         hit = self.obst[i, j].any(-1).any(-1)
-        self.log["touch"] = self.log.get("touch", 0) + int(hit.sum())
+        if log:
+            self.log["touch"] = self.log.get("touch", 0) + int(hit.sum())
         return hit
 
     def _update_map(self, ids):
@@ -551,6 +617,8 @@ class SSREnv:
         vx, vy = c * self.speed, -sn * self.speed
         walk = torch.stack((vx.clamp(-1.0, 1.2), vy.clamp(-0.4, 0.4), wz), -1)
         self.cmd = torch.where(self.free[:, None], self.cmd, walk)
+        if self.ext_on:
+            self._ext_cmd()
 
     # ---------------------------------------------------------------- foothold support (Sec. 3.2)
     def support_stance(self):
@@ -600,8 +668,18 @@ class SSREnv:
             self.qvel[bad] = 0.0
         self.refresh()
         self._contacts()
+        self._wall_timer()
         self.F[bad] = 0.0
         self.ep += 1
+        if self.resample_steps > 0 and self.train:                 # deviation (2026-11-12): new command within the episode (from whatever the robot is doing, often a stand)
+            rs = ((self.ep % self.resample_steps) == 0).nonzero().squeeze(-1)
+            if len(rs):
+                fr = rs[self.free[rs]]
+                tl = rs[~self.free[rs] & ~self.ext[rs]]
+                if len(fr):
+                    h_ = self.heading[fr].clone(); self._command_reset(fr); self.heading[fr] = h_
+                if len(tl):
+                    h_ = self.heading[tl].clone(); self._command_reset(tl); self.heading[tl] = h_     # tile robots: new speed, same heading
         fp, _, _ = self._foot_state()
         self.vf = (fp - self.foot_prev) / X.CONTROL_DT
         s = self._state()
@@ -645,6 +723,10 @@ class SSREnv:
             self.reset(ids)
             self.refresh()
         self.vf[ids] = 0.0
+        if self.ext_on:
+            self._ext_advance()
+        if self.edge_stop_p > 0 and self.train and self.tiles:
+            self._edge_stop(ids)
         self._update_cmd()
         self._update_obs(ids)
         self._update_cmd()
@@ -658,6 +740,219 @@ class SSREnv:
         ok = (self.rsi_idx >= 0) & (k < len(self.rsi_frames))
         ref = self.rsi_frames[k.clamp(0, len(self.rsi_frames) - 1), 9:30]
         return self.imit_w * self.boot * torch.exp(-((q_rel - ref) ** 2).mean(-1) / 0.4) * ok.float()
+
+    # ---------------------------------------------------------------- extended map (route robots)
+    def _ext_setup(self):
+        e = self.raster.get("ext")
+        self.ext_on = e is not None
+        n, dev = self.N, self.dev
+        self.ext = torch.zeros(n, dtype=torch.bool, device=dev)
+        self.ext_type = torch.zeros(n, dtype=torch.long, device=dev)
+        self.ext_level = torch.zeros(n, dtype=torch.long, device=dev)
+        self.route = torch.zeros(n, dtype=torch.long, device=dev)
+        self.wpi = torch.zeros(n, dtype=torch.long, device=dev)
+        self.hold_t = torch.zeros(n, device=dev)
+        self.ext_vmax = torch.full((n,), 0.6, device=dev)
+        self.ext_frac = 0.0
+        if not self.ext_on:
+            return
+        R = e["routes"]
+        W = max(len(r["wp"]) for r in R)
+        wp = torch.zeros(len(R), W, 2)
+        for i, r in enumerate(R):
+            w = torch.tensor(r["wp"], dtype=torch.float32)
+            wp[i, :len(w)] = w
+            wp[i, len(w):] = w[-1]
+        self.r_wp = wp.to(dev)
+        self.r_n = torch.tensor([len(r["wp"]) for r in R], device=dev)
+        self.r_start = torch.tensor([r["start"] for r in R], dtype=torch.float32, device=dev)
+        self.r_tile = torch.tensor([r["tile"] for r in R], device=dev)
+        self.r_len = torch.tensor([r["length"] for r in R], dtype=torch.float32, device=dev)
+        tiles = e["tiles"]
+        self.t_type = torch.tensor([t["type"] for t in tiles], device=dev)
+        self.t_level = torch.tensor([t["level"] for t in tiles], device=dev)
+        self.t_centre = torch.tensor([t["centre"] for t in tiles], dtype=torch.float32, device=dev)
+        self.ext_ntypes = len(e["types"])
+        self.ext_stairs = torch.tensor([nm == "stairs" for nm in e["types"]], device=dev)
+        self.ext_beam = torch.tensor([nm in ("tight_spots", "homes", "single_beams", "beam_fields") for nm in e["types"]], device=dev)
+        self.ext_slope = torch.tensor([nm == "wedges" for nm in e["types"]], device=dev)          # v13: wedges -> ramp discriminator
+        self.ext_plat = torch.tensor([nm == "blocks" for nm in e["types"]], device=dev)           # v13: blocks -> platform discriminator   # sideways Pico takes are in the beam set
+        # routes of (type, level): random pick by masking
+        self.r_type = self.t_type[self.r_tile]
+        self.r_level = self.t_level[self.r_tile]
+        import numpy as _np
+        from scipy import ndimage as _nd
+        hz, vz = _np.asarray(self.raster["z"]), _np.asarray(self.raster["vision"]["z"])
+        dist = _nd.distance_transform_edt(~((vz - hz) > 0.25)) * self.raster["res"]
+        segc = _np.full((len(R), W), 9.9, _np.float32)
+        for i, r in enumerate(R):
+            pts = [r["start"][:2]] + list(r["wp"])
+            for j in range(len(pts) - 1):
+                (ax, ay), (bx, by) = pts[j], pts[j + 1]
+                s_ = _np.linspace(0, 1, max(2, int(_np.hypot(bx - ax, by - ay) / 0.02)))
+                ii = _np.clip(_np.round((ax + s_ * (bx - ax) - self.raster["x0"]) / self.raster["res"]).astype(int), 0, dist.shape[0] - 1)
+                jj = _np.clip(_np.round((ay + s_ * (by - ay) - self.raster["y0"]) / self.raster["res"]).astype(int), 0, dist.shape[1] - 1)
+                segc[i, j] = dist[ii, jj].min()
+            segc[i, len(pts) - 1:] = segc[i, len(pts) - 2]
+            if r.get("station") == 1:                                  # v13 wall station: the last segment goes at the wall on purpose (no sidestep)
+                segc[i, len(pts) - 2:] = 9.9
+            elif r.get("station") == 2:                                # departure from a station: first segment starts at the wall
+                segc[i, 0] = 9.9
+        self.r_segclr = torch.as_tensor(segc, device=dev)
+        if self.ext_phys:
+            K = self.ext_phys
+            park = torch.tensor([0.0, 0.0, -20.0, 0.05, 0.05, 0.05, 1.0, 0.0, 0.0, 0.0])
+            rb = park.repeat(len(R), K, 1)
+            for i, r in enumerate(R):
+                pb = tiles[r["tile"]].get("phys", [])
+                if not pb:
+                    continue
+                B = torch.tensor(pb, dtype=torch.float32)
+                pts = torch.tensor([r["start"][:2]] + list(r["wp"]), dtype=torch.float32)
+                a0, b0 = pts[:-1], pts[1:]
+                ab = b0 - a0
+                ap_ = B[:, None, :2] - a0[None]
+                tt = ((ap_ * ab[None]).sum(-1) / (ab * ab).sum(-1).clamp(min=1e-6)[None]).clamp(0, 1)
+                dd_ = (ap_ - tt[..., None] * ab[None]).norm(dim=-1).min(-1).values - B[:, 3:5].abs().amax(-1)
+                o = torch.argsort(dd_)[:K]
+                rb[i, :len(o)] = B[o]
+            self.r_box = rb.to(dev)
+            self.park = park.to(dev)
+            self.ext_box_overflow = int(sum(max(0, len(tiles[r["tile"]].get("phys", [])) - K) for r in R))
+
+    def _ext_walls(self, ids):
+        if not self.ext_phys or not self.ext_on:
+            return
+        B = self.park.expand(len(ids), self.ext_phys, 10).clone()
+        ex = self.ext[ids]
+        if bool(ex.any()):
+            B[ex] = self.r_box[self.route[ids[ex]]]
+        gi = self.wall_ids[None].expand(len(ids), -1)
+        wi = ids[:, None].expand_as(gi)
+        self.g_pos[wi, gi] = B[..., 0:3]
+        self.g_size[wi, gi] = B[..., 3:6].abs()
+        self.g_quat[wi, gi] = B[..., 6:10]
+        self.g_aabb[wi, gi, 0] = 0.0
+        self.g_aabb[wi, gi, 1] = B[..., 3:6].abs()
+        self.g_rb[wi, gi] = B[..., 3:6].norm(dim=-1)
+        gxp, gxm = wp.to_torch(self.dd.geom_xpos), wp.to_torch(self.dd.geom_xmat)   # world-body geoms are not re-posed by kinematics: write the pose
+        gxp[wi, gi] = B[..., 0:3]
+        gxm[wi, gi] = quat_to_mat(B[..., 6:10].reshape(-1, 4)).reshape(len(ids), self.ext_phys, 3, 3).to(gxm.dtype).reshape(gxm[wi, gi].shape)
+        self.arm_t[ids] = 0.0
+
+    def _ext_pick(self, ids):
+        """Route robots among ids: a route of (ext_type, ext_level); returns start x, y, yaw."""
+        k = len(ids)
+        match = (self.r_type[None] == self.ext_type[ids, None]) & (self.r_level[None] == self.ext_level[ids, None])
+        w = match.float() + 1e-9 * (self.r_type[None] == self.ext_type[ids, None]).float()
+        rid = torch.multinomial(w, 1, generator=self.gen).squeeze(-1)
+        self.route[ids] = rid
+        self.wpi[ids] = 0
+        self.hold_t[ids] = 0.0
+        self.ext_vmax[ids] = self._u(k, lo=0.4, hi=1.0)
+        st = self.r_start[rid]
+        x = st[:, 0] + self._u(k) * 0.05
+        y = st[:, 1] + self._u(k) * 0.05
+        yaw = st[:, 2] + self._u(k) * math.radians(10.0)
+        return x, y, yaw
+
+    def _ext_cmd(self):
+        """The harness's command law towards the current waypoint (heading frame)."""
+        m = self.ext
+        if not bool(m.any()):
+            return
+        s = self.s
+        tgt = self.r_wp[self.route, self.wpi]
+        vec = tgt - s["p"][:, :2]
+        dist = vec.norm(dim=-1)
+        err = wrap(torch.atan2(vec[:, 1], vec[:, 0]) - s["yaw"])
+        wz = (1.5 * err).clamp(-1.0, 1.0)
+        vx = torch.where(err.abs() > math.radians(60.0), torch.zeros_like(dist), dist.clamp(0.15, None).minimum(self.ext_vmax) * torch.cos(err))
+        last = self.wpi >= self.r_n[self.route] - 1
+        hold = last & (dist < self.ext_hold_r)
+        vy = torch.zeros_like(vx)
+        tight = (self.r_segclr[self.route, self.wpi] < 0.39) & (self.ext_phys > 0)                # sidestep (user rule 2026-11-12): shoulders across the path, walk sideways
+        if bool((m & tight).any()):
+            prev = torch.where((self.wpi > 0)[:, None], self.r_wp[self.route, (self.wpi - 1).clamp(min=0)], self.r_start[self.route, :2])
+            seg = tgt - prev
+            sh = torch.atan2(seg[:, 1], seg[:, 0])
+            e1, e2 = wrap(sh + math.pi / 2 - s["yaw"]), wrap(sh - math.pi / 2 - s["yaw"])
+            eh = torch.where(e1.abs() < e2.abs(), e1, e2)
+            spd = dist.clamp(0.15, None).minimum(self.ext_vmax).clamp(max=0.3)
+            cy_, sy_ = torch.cos(s["yaw"]), torch.sin(s["yaw"])
+            u = vec / dist.clamp(min=1e-6)[:, None]
+            bx, by = cy_ * u[:, 0] + sy_ * u[:, 1], -sy_ * u[:, 0] + cy_ * u[:, 1]
+            go = eh.abs() < math.radians(30.0)
+            vx_t = torch.where(go, (spd * bx).clamp(-0.3, 0.3), torch.zeros_like(vx))
+            vy_t = torch.where(go, (spd * by).clamp(-0.3, 0.3), torch.zeros_like(vx))
+            wz_t = (1.5 * eh).clamp(-1.0, 1.0)
+            vx, vy, wz = torch.where(tight, vx_t, vx), torch.where(tight, vy_t, vy), torch.where(tight, wz_t, wz)
+        c = torch.stack((torch.where(hold, torch.zeros_like(vx), vx), torch.where(hold, torch.zeros_like(vy), vy), torch.where(hold, torch.zeros_like(wz), wz)), -1)
+        self.cmd = torch.where(m[:, None], c, self.cmd)
+
+    def _ext_advance(self):
+        m = self.ext
+        if not bool(m.any()):
+            return
+        tgt = self.r_wp[self.route, self.wpi]
+        dist = (tgt - self.s["p"][:, :2]).norm(dim=-1)
+        last = self.wpi >= self.r_n[self.route] - 1
+        adv = m & ~last & (dist < 0.25)
+        self.wpi = self.wpi + adv.long()
+        inside = m & last & (dist < self.ext_hold_r)
+        self.hold_t = torch.where(inside, self.hold_t + X.CONTROL_DT, torch.zeros_like(self.hold_t))
+
+    def ext_stats(self):
+        if not self.ext_on or not bool(self.ext.any()):
+            return {}
+        out = {}
+        for t in range(self.ext_ntypes):
+            mt = self.ext & (self.ext_type == t)
+            if bool(mt.any()):
+                out[self.raster["ext"]["types"][t]] = dict(n=int(mt.sum()), level=round(float(self.ext_level[mt].float().mean()), 2))
+        out["done"] = {k_[4:]: float(v_) for k_, v_ in self.cnt.items() if k_.startswith("ext_")}
+        return out
+
+    def _edge_stop(self, done_ids):
+        """Deviation (2026-11-12, ACP's fix for the apparatus' last station): in a share of tile episodes, the first time the
+        ground 0.45 m ahead (along the robot's heading) is 0.15 m or more below the ground under it, the command is set to zero
+        for 2 s (the robot must stop and stand at a down edge), then the episode's speed comes back."""
+        if len(done_ids):
+            self.es_armed[done_ids] = (self._u(len(done_ids), lo=0.0, hi=1.0) < self.edge_stop_p) & ~self.free[done_ids]
+            self.es_timer[done_ids] = 0
+        act = self.es_timer > 0
+        if bool(act.any()):
+            self.es_timer[act] = self.es_timer[act] - 1
+            end = act & (self.es_timer == 0)
+            if bool(end.any()):
+                self.speed[end] = self.es_speed[end]
+                self.cnt["es_done"] = self.cnt.get("es_done", 0) + int(end.sum())
+        cand = self.es_armed & (self.es_timer == 0) & ~self.free & (self.speed > EPS_CMD)
+        if bool(cand.any()):
+            p, yaw = self.s["p"], self.s["yaw"]
+            here = self.hmap(p[:, 0], p[:, 1])
+            ahead = self.hmap(p[:, 0] + 0.45 * torch.cos(yaw), p[:, 1] + 0.45 * torch.sin(yaw))
+            hit = cand & ((here - ahead) >= 0.15)
+            if bool(hit.any()):
+                self.es_speed[hit] = self.speed[hit]
+                self.speed[hit] = 0.0
+                self.es_timer[hit] = int(round(2.0 / X.CONTROL_DT))
+                self.es_armed[hit] = False
+                self.cnt["es_start"] = self.cnt.get("es_start", 0) + int(hit.sum())
+
+    def _rel_scale(self, c, c_ref, c_min):
+        """Relative-error kernel (deviation, --rel_kernel): width x (max(|c|, c_min) / c_ref)^2, capped at 1, so small commands are tracked as tightly in relative terms."""
+        if not self.rel_kernel:
+            return torch.ones_like(c)
+        return ((torch.maximum(c, torch.as_tensor(c_min, device=c.device, dtype=c.dtype)) / c_ref) ** 2).clamp(max=1.0)   # c_min may be a tensor: the floor rises with the other command component (fast walking keeps the full yaw kernel and vice versa)
+
+    def _swing_height(self, contact):
+        if self.swing_h_w <= 0:
+            return torch.zeros(self.N, device=self.dev)
+        _, _, sole = self._foot_state()
+        h = sole[..., 2] - self.hmap(sole[..., 0], sole[..., 1])
+        vxy = self.vf[..., :2].norm(dim=-1)
+        return ((h / self.swing_h_target).clamp(0.0, 1.0) * vxy.clamp(max=1.0) * (~contact).float()).sum(-1)
 
     def _rewards(self, s, contact, foot_mu, foot_sig):
         N21f = float(N21)
@@ -675,8 +970,8 @@ class SSREnv:
         dy = (fb[:, 1, 1] - fb[:, 0, 1]).abs()
         da = self.a - self.a1
         terms = dict(  # Table 6, name -> weighted value
-            lin_vel=(1.0 + 2.0 * self.boot) * torch.exp(-((v[:, :2] - cmd[:, :2]) ** 2).sum(-1) / self.sig_v),
-            ang_vel=0.8 * torch.exp(-(w[:, 2] - cmd[:, 2]) ** 2 / SIG_W),
+            lin_vel=(1.0 + 2.0 * self.boot) * torch.exp(-((v[:, :2] - cmd[:, :2]) ** 2).sum(-1) / (self.sig_v * self._rel_scale(cmd[:, :2].norm(dim=-1), 0.6, (0.6 * cmd[:, 2].abs() / 0.8).clamp(min=0.3)))),
+            ang_vel=0.8 * torch.exp(-(w[:, 2] - cmd[:, 2]) ** 2 / (SIG_W * self._rel_scale(cmd[:, 2].abs(), 0.8, (0.8 * cmd[:, :2].norm(dim=-1) / 0.6).clamp(min=0.4)))),
             orientation=0.5 * torch.exp(-(s["g"][:, :2] ** 2).sum(-1) / SIG_G),   # squared norm: with the plain norm and 0.01 this term is ~0 at any real tilt
             ang_vel_xy=0.25 * torch.exp(-(w[:, :2] ** 2).sum(-1) / SIG_W),
             base_height=0.4 * torch.exp(-(s["p"][:, 2] - ground - H_TARGET) ** 2 / SIG_H),
@@ -684,7 +979,7 @@ class SSREnv:
             smoothness=-0.06 * ((self.a - 2 * self.a1 + self.a2) ** 2).sum(-1) / N21f,
             dof_vel=-0.96 * (qd ** 2).sum(-1) / N21f,
             dof_torque=-0.6 * (tau ** 2).sum(-1) / N21f,
-            dof_dev=-1.8 * (1.0 - 0.75 * self.boot) * q_rel.abs().sum(-1) / N21f,
+            dof_dev=-1.8 * (1.0 - 0.75 * self.boot) * (q_rel if self.q_dev_ref is None else s["q"] - self.q_dev_ref).abs().sum(-1) / N21f,
             dof_pos_lim=-1.5 * ((s["q"] < self.q_lo) | (s["q"] > self.q_hi)).float().sum(-1) / N21f,
             dof_vel_lim=-6.0 * (qd.abs() > 1.0).float().sum(-1) / N21f,
             dof_tau_lim=-6.0 * (tau.abs() >= 1.0).float().sum(-1) / N21f,
@@ -697,8 +992,19 @@ class SSREnv:
             lateral=0.08 * torch.exp((dy - D_Y_MIN).clamp(max=0.0) / SIG_D),
             air_bonus=self.air_bonus * (self.air.clamp(max=T_AIR) * first.float()).sum(-1) * (~still).float(),   # early training only: gets stepping started
             imitate=self._imitation(q_rel),
+            wall_body=-2.0 * (self.wall_f[:, 2] > 1.0).float() * (1.0 + self.wall_f[:, 2] / 100.0).clamp(max=5.0),
+            wall_arm=-0.5 * ((self.wall_f[:, 1] > 40.0) | (self.arm_t > 0.5)).float(),
+            side_graze=-self.side_soft * (1.0 - (self.ext & (self.ext_phys > 0)).float()) * (self._touches_obstacle(0.06, log=False).float() if (self.side_soft > 0 and self.obst is not None) else torch.zeros(self.N, device=self.dev)),   # deviation (2026-11-12)
+            swing_h=self.swing_h_w * self._swing_height(contact) * (~still).float(),   # deviation (2026-11-12): pays foot height (capped) x foot speed in swing
             feet_air=self.feet_air_w * ((self.air.clamp(max=T_AIR) - self.feet_air_min).clamp(min=0.0) * first.float()).sum(-1) * (~still).float(),
         )
+        if self.back_scale < 1.0:                                    # v14 (user 2026-11-12): "give less reward to go backward than forward or in-place turns"
+            terms["lin_vel"] = terms["lin_vel"] * torch.where(v[:, 0] < -0.05, torch.full_like(v[:, 0], self.back_scale), torch.ones_like(v[:, 0]))
+        if self.creep_w > 0.0:                                       # v14: commands of 0.10-0.35 m/s pay for the share made good (standing earns 0.8 of lin_vel there)
+            _c = cmd[:, :2]; _cn = _c.norm(dim=-1)
+            terms["creep"] = self.creep_w * ((v[:, :2] * _c).sum(-1) / _cn.clamp(min=1e-3) ** 2).clamp(0.0, 1.0) * ((_cn >= 0.10) & (_cn <= 0.35)).float()
+        if self.drift_w > 0.0:                                       # v14: planar drift under a stand or turn-in-place command
+            terms["drift"] = -self.drift_w * v[:, :2].norm(dim=-1) * (cmd[:, :2].norm(dim=-1) <= EPS_CMD).float()
         self.v_ema += 0.04 * (v[:, :2] - self.v_ema)
         cn = cmd[:, :2].norm(dim=-1)
         mov = cn > EPS_CMD
@@ -751,7 +1057,14 @@ class SSREnv:
             self.log["stuck"] = self.log.get("stuck", 0) + int(stuck.sum())
         causes = dict(tilt=tilt, low=low, link_force=hit, clearance=scrape, diverged=self.bad)
         if self.obst is not None:
-            causes["side_obstacle"] = self._touches_obstacle()
+            so = self._touches_obstacle(0.0 if self.side_soft > 0 else 0.06)
+            if self.ext_phys:                                          # route robots with physical walls: base inside a wall cell, or a hard hit
+                bi = torch.round((base[:, 0] - self.hmap.x0) / self.hmap.res).long().clamp(0, self.hmap.nx - 1)
+                bj = torch.round((base[:, 1] - self.hmap.y0) / self.hmap.res).long().clamp(0, self.hmap.ny - 1)
+                wall_hit = self.ext & (self.wall_f[:, 2] > 400.0)
+                causes["wall_hit"] = wall_hit
+                so = torch.where(self.ext, self.obst[bi, bj] | wall_hit, so)
+            causes["side_obstacle"] = so
             term = term | causes["side_obstacle"]
         if self.tiles:
             xrel = base[:, 0] - self.origin[:, 0]
@@ -761,10 +1074,24 @@ class SSREnv:
             fwd = self.speed >= 0
             end = ((xrel > T.TILE_X) & fwd) | ((xrel < 0) & ~fwd)
             back = ((xrel < 0) & fwd) | ((xrel > T.TILE_X) & ~fwd)
+            if self.ext_on:
+                tile_ctr = self.t_centre[self.r_tile[self.route]]
+                off = (base[:, :2] - tile_ctr).abs().amax(-1) > 3.95
+                ext_succ = self.ext & (self.hold_t >= 1.0)
+                term = term & ~(self.ext & ~(tilt | low | hit | scrape | self.bad | causes.get("side_obstacle", torch.zeros_like(tilt))))  # route robots: only their own failures
+                term = term | (self.ext & off)
+                out_y, end, back = out_y & ~self.ext, end & ~self.ext, back & ~self.ext
             free_out = self.free & (out_y | end | back)
             success = end & ~self.free
             over = self.ep >= int(EPISODE_S / X.CONTROL_DT)
             term = term | (back & ~self.free)
+            if self.ext_on:
+                success = success | ext_succ
+                for t_ in range(self.ext_ntypes):
+                    mt = self.ext & (self.ext_type == t_)
+                    nm = self.raster["ext"]["types"][t_]
+                    self.cnt[f"ext_{nm}_succ"] = self.cnt.get(f"ext_{nm}_succ", 0) + int((ext_succ & mt).sum())
+                    self.cnt[f"ext_{nm}_fail"] = self.cnt.get(f"ext_{nm}_fail", 0) + int(((term | (over & ~ext_succ)) & mt).sum())
             causes.update(left_tile_side=out_y & ~self.free, left_tile_back=back & ~self.free, stuck=term & ~term if not self.stuck_term else stuck,
                           reached_end=success, omni_left_tile=free_out, time_limit=over & ~success & ~free_out)
             causes["any"] = term | success | free_out | over
@@ -776,7 +1103,16 @@ class SSREnv:
     def curriculum(self, ids, success):
         if len(ids) == 0 or not self.train or not self.tiles or self.flat_only:
             return
-        walk = ~self.free[ids]
+        if self.ext_on:
+            eid = ids[self.ext[ids]]
+            if len(eid):
+                up = success[eid]
+                prog = self.wpi[eid].float() / (self.r_n[self.route[eid]] - 1).clamp(min=1).float()
+                down = ~up & (prog < 0.5)
+                lv = self.ext_level[eid] + up.long() - down.long()
+                lv = torch.where(lv >= 10, torch.randint(0, 10, lv.shape, device=self.dev, generator=self.gen), lv).clamp(min=0)
+                self.ext_level[eid] = lv
+        walk = ~self.free[ids] & ~self.ext[ids]
         wid = ids[walk]
         if len(wid) == 0:
             return

@@ -45,9 +45,17 @@ def wilson(k, n, z=1.96):
 def main():
     ckpt, out = sys.argv[1], sys.argv[2]
     per = int(sys.argv[3]) if len(sys.argv) > 3 else 334
-    dev = torch.device("cuda")
+    dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if dev.type == "cpu":                       # CPU run (rollout dumps for planner labels without the training GPU)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from handover import cpu_physics
+        import acp.env as _E
+        _E.AcpEnv._physics = cpu_physics
     ck = torch.load(ckpt, map_location=dev)
-    cfg = ck["data"]
+    if ck.get("x2_exclude_pairs") is not None:      # evaluate on the body the checkpoint was trained on
+        os.environ["X2_EXCLUDE_PAIRS"] = ck["x2_exclude_pairs"]
+    print("[model] X2_EXCLUDE_PAIRS=" + os.environ.get("X2_EXCLUDE_PAIRS", ""), flush=True)
+    cfg = os.environ.get("ACP_EVAL_DATA") or ck["data"]      # ACP_EVAL_DATA: score on another data set (old-set numbers beside 2e)
     data = Dataset(cfg, dev, cache=os.path.join(os.path.dirname(cfg), "labels_" + os.path.basename(cfg) + ".pt"))
     m = data.motion
     nset = len(data.set_names)
@@ -128,6 +136,11 @@ def main():
                 if not bool(alive.any()):
                     break
         succ = ~failed & (final_d < 0.5)
+        try:      # small per-episode record (all seeds) for the per-clip failure analysis; never costs the evaluation
+            torch.save(dict(clip=clip.cpu(), success=succ.cpu(), failed=failed.cpu(), set_id=set_id.cpu(), set_names=data.set_names,
+                            iteration=ck["it"], seed=seed), out.replace(".json", f"_episodes_seed{seed}.pt"))
+        except Exception as e:
+            print("episode record failed:", repr(e))
         if dump is not None:
             try:
                 torch.save(dict({k: torch.stack(v).cpu() for k, v in dump.items()}, clip=clip.cpu(), success=succ.cpu(), set_id=set_id.cpu(),
@@ -160,7 +173,8 @@ def main():
                           contact_placement_error_ci95=[round(float(pl.mean()) - 1.96 * se, 4), round(float(pl.mean()) + 1.96 * se, 4)])
         tot_n += r_["n"]; tot_s += r_["succ"]; allp += r_["place"]
     allp_t = torch.tensor(allp) if allp else torch.zeros(1)
-    report = dict(checkpoint=ckpt, iteration=ck["it"], stage=ck.get("stage", 1), simulator="MuJoCo Warp", robot="AgiBot X2 Ultra",
+    report = dict(checkpoint=ckpt, iteration=ck["it"], stage=ck.get("stage", 1), data=cfg, x2_exclude_pairs=os.environ.get("X2_EXCLUDE_PAIRS", ""),
+                  trained_model="x2_ultra_hipexclude.xml" if "hip" in os.environ.get("X2_EXCLUDE_PAIRS", "").split(",") else "x2_ultra.xml", simulator="MuJoCo Warp", robot="AgiBot X2 Ultra",
                   protocol="paper Results 0.3: reference-anchored terrains, noise / randomisation / delay off, deterministic actions, "
                            "3 seeds, success = within 0.5 m of the goal (reference root at the segment end) and not ended early",
                   category_dense_foot_only=dict(episodes=tot_n, success_pooled=round(tot_s / tot_n, 4), success_wilson95=wilson(tot_s, tot_n),

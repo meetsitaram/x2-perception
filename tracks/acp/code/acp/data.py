@@ -45,6 +45,13 @@ def load_sets(cfg_path: str):
         sh = np.array(list(s.get("shift", [0.0, 0.0])) + [0.0])
         dropped = 0
         for name, c in data.items():
+            # style filter (data set 2e, 2026-11-12): drop clips whose name contains one of the words (case-insensitive)
+            if s.get("exclude_name") and any(w in name.lower() for w in s["exclude_name"]):
+                dropped += 1
+                continue
+            if name in s.get("exclude_clips", ()):
+                dropped += 1
+                continue
             # clip-quality filters (cfg, per set): a leg solved on the flipped branch (|hip yaw| > 2 rad; MJCF joints 2 and 8),
             # or a single step higher than exclude_step_over metres in the clip's props (floor -> box or box -> box)
             if s.get("exclude_leg_flip") and float(np.abs(np.asarray(c["dof"])[:, [2, 8]]).max()) > 2.0:
@@ -63,6 +70,9 @@ def load_sets(cfg_path: str):
             for i in range(k):
                 a, b = edges[i], edges[i + 1] + 1
                 nm = f"s{si}/{name}" + (f"#{i}" if k > 1 else "")
+                if nm in s.get("exclude_clips", ()):          # data set 2f: single segments, by their loader name
+                    dropped += 1
+                    continue
                 clips[nm] = dict(root_trans_offset=np.asarray(c["root_trans_offset"])[a:b] + sh,
                                  root_rot=np.asarray(c["root_rot"])[a:b], dof=np.asarray(c["dof"])[a:b], fps=fps)
                 if name in pr:
@@ -103,6 +113,7 @@ class Dataset:
         self.clip_set = sid
         self.set_names = [s["pkl"].replace(".pkl", "") for s in cfg["sets"]]
         self.grounded = self._ground([si for si, s in enumerate(cfg["sets"]) if s.get("ground_stance")])
+        self.armfix = self._armfix(cfg, os.path.dirname(os.path.abspath(cfg_path)))
         if cache and os.path.exists(cache):
             lab = torch.load(cache, map_location=dev)
             assert lab["contact"].shape[0] == m.num_frames, "label cache does not match the clip sets"
@@ -121,6 +132,28 @@ class Dataset:
         P, Rb, V, W = P[..., i, :], Rb[..., i, :, :], V[..., i, :], W[..., i, :]
         off = mv3(Rb, self.point)
         return P + off, V + torch.cross(W, off, dim=-1), Rb, P
+
+    def _armfix(self, cfg, cfg_dir):
+        """Arm clearance data fix (cfg key "armfix": file from tools/arm_clear.py): per-frame offsets of shoulder roll and
+        elbow so each arm clears its thigh and the torso by >= 1 cm with the training collision geometry; joint velocities
+        follow by central differences within each clip. ACP_NO_ARMFIX=1 skips it (used by arm_clear.py itself)."""
+        if not cfg.get("armfix") or os.environ.get("ACP_NO_ARMFIX"):
+            return None
+        fx = torch.load(os.path.join(cfg_dir, cfg["armfix"]), map_location="cpu")
+        m = self.motion
+        assert fx["num_frames"] == m.num_frames and list(fx["names"]) == list(m.names), "armfix file does not match the clip sets"
+        cols = [self.x2.joint_names.index(n) for n in fx["joints"]]
+        dq = fx["dq"].to(self.device, m.q.dtype)
+        m.q[:, cols] += dq
+        vel = torch.zeros_like(dq)
+        vel[1:-1] = (dq[2:] - dq[:-2]) / (2 * 0.02)
+        s, e = m.clip_start, m.clip_end
+        vel[s] = (dq[torch.minimum(s + 1, e)] - dq[s]) / 0.02
+        vel[e] = (dq[e] - dq[torch.maximum(e - 1, s)]) / 0.02
+        m.qd[:, cols] += vel
+        print(f"[data] armfix: {cfg['armfix']} applied ({int((dq.abs().amax(-1) > 1e-4).sum())} of {m.num_frames} frames changed, "
+              f"largest {float(dq.abs().max()):.2f} rad)", flush=True)
+        return cfg["armfix"]
 
     def _ground(self, sets):
         """Data-build fix for clips whose stance soles sit inside their terrain (cfg flag "ground_stance" per set): if the

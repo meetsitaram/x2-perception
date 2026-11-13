@@ -66,3 +66,14 @@ gym.register(
         "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_amp_cfg:X2ParkourPPORunnerCfg",
     },
 )
+
+# Run 4's task plus the extended terrain set (2026-11-12); continuation of v4g's policy.
+gym.register(
+    id="Instinct-Parkour-ExtendedFixed-Amp-X2-v0",
+    entry_point="instinctlab.envs:InstinctRlEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{task_entry}.extended:X2ParkourExtendedFixedEnvCfg",
+        "instinct_rl_cfg_entry_point": f"{agents.__name__}.instinct_rl_amp_cfg:X2ParkourPPORunnerCfg",
+    },
+)

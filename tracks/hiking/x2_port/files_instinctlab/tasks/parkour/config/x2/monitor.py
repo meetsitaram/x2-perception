@@ -11,6 +11,8 @@ Registered as a curriculum term because curriculum terms are the one manager who
   double_support       share of moving-commanded robots with both feet in contact (> 1 N vertical)
   no_support           share with neither foot in contact
   step_rate_hz         touchdowns per robot per second (both feet together), moving-commanded robots
+  air_per_touchdown_s  measured: mean air time of the swing that ended, over the touchdowns at this step (moving-commanded)
+  touchdown_air_ge_0p2 share of those touchdowns whose swing lasted at least 0.2 s
   level/<terrain type> mean terrain row (0-9) of the robots on that terrain type
 Any error here is swallowed (printed once): logging must never stop training.
 """
@@ -48,7 +50,11 @@ def walk_monitor(env, env_ids, command_name: str = "base_velocity", sensor_name:
         contact = sensor.data.net_forces_w[:, _state["feet"], 2] > 1.0
         both = contact.all(dim=1) & moving
         none = (~contact).all(dim=1) & moving
-        touchdown = sensor.compute_first_contact(env.step_dt)[:, _state["feet"]].float().sum(dim=1)
+        first = sensor.compute_first_contact(env.step_dt)[:, _state["feet"]].float()
+        touchdown = first.sum(dim=1)
+        last_air = sensor.data.last_air_time[:, _state["feet"]]
+        td = first * moving.unsqueeze(1).float()
+        n_td = td.sum()
         out = {
             "cmd_speed": cmd_speed.item(),
             "actual_speed": actual.item(),
@@ -57,6 +63,8 @@ def walk_monitor(env, env_ids, command_name: str = "base_velocity", sensor_name:
             "double_support": (both.sum() / n).item(),
             "no_support": (none.sum() / n).item(),
             "step_rate_hz": ((touchdown * moving).sum() / n / env.step_dt).item(),
+            "air_per_touchdown_s": ((last_air * td).sum() / n_td).item() if n_td > 0 else float("nan"),
+            "touchdown_air_ge_0p2": (((last_air >= 0.2).float() * td).sum() / n_td).item() if n_td > 0 else float("nan"),
         }
         terrain = env.scene.terrain
         types = _state["col_type"][terrain.terrain_types]

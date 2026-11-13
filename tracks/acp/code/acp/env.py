@@ -356,6 +356,8 @@ class AcpEnv:
             pm = pocc > 0.5
             self.plan_w, self.plan_m = p.unsqueeze(1) + mv3(H.unsqueeze(1), ptgt), pm
             use = torch.rand(self.N, device=self.dev, generator=self.gen) < self.eta_obs
+            if getattr(self, "probe", None) is not None:              # probe envs: planner contacts always (2026-11-12)
+                use = use | self.probe
             tgt = torch.where(use[:, None, None], ptgt, tgt)       # the complete command is switched, not interpolated
             cmd_w, cmd_ok = torch.where(use[:, None, None], self.plan_w, ref_w), torch.where(use[:, None], pm, occ)
             both = pm & occ

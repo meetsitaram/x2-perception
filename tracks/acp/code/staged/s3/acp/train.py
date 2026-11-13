@@ -83,6 +83,7 @@ def main():
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ckpt-every", type=int, default=250)
+    ap.add_argument("--latest-minutes", type=float, default=20.0, help="also write latest.pt when this many minutes passed since the last save (backup rule: at least every 30 min); 0 = off")
     ap.add_argument("--log-every", type=int, default=10)
     ap.add_argument("--njmax", type=int, default=300)
     ap.add_argument("--nconmax", type=int, default=64)
@@ -184,6 +185,7 @@ def main():
     metf = open(os.path.join(args.run, "metrics.jsonl"), "a")     # one row per iteration: every paper term, raw and weighted
     cnt, gpu = {}, {}
     t_it = time.time()
+    t_saved = time.time()
     for it in range(it0, args.iters):
         it_acc = {}
         if args.stage >= 2:                                       # Eq. 3: linear schedules, the reward one starts later
@@ -407,18 +409,23 @@ def main():
             ep = dict(done=0.0, term=0.0, fin=0.0, bad=0.0)
             set_done.zero_(); set_fin.zero_()
             t_log, steps_log = time.time(), 0
-        if n % args.ckpt_every == 0 or n == args.iters:
+        save_num = n % args.ckpt_every == 0 or n == args.iters
+        save_latest = save_num or (args.latest_minutes > 0 and time.time() - t_saved >= 60.0 * args.latest_minutes)
+        if save_latest:
             ck = dict(model=ac.state_dict(), opt=opt.state_dict(), lr=lr, it=n, phase=env.phase.clone(), actor_dim=env.actor_dim,
                       critic_dim=env.critic_dim, act_dim=A, data=args.data, joint_names=env.x2.joint_names, stage=args.stage,
                       planner=pl.state_dict() if pl is not None else None, popt=popt.state_dict() if popt is not None else None,
-                      planner_arch=args.planner_arch if pl is not None else None, s2_start=s2_start,
+                      planner_arch=args.planner_arch if pl is not None else None, s2_start=s2_start, x2_exclude_pairs=os.environ.get("X2_EXCLUDE_PAIRS", ""),
                       vfs=vfs.state_dict() if vfs is not None else None, vfs_norm=vfs_n.state_dict() if vfs_n is not None else None,
                       vopt=vopt.state_dict() if vopt is not None else None, s3_start=s3_start,
                       g_level=env.g_level.clone() if args.stage == 3 else None, g_ema=env.g_ema.clone() if args.stage == 3 else None,
                       goal_share=args.goal_share if args.stage == 3 else None)
-            path = os.path.join(args.run, f"ckpt_{n:06d}.pt")
-            torch.save(ck, path + ".tmp"); os.replace(path + ".tmp", path)
-            torch.save(ck, latest + ".tmp"); os.replace(latest + ".tmp", latest)
+            if save_num:
+                path = os.path.join(args.run, f"ckpt_{n:06d}.pt")
+                torch.save(ck, path + ".tmp"); os.replace(path + ".tmp", path)
+            torch.save(ck, latest + ".tmp"); os.replace(latest + ".tmp", latest); t_saved = time.time()
+            if not save_num:
+                print(f"[save] latest.pt at iteration {n} (time-based, every {args.latest_minutes} min)", flush=True)
     heartbeat(args.heartbeat, state="finished", stage=args.stage, run=os.path.abspath(args.run), iteration=args.iters, iterations=args.iters,
               newest_checkpoint=os.path.abspath(os.path.join(args.run, f"ckpt_{args.iters:06d}.pt")))
 

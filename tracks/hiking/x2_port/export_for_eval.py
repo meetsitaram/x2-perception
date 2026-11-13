@@ -371,6 +371,10 @@ card = dict(
         "the robot's own body in the depth image against Isaac (not visible in the recorded poses of run 1)",
         "which action delay (0, 1 or 2 physics steps) a given robot has; the first control step after a reset is not reproduced exactly in MuJoCo"],
 )
+if "Fixed" in str(TASK) or "Extended" in str(TASK):  # run 4 and later: pelvis / hip-roll (and same-side wrist / hip) pairs filtered in Isaac
+    card["trained_model"] = ("data/robots/x2/mjcf/x2_ultra_hipexclude.xml (pelvis / hip-roll pairs excluded). Isaac Lab, training URDF convex "
+                             "hulls, self-collision on, 25 filtered pairs: pelvis-hip_roll both sides, same-side wrist_yaw/pitch/roll vs "
+                             "hip_pitch/roll/yaw, knee-ankle_roll, wrist_yaw-wrist_roll, torso-head_pitch")
 json.dump(card, open(os.path.join(OUT, "adapter_card.json"), "w"), indent=1)
 print("observation %d = %d proprio + %d x %d x %d depth; camera on %s, %.1f deg down, %.2f x %.2f deg; gains: %s" % (
     TOTAL, PROPRIO, FRAMES, ROWS, COLS, CAM_BODY, pitch_down, fov[0], fov[1], gains_source))

@@ -45,6 +45,13 @@ def load_sets(cfg_path: str):
         sh = np.array(list(s.get("shift", [0.0, 0.0])) + [0.0])
         dropped = 0
         for name, c in data.items():
+            # style filter (data set 2e, 2026-11-12): drop clips whose name contains one of the words (case-insensitive)
+            if s.get("exclude_name") and any(w in name.lower() for w in s["exclude_name"]):
+                dropped += 1
+                continue
+            if name in s.get("exclude_clips", ()):
+                dropped += 1
+                continue
             # clip-quality filters (cfg, per set): a leg solved on the flipped branch (|hip yaw| > 2 rad; MJCF joints 2 and 8),
             # or a single step higher than exclude_step_over metres in the clip's props (floor -> box or box -> box)
             if s.get("exclude_leg_flip") and float(np.abs(np.asarray(c["dof"])[:, [2, 8]]).max()) > 2.0:
@@ -63,6 +70,9 @@ def load_sets(cfg_path: str):
             for i in range(k):
                 a, b = edges[i], edges[i + 1] + 1
                 nm = f"s{si}/{name}" + (f"#{i}" if k > 1 else "")
+                if nm in s.get("exclude_clips", ()):          # data set 2f: single segments, by their loader name
+                    dropped += 1
+                    continue
                 clips[nm] = dict(root_trans_offset=np.asarray(c["root_trans_offset"])[a:b] + sh,
                                  root_rot=np.asarray(c["root_rot"])[a:b], dof=np.asarray(c["dof"])[a:b], fps=fps)
                 if name in pr:

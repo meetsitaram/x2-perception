@@ -44,7 +44,8 @@ def main():
     json.dump(meta, open(os.path.join(out, "meta.json"), "w"))
     # one robot on a stair-climb clip, 50 steps from the clip start
     m = data.motion
-    si = data.set_names.index("gst_v1")
+    # the stair-climb set by prefix (its name carries the data-build suffix: gst_v1, gst_v1_hs, ...); first set as a fallback
+    si = next((i for i, nm in enumerate(data.set_names) if nm.startswith("gst_v1")), 0)
     clip = int((data.clip_set == si).nonzero()[0])
     saved = data.clip_w
     data.clip_w = torch.zeros_like(saved); data.clip_w[clip] = 1.0

@@ -72,6 +72,7 @@ class X2:
     q_lo: np.ndarray
     q_hi: np.ndarray
     qd_max: np.ndarray
+    default_q_plant: np.ndarray = None     # the plant's default pose (differs from default_q under X2_DEFAULT_FROM_REF)
 
 
 def _terrain_guards(spec):
@@ -142,12 +143,30 @@ def build(hfield: dict | None = None, walls: list | None = None, foot_boxes: boo
         res, base = hfield["res"], hfield.get("base", 0.1)
         zmin, zmax = float(z.min()), float(z.max())
         top = max(zmax - zmin, 1e-3)
-        hf = spec.add_hfield(name="terrain", nrow=ny, ncol=nx, size=[(nx - 1) * res / 2, (ny - 1) * res / 2, top, base])
-        hf.userdata = ((z - zmin) / top).T.astype(np.float32).ravel().tolist()
-        g = spec.worldbody.add_geom(name="terrain", type=mujoco.mjtGeom.mjGEOM_HFIELD, hfieldname="terrain",
-                                    pos=[hfield["x0"] + (nx - 1) * res / 2, hfield["y0"] + (ny - 1) * res / 2, zmin],
-                                    rgba=[0.55, 0.5, 0.45, 1.0])
-        g.contype, g.conaffinity = 0, TERRAIN_BIT
+        import os as _os2
+        CH = int(_os2.environ.get("X2_HF_CHUNK", "400"))                 # 2026-11-12: >0 splits the raster into fields of <= CH x CH vertices
+        if CH <= 1:                                                     # (MuJoCo Warp mis-collides on one very large field; ACP finding)
+            hf = spec.add_hfield(name="terrain", nrow=ny, ncol=nx, size=[(nx - 1) * res / 2, (ny - 1) * res / 2, top, base])
+            hf.userdata = ((z - zmin) / top).T.astype(np.float32).ravel().tolist()
+            g = spec.worldbody.add_geom(name="terrain", type=mujoco.mjtGeom.mjGEOM_HFIELD, hfieldname="terrain",
+                                        pos=[hfield["x0"] + (nx - 1) * res / 2, hfield["y0"] + (ny - 1) * res / 2, zmin],
+                                        rgba=[0.55, 0.5, 0.45, 1.0])
+            g.contype, g.conaffinity = 0, TERRAIN_BIT
+        else:
+            for i0 in range(0, nx - 1, CH - 1):                           # chunks share their edge vertices
+                for j0 in range(0, ny - 1, CH - 1):
+                    sub = z[i0:min(i0 + CH, nx), j0:min(j0 + CH, ny)]
+                    sx, sy = sub.shape
+                    if sx < 2 or sy < 2:
+                        continue
+                    smin = float(sub.min()); stop = max(float(sub.max()) - smin, 1e-3)
+                    nm = f"terrain_{i0}_{j0}"
+                    hf = spec.add_hfield(name=nm, nrow=sy, ncol=sx, size=[(sx - 1) * res / 2, (sy - 1) * res / 2, stop, base])
+                    hf.userdata = ((sub - smin) / stop).T.astype(np.float32).ravel().tolist()
+                    g = spec.worldbody.add_geom(name=nm, type=mujoco.mjtGeom.mjGEOM_HFIELD, hfieldname=nm,
+                                                pos=[hfield["x0"] + (i0 + (sx - 1) / 2) * res, hfield["y0"] + (j0 + (sy - 1) / 2) * res, smin],
+                                                rgba=[0.55, 0.5, 0.45, 1.0])
+                    g.contype, g.conaffinity = 0, TERRAIN_BIT
         for geom in spec.geoms:                                         # the hfield is the floor
             if geom.type == mujoco.mjtGeom.mjGEOM_PLANE:
                 spec.delete(geom)
@@ -158,15 +177,28 @@ def build(hfield: dict | None = None, walls: list | None = None, foot_boxes: boo
         g.conaffinity = 1 | TERRAIN_BIT
     if foot_boxes:
         _terrain_guards(spec)
+    import os as _os
+    if _os.environ.get("X2_EXCL_PELVIS_HIPROLL") == "1":                   # deviation (step 1, 2026-11-12): hull overlap in reference poses
+        for _s in ("left", "right"):
+            spec.add_exclude(bodyname1="pelvis", bodyname2=f"{_s}_hip_roll_link")
     m = spec.compile()
     jid = [mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, n) for n in names]
     assert [int(m.jnt_qposadr[i]) for i in jid] == list(range(7, 38))
     rng = m.jnt_range[jid]
     limits = json.load(open(ROOT / "config/joint_velocity_limits.json"))     # URDF joint velocity limits
     qd_max = np.array([limits[n] for n in names])
+    dq_plant = np.array([plant.default_pos_for(n) for n in names])
+    dq = dq_plant.copy()
+    if _os.environ.get("X2_DEFAULT_FROM_REF") == "1":                     # deviation (step 2, 2026-11-12): default leg pose = reference mean
+        _ref = json.load(open(ROOT / "config/default_ref_v1.json"))["default_q"]
+        for _n, _v in _ref.items():
+            dq[names.index(_n)] = _v
+    asc = np.array([plant.action_scale_for(n) for n in names])
+    if _os.environ.get("X2_ACTION_SCALE_PAPER") == "1":                  # paper Table 14 (needs the user's agreement under the plant rule): 0.25 legs / waist, 0.2 arms
+        asc = np.array([0.2 if ("shoulder" in n or "elbow" in n or "wrist" in n) else 0.25 for n in names])
     return X2(m, names, np.array([names.index(n) for n in NAMES21]), kp, kd, eff,
-              np.array([plant.action_scale_for(n) for n in names]), np.array([plant.default_pos_for(n) for n in names]),
-              rng[:, 0].copy(), rng[:, 1].copy(), qd_max)
+              asc, dq,
+              rng[:, 0].copy(), rng[:, 1].copy(), qd_max, dq_plant)
 
 
 # ---- mirror (App. B.1), in the 21-joint order. Checked against the model's kinematics in tests/test_mirror.py.

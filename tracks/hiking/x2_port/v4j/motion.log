@@ -1,0 +1,2 @@
+{"v2_frames": 20001, "added_frames": 6065, "added_s": 121.3, "sideways_clips": 9, "sideways_s": 32.2, "stair_turn_clips": 12, "stair_classes": ["C (down)", "C (up)", "S (down)", "S (up)", "down then turn", "side approach then up"], "joint_limit_frames_added": 0, "pelvis_z_p5_50_95_v2": [0.652, 0.675, 0.946], "pelvis_z_p5_50_95_added": [0.66, 0.701, 0.953], "lateral_share_sideways_part": null, "max_planar_step_speed": 1.2866973876953125, "total_s": 521.32}
+lateral share of travel, sideways part as chained: 0.73

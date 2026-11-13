@@ -42,6 +42,7 @@ from .x2_parkour_target_amp_cfg import X2_SOLE_BELOW_ANKLE, X2ParkourTorsoCamEnv
 
 EXTENDED_DIR = os.environ.get("HIKING_EXTENDED_TERRAINS", "/mnt/filesystem-g4/data/terrains/extended_v1")
 _cache = {}
+_CALLS = {}  # tile_type -> [(tile index, spawn (x, y, z) in tile-centred coordinates)] in generator order (routes.py)
 
 
 def _load(tile_type: str, root: str):
@@ -94,6 +95,7 @@ def extended_tile_terrain(difficulty: float, cfg: "ExtendedTileTerrainCfg"):
     t[:3, 3] = (cfg.size[0] / 2, cfg.size[1] / 2, zmin - 0.25)
     meshes.append(trimesh.creation.box(extents=(cfg.size[0], cfg.size[1], 0.5 - 0.02), transform=t))
     spawn = max(tile["spawns"], key=lambda s: s.get("clearance_m", 0.0))
+    _CALLS.setdefault(cfg.tile_type, []).append((int(i), [float(spawn["x"]), float(spawn["y"]), float(spawn.get("z", 0.0))]))
     origin = np.array([spawn["x"] + shift[0], spawn["y"] + shift[1], spawn.get("z", 0.0)])
     return meshes, origin
 
@@ -174,38 +176,62 @@ def foot_clearance(env, contact_sensor_cfg: SceneEntityCfg, left_height_scanner_
     return torch.sum(swing.float() * low * speed, dim=1)
 
 
+def _apply_extended(self):
+    """The extended task's changes, applied after the base task's __post_init__ (so after run 4's options c / y replaced the
+    command class: the ranges below go into that command's config)."""
+    self.scene.terrain.terrain_generator = EXTENDED_TERRAINS_CFG
+    # commands: every new column needs a speed range (a column without one would never be told to move)
+    cmd = self.commands.base_velocity
+    for name in EXTENDED_COLUMNS:
+        cmd.velocity_ranges[name] = {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)}
+    cmd.velocity_ranges["perlin_rough_velocity"] = {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (0.0, 0.0)}
+    cmd.random_velocity_terrain = ["perlin_rough_stand", "perlin_rough_velocity"]
+    cmd.ranges.lin_vel_x = (-0.4, 0.8)
+    cmd.ranges.lin_vel_y = (-0.3, 0.3)
+    cmd.ranges.ang_vel_z = (-1.0, 1.0)
+    # rewards (body_names preserve_order so index 0 is the left foot, as the two height scanners are ordered)
+    feet = ["left_ankle_roll_link", "right_ankle_roll_link"]
+    self.rewards.rewards.feet_stumble = RewTerm(
+        func=feet_stumble,
+        weight=-2.0,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=feet, preserve_order=True),
+            "asset_cfg": SceneEntityCfg("robot", body_names=feet, preserve_order=True),
+        },
+    )
+    self.rewards.rewards.foot_clearance = RewTerm(
+        func=foot_clearance,
+        weight=-0.5,
+        params={
+            "contact_sensor_cfg": SceneEntityCfg("contact_forces", body_names=feet, preserve_order=True),
+            "left_height_scanner_cfg": SceneEntityCfg("left_height_scanner"),
+            "right_height_scanner_cfg": SceneEntityCfg("right_height_scanner"),
+            "asset_cfg": SceneEntityCfg("robot", body_names=feet, preserve_order=True),
+            "sole_offset": X2_SOLE_BELOW_ANKLE,
+        },
+    )
+
+
 @configclass
 class X2ParkourExtendedEnvCfg(X2ParkourTorsoCamEnvCfg):
+    """The 2026-11-11 version: extended terrains on the run-2 task (no run-4 fixes). Kept for reference; not trained."""
     def __post_init__(self):
         super().__post_init__()
-        self.scene.terrain.terrain_generator = EXTENDED_TERRAINS_CFG
-        # commands: every new column needs a speed range (a column without one would never be told to move)
-        cmd = self.commands.base_velocity
-        for name in EXTENDED_COLUMNS:
-            cmd.velocity_ranges[name] = {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)}
-        cmd.velocity_ranges["perlin_rough_velocity"] = {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (0.0, 0.0)}
-        cmd.random_velocity_terrain = ["perlin_rough_stand", "perlin_rough_velocity"]
-        cmd.ranges.lin_vel_x = (-0.4, 0.8)
-        cmd.ranges.lin_vel_y = (-0.3, 0.3)
-        cmd.ranges.ang_vel_z = (-1.0, 1.0)
-        # rewards (body_names preserve_order so index 0 is the left foot, as the two height scanners are ordered)
-        feet = ["left_ankle_roll_link", "right_ankle_roll_link"]
-        self.rewards.rewards.feet_stumble = RewTerm(
-            func=feet_stumble,
-            weight=-2.0,
-            params={
-                "sensor_cfg": SceneEntityCfg("contact_forces", body_names=feet, preserve_order=True),
-                "asset_cfg": SceneEntityCfg("robot", body_names=feet, preserve_order=True),
-            },
-        )
-        self.rewards.rewards.foot_clearance = RewTerm(
-            func=foot_clearance,
-            weight=-0.5,
-            params={
-                "contact_sensor_cfg": SceneEntityCfg("contact_forces", body_names=feet, preserve_order=True),
-                "left_height_scanner_cfg": SceneEntityCfg("left_height_scanner"),
-                "right_height_scanner_cfg": SceneEntityCfg("right_height_scanner"),
-                "asset_cfg": SceneEntityCfg("robot", body_names=feet, preserve_order=True),
-                "sole_offset": X2_SOLE_BELOW_ANKLE,
-            },
-        )
+        _apply_extended(self)
+
+
+from .fixed import X2ParkourFixedEnvCfg  # noqa: E402
+
+
+@configclass
+class X2ParkourExtendedFixedEnvCfg(X2ParkourFixedEnvCfg):
+    """2026-11-12 (user: the extended map goes into Hiking's training now): run 4's task (fixes, HIKING_X2_OPTS options, level
+    keeper, turn in place, overspeed, sliding) plus the extended terrain columns, velocity-mode columns, stumble and clearance
+    terms. Same observations and actions as run 4, so v4g's checkpoints continue on it."""
+    def __post_init__(self):
+        super().__post_init__()
+        _apply_extended(self)
+        from .staged import _opts
+        if "g" in _opts():  # v4j: wall / prop contact graded by body part, torso ends only when resting on something (contact.py)
+            from .contact import apply_v4j
+            apply_v4j(self)
