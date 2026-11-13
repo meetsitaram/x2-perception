@@ -1,0 +1,17 @@
+[data] x2_loco_flat_train_hold.pkl: 208 of 351 clips left out by the quality filters
+[data] x2_loco_blocks_train_hold.pkl: 208 of 351 clips left out by the quality filters
+[data] x2_chains_far_hs.pkl: 55 of 96 clips left out by the quality filters
+[data] gst_v1_hs.pkl: 27 of 113 clips left out by the quality filters
+[data] tp_t4x4u_y20_hs.pkl: 2 of 56 clips left out by the quality filters
+[data] pico_2026-10-29_2x2_train_hold.pkl: 1 of 10 clips left out by the quality filters
+{"kind": "slope", "v": 1.0, "x": 45.46, "y": 31.33, "warp_deep_mm": 187.5, "warp_t": 0.005, "warp_pull": -0.253, "c_deep_mm": 9.8, "c_t": 0.0, "c_pull": 0.01, "dist_to_field_border_m": [0.121]}
+{"kind": "slope", "v": 2.0, "x": 45.46, "y": 31.33, "warp_deep_mm": 187.5, "warp_t": 0.005, "warp_pull": -0.214, "c_deep_mm": 9.8, "c_t": 0.0, "c_pull": 0.022, "dist_to_field_border_m": [0.121]}
+{"kind": "slope", "v": 3.0, "x": 45.46, "y": 31.33, "warp_deep_mm": 187.5, "warp_t": 0.005, "warp_pull": -0.185, "c_deep_mm": 9.8, "c_t": 0.0, "c_pull": 0.162, "dist_to_field_border_m": [0.121]}
+{"kind": "slope", "v": 4.5, "x": 45.46, "y": 31.33, "warp_deep_mm": 187.5, "warp_t": 0.01, "warp_pull": -0.152, "c_deep_mm": 9.8, "c_t": 0.0, "c_pull": 0.169, "dist_to_field_border_m": [0.121]}
+{"kind": "slope", "v": 4.5, "x": 44.3, "y": 31.17, "warp_deep_mm": 960.5, "warp_t": 0.115, "warp_pull": 0.689, "c_deep_mm": 9.8, "c_t": 0.0, "c_pull": 0.175, "dist_to_field_border_m": [0.039]}
+{"kind": "edge", "v": 1.0, "x": 85.94, "y": 61.13, "warp_deep_mm": 286.4, "warp_t": 0.015, "warp_pull": -0.056, "c_deep_mm": 5.7, "c_t": 0.0, "c_pull": -0.0, "dist_to_field_border_m": [1.999]}
+{"kind": "edge", "v": 3.0, "x": 85.94, "y": 61.13, "warp_deep_mm": 5.5, "warp_t": 0.0, "warp_pull": -0.0, "c_deep_mm": 6.9, "c_t": 0.0, "c_pull": 0.006, "dist_to_field_border_m": [1.999]}
+{"kind": "edge", "v": 1.0, "x": 114.1, "y": 50.57, "warp_deep_mm": 98.2, "warp_t": 0.8, "warp_pull": 0.005, "c_deep_mm": 12.6, "c_t": 0.055, "c_pull": 0.0, "dist_to_field_border_m": [3.401]}
+{"kind": "edge", "v": 2.0, "x": 114.1, "y": 50.57, "warp_deep_mm": 98.2, "warp_t": 0.175, "warp_pull": 0.371, "c_deep_mm": 12.6, "c_t": 0.055, "c_pull": 0.0, "dist_to_field_border_m": [3.401]}
+{"kind": "edge", "v": 3.0, "x": 114.1, "y": 50.57, "warp_deep_mm": 210.9, "warp_t": 0.075, "warp_pull": 0.574, "c_deep_mm": 12.6, "c_t": 0.055, "c_pull": 0.0, "dist_to_field_border_m": [3.401]}
+{"kind": "edge", "v": 4.5, "x": 114.1, "y": 50.57, "warp_deep_mm": 98.2, "warp_t": 0.125, "warp_pull": 0.405, "c_deep_mm": 12.6, "c_t": 0.055, "c_pull": 0.0, "dist_to_field_border_m": [3.401]}

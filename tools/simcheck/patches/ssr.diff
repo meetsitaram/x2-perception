@@ -1,0 +1,112 @@
+--- a/ssr/env.py	2026-11-12 15:30:04.540863700 -0800
++++ b/ssr/env.py	2026-11-12 15:30:13.608876800 -0800
+@@ -16,6 +16,10 @@
+ from ssr import terrain as T
+ from ssr import x2 as X
+ 
++import sys as _sys
++_sys.path.insert(0, "/mnt/filesystem-g4/tools")
++from simcheck.episode_end import FaultDetector, contact_depth_per_world  # simulator faults are truncations (TRACK_RULES)
++
+ H = 5                     # proprioception history (paper-silent)
+ N21 = 21
+ PROP_DIM = 72
+@@ -80,6 +84,11 @@
+             self.mm = mjw.put_model(m, batch_sizes=batch)
+             self.dd = mjw.put_data(m, d, nworld=num_envs, njmax=njmax, nconmax=nconmax)
+         dd, mm = self.dd, self.mm
++        # simcheck (docs/TRACK_RULES.md "Simulator checks"): NaN, |qvel| > 60, a contact deeper than 5 cm or a body speed jump over
++        # 20 m/s is a simulator fault: the episode is truncated (bootstrapped, reward 0, no curriculum move), never terminated
++        _root = int(m.body_rootid[1])
++        self.robot_b = torch.tensor([b for b in range(1, m.nbody) if int(m.body_rootid[b]) == _root], device=self.dev)
++        self.fault_det = FaultDetector(num_envs, self.dev, qvel_max=60.0, control_dt=X.CONTROL_DT)
+         t = wp.to_torch
+         self.qpos, self.qvel, self.ctrl = t(dd.qpos), t(dd.qvel), t(dd.ctrl)
+         self.xpos, self.xmat, self.tau = t(dd.xpos), t(dd.xmat), t(dd.actuator_force)
+@@ -660,12 +669,14 @@
+                 self.qvel[ids, :2] += self._u(len(ids), 2) * 0.4
+                 self.push[ids] = PUSH_STEPS
+         self._physics()
+-        bad = ~(torch.isfinite(self.qpos).all(-1) & torch.isfinite(self.qvel).all(-1)) | (self.qvel.abs().amax(-1) > 60.0)   # joint limits are 12-15 rad/s
++        bad, self.fault_why = self.fault_det.update(self.qpos, self.qvel, wp.to_torch(self.dd.xpos)[:, self.robot_b],
++                                                    contact_depth_per_world(self.dd, self.N))   # was: NaN or |qvel| > 60 only
+         self.bad = bad
+         if bool(bad.any()):                                          # a diverged world: neutral numbers until its reset
+             self.log["nan"] = self.log.get("nan", 0) + int(bad.sum())
+             self.qpos[bad] = torch.cat((self.origin[bad], torch.ones(int(bad.sum()), 1, device=self.dev), torch.tensor([1.0, 0, 0, 0], device=self.dev).expand(int(bad.sum()), -1), self.q0_all.expand(int(bad.sum()), -1)), -1)
+             self.qvel[bad] = 0.0
++            self.fault_det.reset(bad.nonzero().squeeze(-1))
+         self.refresh()
+         self._contacts()
+         self._wall_timer()
+@@ -715,12 +726,13 @@
+         self.contact_prev = contact.clone()
+         term, timeout, success = self._done(s)
+         done = term | timeout
+-        out = dict(r_l=rew[0], r_f=rew[1], term=term, timeout=timeout, done=done, contact=contact, touchdown=touchdown,
++        out = dict(r_l=rew[0], r_f=rew[1], term=term, timeout=timeout, done=done, sim_fault=self.bad, contact=contact, touchdown=touchdown,
+                    sole=pw_contact, base_xy=s["p"][:, :2].clone(), yaw=s["yaw"].clone(), type=self.type.clone(), free=self.free.clone())
+         ids = done.nonzero().squeeze(-1)
+-        self.curriculum(ids, success)
++        self.curriculum(ids[~self.bad[ids]], success)                 # a simulator fault moves no level
+         if len(ids) and self.train:
+             self.reset(ids)
++            self.fault_det.reset(ids)
+             self.refresh()
+         self.vf[ids] = 0.0
+         if self.ext_on:
+@@ -1048,7 +1060,7 @@
+         hit = self.term_force > 80.0
+         pts = self.xpos[:, self.clear_ids]
+         scrape = (pts[..., 2] - self.hmap(pts[..., 0], pts[..., 1]) < self.clear_m).any(-1)
+-        term = tilt | low | hit | scrape | self.bad
++        term = tilt | low | hit | scrape                         # self.bad (simulator fault) is a truncation: see the return
+         if self.train and self.tiles and self.stuck_term:      # told to walk but not getting anywhere: standing still must not pay
+             ck = (self.ep % 100 == 0) & (self.ep > 0) & ~self.free & (self.speed.abs() >= 0.3)
+             stuck = ck & ((base[:, :2] - self.stall_pos).norm(dim=-1) < 0.3 * self.speed.abs() * 2.0)
+@@ -1094,11 +1106,11 @@
+                     self.cnt[f"ext_{nm}_fail"] = self.cnt.get(f"ext_{nm}_fail", 0) + int(((term | (over & ~ext_succ)) & mt).sum())
+             causes.update(left_tile_side=out_y & ~self.free, left_tile_back=back & ~self.free, stuck=term & ~term if not self.stuck_term else stuck,
+                           reached_end=success, omni_left_tile=free_out, time_limit=over & ~success & ~free_out)
+-            causes["any"] = term | success | free_out | over
++            causes["any"] = term | success | free_out | over | self.bad
+             for k_, v_ in causes.items():
+                 self.cnt["done_" + k_] = self.cnt.get("done_" + k_, 0) + v_.sum()
+-            return term, success | free_out | over, success
+-        return term, torch.zeros_like(term), torch.zeros_like(term)
++            return term & ~self.bad, success | free_out | over | self.bad, success & ~self.bad
++        return term & ~self.bad, self.bad.clone(), torch.zeros_like(term)
+ 
+     def curriculum(self, ids, success):
+         if len(ids) == 0 or not self.train or not self.tiles or self.flat_only:
+--- a/ssr/train.py	2026-11-12 15:30:04.555866400 -0800
++++ b/ssr/train.py	2026-11-12 15:30:04.607930000 -0800
+@@ -294,6 +294,7 @@
+                 sty_n.index_add_(0, idx, torch.ones_like(r_s))
+                 r = torch.stack((out_s["r_l"], out_s["r_f"], r_s), -1)
+                 r = torch.nan_to_num(r, 0.0, 0.0, 0.0)
++                r = torch.where(out_s["sim_fault"][:, None], torch.zeros_like(r), r)   # simcheck: a fault step earns nothing
+                 for j in range(3):
+                     rs[j] += r[:, j].mean().item() / Tn       # logged per step, unscaled
+                 r = r * a.rew_scale                              # legged_gym convention (rewards x dt): the same objective, returns of a size the critics can fit
+--- a/scripts/supervise_node.py	2026-11-12 15:30:04.571932900 -0800
++++ b/scripts/supervise_node.py	2026-11-12 15:30:04.608930400 -0800
+@@ -22,6 +22,8 @@
+ RUNS = TRACK / "runs"
+ PY = str(TRACK / "env/venv/bin/python")
+ STATUS = pathlib.Path("/mnt/filesystem-g4/status/ssr.json")
++sys.path.insert(0, "/mnt/filesystem-g4/tools")
++from simcheck import alarm  # sim_fault_share in the heartbeat (TRACK_RULES)
+ 
+ 
+ def sh(cmd, timeout=30):
+@@ -121,7 +123,8 @@
+             rec = last_rec(a.name)
+             heartbeat(run=a.name, state="training", pid=pr.pid, iter=rec.get("it", -1), iters=a.iters, log_age_s=round(time.time() - seen_t),
+                       ep_len_s=rec.get("ep_len_s"), r_l=rec.get("r_l"), lvl_mean=rec.get("lvl_mean"), gait=rec.get("gait"), restarts=restarts,
+-                      newest_ckpt=newest_ckpt(a.name), last=str(last), log=str(out_log))
++                      newest_ckpt=newest_ckpt(a.name), last=str(last), log=str(out_log),
++                      **alarm.fields_from_shares(rec.get("done_share") or (rec.get("extra") or {}).get("done_share") or {}, sim_keys=("diverged",)))
+             code = pr.poll()
+             if code is not None:
+                 res = "done" if code == 0 else "crash(%d)" % code

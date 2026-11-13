@@ -1,0 +1,4 @@
+{"kind": "edge", "v": 1.0, "x": 119.7, "y": 11.98, "warp_deep_mm": 127.7, "warp_t": 0.035, "warp_pull": 0.016, "c_deep_mm": 28.6, "c_t": 0.8, "c_pull": 0.004, "dist_to_field_border_m": [2.0]}
+{"kind": "edge", "v": 2.0, "x": 167.55, "y": 75.8, "warp_deep_mm": 14.3, "warp_t": 0.03, "warp_pull": 0.006, "c_deep_mm": 14.1, "c_t": 0.03, "c_pull": 0.016, "dist_to_field_border_m": [0.025]}
+{"kind": "edge", "v": 3.0, "x": 167.55, "y": 75.8, "warp_deep_mm": 89.4, "warp_t": 0.33, "warp_pull": -0.053, "c_deep_mm": 24.1, "c_t": 0.17, "c_pull": -0.027, "dist_to_field_border_m": [0.025]}
+{"kind": "edge", "v": 4.5, "x": 167.55, "y": 75.8, "warp_deep_mm": 79.5, "warp_t": 0.355, "warp_pull": -0.037, "c_deep_mm": 24.6, "c_t": 0.58, "c_pull": 0.001, "dist_to_field_border_m": [0.025]}

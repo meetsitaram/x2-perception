@@ -1,0 +1,68 @@
+--- a/hiking-in-the-wild/InstinctLab/source/instinctlab/instinctlab/tasks/parkour/config/x2/staged.py	2026-11-12 15:33:25.477520200 -0800
++++ b/hiking-in-the-wild/InstinctLab/source/instinctlab/instinctlab/tasks/parkour/config/x2/staged.py	2026-11-12 15:33:25.529598800 -0800
+@@ -382,3 +382,40 @@
+             from isaaclab.managers import CurriculumTermCfg as CurrTerm
+             from .keep import level_keeper
+             self.curriculum.level_keeper = CurrTerm(func=level_keeper)
++        # simcheck (docs/TRACK_RULES.md "Simulator checks", 2026-11-12): a simulator fault (NaN, a body speed over 50 m/s, a
++        # body speed jump over 20 m/s in one step) ends the episode as a time-out (bootstrapped, no termination penalty) and
++        # is never a failure: every failure term ignores a faulted env. HIKING_X2_SIMFAULT=0 turns it off.
++        if os.environ.get("HIKING_X2_SIMFAULT", "1") == "1":
++            import inspect
++            for _name, _t in list(vars(self.terminations).items()):
++                if isinstance(_t, DoneTerm) and not _t.time_out and inspect.isfunction(_t.func):
++                    _t.func = _unless_sim_fault(_t.func)
++            self.terminations.sim_fault = DoneTerm(func=sim_fault, time_out=True)
++
++
++def sim_fault(env, jump_ms: float = 20.0, speed_max: float = 50.0, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")):
++    """(num_envs,) bool, computed once per env step (cached): NaN in the robot state, a body speed over speed_max, or a body
++    speed change over jump_ms since the previous step (not on the first step after a reset). PhysX exposes no contact
++    depth here; the depth part of the rule is covered by the GPU-pause preflight (simcheck/adapters/hiking.py)."""
++    step = int(env.common_step_counter)
++    c = getattr(env, "_simfault_cache", None)
++    if c is not None and c[0] == step:
++        return c[1]
++    a = env.scene[asset_cfg.name]
++    v = a.data.body_lin_vel_w
++    nan = ~(torch.isfinite(a.data.root_state_w).all(-1) & torch.isfinite(v).flatten(1).all(-1) & torch.isfinite(a.data.joint_pos).all(-1))
++    vv = torch.nan_to_num(v, nan=0.0, posinf=1e6, neginf=-1e6)
++    f = nan | (vv.norm(dim=-1).amax(-1) > speed_max)
++    prev = getattr(env, "_simfault_vprev", None)
++    if prev is not None:
++        f = f | (((vv - prev).norm(dim=-1).amax(-1) > jump_ms) & (env.episode_length_buf > 1))
++    env._simfault_vprev = vv.clone()
++    env._simfault_cache = (step, f)
++    return f
++
++
++def _unless_sim_fault(func):
++    def wrapped(env, *args, **kwargs):
++        return func(env, *args, **kwargs) & ~sim_fault(env)
++    wrapped.__name__ = getattr(func, "__name__", "term")
++    return wrapped
+--- a/x2_port/supervise_x2.py	2026-11-12 15:33:25.492523200 -0800
++++ b/x2_port/supervise_x2.py	2026-11-12 15:33:25.529598800 -0800
+@@ -37,6 +37,9 @@
+ OUT.mkdir(parents=True, exist_ok=True)
+ STOP = OUT / "STOP"
+ ITER = re.compile(rb"Learning iteration (\d+)/(\d+)")
++sys.path.insert(0, "/mnt/filesystem-g4/tools")
++from simcheck import alarm  # sim_fault_share in the heartbeat (TRACK_RULES)
++TERMS = re.compile(rb"Episode_Termination/(\w+):\s+(-?[\d.]+)")
+ KEYS = {
+     "reward": re.compile(rb"Mean reward:\s+(-?[\d.]+)"),
+     "episode_length": re.compile(rb"Mean episode length:\s+(-?[\d.]+)"),
+@@ -93,6 +96,12 @@
+     m = ITER.findall(b)
+     if m:
+         out["iteration"] = int(m[-1][0])
++    ends = {}
++    for k, v in TERMS.findall(b):                # newest value of every termination term (counts per episode end window)
++        ends[k.decode()] = float(v)
++    if ends:
++        tot = sum(ends.values())
++        out.update(alarm.fields_from_shares({k: v / tot for k, v in ends.items()} if tot > 0 else {}, sim_keys=("sim_fault",)))
+     for k, rx in KEYS.items():
+         m = rx.findall(b)
+         if m:

@@ -1,0 +1,122 @@
+[
+ {
+  "id": "hiking-101",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking, X2 on the paper's terrains",
+  "iteration": 101,
+  "total": 30000,
+  "reward": 4.59,
+  "episode_len": 112,
+  "terrain_level": 0.0,
+  "note": ""
+ },
+ {
+  "id": "hiking-250",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking, X2 on the paper's terrains",
+  "iteration": 250,
+  "total": 30000,
+  "reward": 35.6,
+  "episode_len": 734,
+  "terrain_level": 0.31,
+  "note": "4,096 robots; stopped here for the benchmark"
+ },
+ {
+  "id": "hiking-314",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking, X2 on the paper's terrains",
+  "iteration": 314,
+  "total": 30000,
+  "reward": 27.69,
+  "episode_len": 572,
+  "terrain_level": 0.78,
+  "note": "8,192 robots from iteration 250; means still recovering after the restart"
+ },
+ {
+  "id": "hiking-499",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking, X2 on the paper's terrains",
+  "iteration": 499,
+  "total": 30000,
+  "reward": 58.4,
+  "episode_len": 1000,
+  "terrain_level": 1.0,
+  "note": "standing, not walking: 0 of 200 reach a 3.7 m target"
+ },
+ {
+  "id": "hiking-589",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking, X2 on the paper's terrains",
+  "iteration": 589,
+  "total": 30000,
+  "reward": 37.01,
+  "episode_len": 637,
+  "terrain_level": 0.87,
+  "note": "run v1; to be replaced by run v2"
+ },
+ {
+  "id": "hiking-v2-249",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 2, chest camera and October gains",
+  "iteration": 249,
+  "total": 30000,
+  "reward": 30.5,
+  "episode_len": 736,
+  "terrain_level": 0.4,
+  "note": "run 2 (from scratch): 2% of commanded speed, standing pattern again"
+ },
+ {
+  "id": "hiking-v2-428",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 2, chest camera and October gains",
+  "iteration": 428,
+  "total": 30000,
+  "reward": 55.4,
+  "episode_len": 894,
+  "terrain_level": 0.97,
+  "note": "run 2: 1% of commanded speed, standing"
+ },
+ {
+  "id": "hiking-v3-118",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 3 (staged)",
+  "iteration": 118,
+  "total": 30000,
+  "reward": 2.02,
+  "episode_len": 92,
+  "terrain_level": 0.0,
+  "note": "run 3 from scratch"
+ },
+ {
+  "id": "hiking-v3-302",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 3 (staged)",
+  "iteration": 302,
+  "total": 30000,
+  "reward": 4.78,
+  "episode_len": 165,
+  "terrain_level": 0.26,
+  "note": "lunging, 84% falls at 250"
+ },
+ {
+  "id": "hiking-v3-487",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 3 (staged)",
+  "iteration": 487,
+  "total": 30000,
+  "reward": 9.86,
+  "episode_len": 364,
+  "terrain_level": 0.49,
+  "note": "episodes lengthening"
+ }
+]

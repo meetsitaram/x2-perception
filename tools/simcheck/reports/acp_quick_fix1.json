@@ -1,0 +1,285 @@
+{
+ "track": "acp",
+ "time_utc": "2026-11-12T23:28:22Z",
+ "checks": [
+  {
+   "check": "hfield_size",
+   "passed": true,
+   "limit": 400,
+   "n_fields": 1,
+   "max_nrow": 117,
+   "max_ncol": 133,
+   "n_over": 0,
+   "over": []
+  },
+  {
+   "check": "foot_drop",
+   "passed": true,
+   "limits": {
+    "depth_m": 0.01,
+    "hold_s": 0.07,
+    "pull_N": 150.0,
+    "freed_m": 0.02,
+    "mass_kg": 10.0,
+    "speeds": [
+     1.0,
+     2.0,
+     3.0,
+     4.5
+    ]
+   },
+   "kinds_missing": [],
+   "summary": {
+    "flat": {
+     "n": 8,
+     "failed": 0,
+     "deep_mm_max": 20.8,
+     "t_over_1cm_max": 0.01,
+     "pull_moved_min": 0.067
+    },
+    "slope": {
+     "n": 8,
+     "failed": 0,
+     "deep_mm_max": 23.5,
+     "t_over_1cm_max": 0.015,
+     "pull_moved_min": 0.141
+    },
+    "edge": {
+     "n": 8,
+     "failed": 0,
+     "deep_mm_max": 18.2,
+     "t_over_1cm_max": 0.015,
+     "pull_moved_min": 0.204
+    }
+   },
+   "failed_cases": [],
+   "n_cases": 24,
+   "seconds": 1.7
+  },
+  {
+   "check": "rollouts",
+   "passed": true,
+   "limits": {
+    "depth_m": 0.05,
+    "speed_jump_ms": 20.0,
+    "diverged_share": 0.01,
+    "diverge_qvel": 200.0,
+    "seconds": 1.0,
+    "noise_rad": 0.5,
+    "worlds_per_tile": 2
+   },
+   "worlds": 24,
+   "diverged_share": 0.0,
+   "diverge_events": 0,
+   "nan_worlds": 0,
+   "depth_terrain_mm_max": 25.6,
+   "depth_self_mm_max": 31.0,
+   "speed_jump_ms_max": 2.87,
+   "contact_overflow": 0,
+   "failed_tiles": [],
+   "tiles": [
+    {
+     "tile": "x2_loco_flat_train_hold",
+     "depth_terrain_mm": 19.5,
+     "depth_self_mm": 7.9,
+     "speed_jump_ms": 1.66,
+     "body_speed_max_ms": 3.69,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "floor|right_wrist_roll_link#83",
+      0.99
+     ],
+     "passed": true
+    },
+    {
+     "tile": "x2_loco_blocks_train_hold",
+     "depth_terrain_mm": 15.4,
+     "depth_self_mm": 12.5,
+     "speed_jump_ms": 1.19,
+     "body_speed_max_ms": 2.72,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "floor|right_ankle_roll_link#44",
+      0.545
+     ],
+     "passed": true
+    },
+    {
+     "tile": "x2_chains_far_hs",
+     "depth_terrain_mm": 25.6,
+     "depth_self_mm": 25.7,
+     "speed_jump_ms": 2.4,
+     "body_speed_max_ms": 4.21,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_yaw_link#34|right_wrist_roll_link#83",
+      0.4
+     ],
+     "passed": true
+    },
+    {
+     "tile": "tp_stairs_x10_sh2_hs",
+     "depth_terrain_mm": 10.8,
+     "depth_self_mm": 31.0,
+     "speed_jump_ms": 0.88,
+     "body_speed_max_ms": 4.04,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "left_hip_pitch_link#6|left_wrist_pitch_link#68",
+      0.0
+     ],
+     "passed": true
+    },
+    {
+     "tile": "gst_v1_hs",
+     "depth_terrain_mm": 17.5,
+     "depth_self_mm": 17.3,
+     "speed_jump_ms": 1.32,
+     "body_speed_max_ms": 3.48,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "head_pitch_link#85|prop_slot_40",
+      0.945
+     ],
+     "passed": true
+    },
+    {
+     "tile": "gs2dn_v2_hs",
+     "depth_terrain_mm": 14.0,
+     "depth_self_mm": 20.8,
+     "speed_jump_ms": 1.59,
+     "body_speed_max_ms": 4.09,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_pitch_link#30|right_wrist_roll_link#83",
+      0.0
+     ],
+     "passed": true
+    },
+    {
+     "tile": "gs2lo_v1_hs",
+     "depth_terrain_mm": 19.4,
+     "depth_self_mm": 11.5,
+     "speed_jump_ms": 2.3,
+     "body_speed_max_ms": 4.23,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "prop_slot_70|right_wrist_roll_link#83",
+      0.85
+     ],
+     "passed": true
+    },
+    {
+     "tile": "tp_ramp_sh2_hs",
+     "depth_terrain_mm": 11.5,
+     "depth_self_mm": 15.5,
+     "speed_jump_ms": 2.87,
+     "body_speed_max_ms": 3.25,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_pitch_link#30|right_wrist_roll_link#83",
+      0.375
+     ],
+     "passed": true
+    },
+    {
+     "tile": "tp_t4x4u_y20_hs",
+     "depth_terrain_mm": 10.4,
+     "depth_self_mm": 26.9,
+     "speed_jump_ms": 0.93,
+     "body_speed_max_ms": 2.85,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "left_hip_roll_link#8|left_wrist_roll_link#70",
+      0.0
+     ],
+     "passed": true
+    },
+    {
+     "tile": "pico_2026-10-29_2x2_train_hold",
+     "depth_terrain_mm": 13.7,
+     "depth_self_mm": 18.0,
+     "speed_jump_ms": 0.93,
+     "body_speed_max_ms": 5.23,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "left_hip_roll_link#8|left_wrist_roll_link#70",
+      0.0
+     ],
+     "passed": true
+    },
+    {
+     "tile": "stand_edge_v1",
+     "depth_terrain_mm": 9.7,
+     "depth_self_mm": 11.1,
+     "speed_jump_ms": 0.81,
+     "body_speed_max_ms": 3.06,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "left_hip_yaw_link#10|left_wrist_roll_link#70",
+      0.86
+     ],
+     "passed": true
+    },
+    {
+     "tile": "turn_place_v1",
+     "depth_terrain_mm": 8.2,
+     "depth_self_mm": 14.8,
+     "speed_jump_ms": 1.23,
+     "body_speed_max_ms": 2.99,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_yaw_link#34|right_wrist_roll_link#83",
+      0.53
+     ],
+     "passed": true
+    }
+   ],
+   "seconds": 5.8
+  }
+ ],
+ "passed": true,
+ "config": {
+  "cfg": "cfg/stage2g_sets.json",
+  "hmap": "tp_ramp_hmap_x30_40mm.npz",
+  "ACP_HF_FIX": "1",
+  "ACP_HF_CHUNK": "400",
+  "ACP_PLANT": "mc_20261024",
+  "X2_EXCLUDE_PAIRS": "hip"
+ },
+ "model": {
+  "nbody": 113,
+  "ngeom": 168,
+  "nhfield": 1,
+  "nmocap": 80,
+  "timestep": 0.005,
+  "tiles": [
+   "x2_loco_flat_train_hold",
+   "x2_loco_blocks_train_hold",
+   "x2_chains_far_hs",
+   "tp_stairs_x10_sh2_hs",
+   "gst_v1_hs",
+   "gs2dn_v2_hs",
+   "gs2lo_v1_hs",
+   "tp_ramp_sh2_hs",
+   "tp_t4x4u_y20_hs",
+   "pico_2026-10-29_2x2_train_hold",
+   "stand_edge_v1",
+   "turn_place_v1"
+  ],
+  "build_s": 1.9
+ },
+ "seconds": 10.4
+}

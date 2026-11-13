@@ -1,0 +1,102 @@
+--- a/acp/env.py	2026-11-12 15:29:26.860327800 -0800
++++ b/acp/env.py	2026-11-12 15:29:30.966397000 -0800
+@@ -20,6 +20,10 @@
+ 
+ from acp.data import Dataset
+ 
++import sys as _sys
++_sys.path.insert(0, "/mnt/filesystem-g4/tools")
++from simcheck.episode_end import FaultDetector, contact_depth_per_world  # simulator faults are truncations (TRACK_RULES)
++
+ HIST = 5
+ DT = 0.02
+ # Table 3 (stage 1)
+@@ -110,6 +114,11 @@
+         self.gainprm, self.biasprm = wp.to_torch(self.mm.actuator_gainprm), wp.to_torch(self.mm.actuator_biasprm)
+         self.body_mass, self.body_inertia = wp.to_torch(self.mm.body_mass), wp.to_torch(self.mm.body_inertia)
+         self.dof_arm = wp.to_torch(self.mm.dof_armature)
++        # simcheck (docs/TRACK_RULES.md "Simulator checks"): NaN, |qvel| > 200, a contact deeper than 5 cm or a body speed jump
++        # over 20 m/s is a simulator fault: the episode is truncated (bootstrapped), not terminated
++        root = int(m.body_rootid[1])
++        self.robot_b = torch.tensor([b for b in range(1, m.nbody) if int(m.body_rootid[b]) == root], device=dev)
++        self.fault_det = FaultDetector(N, dev, qvel_max=200.0, control_dt=m.opt.timestep * DECIMATION)
+         # contacts (shared arrays over all worlds)
+         c = self.dd.contact
+         self.c_world, self.c_geom, self.c_frame = wp.to_torch(c.worldid), wp.to_torch(c.geom), wp.to_torch(c.frame)
+@@ -385,7 +394,8 @@
+         a = a.clamp(-20.0, 20.0)
+         q_tgt = self.default_q + self.calib + self.alpha * a
+         self._physics(q_tgt)
+-        bad = ~(torch.isfinite(self.qpos).all(1) & torch.isfinite(self.qvel).all(1)) | (self.qvel.abs().max(1).values > 200.0)
++        bad, why = self.fault_det.update(self.qpos, self.qvel, wp.to_torch(self.dd.xpos)[:, self.robot_b],
++                                         contact_depth_per_world(self.dd, N))     # was: NaN or |qvel| > 200 only
+         if bool(bad.any()):                                           # diverged worlds: park them, end the episode
+             ids = bad.nonzero().squeeze(-1)
+             self.qpos[ids] = 0.0
+@@ -436,7 +446,7 @@
+             ground = self.terrain.height(fx[..., 0], fx[..., 1], m.clip_id[f]).amin(-1)   # lowest ground under root and feet
+             term_pos = ((p[:, 2] - ground) < FALL_H) & ~bad
+             term_rot = (R[:, 2, 2] < 0.5) & ~bad                      # tilted more than 60 degrees
+-        term = term_pos | term_rot | bad
++        term = term_pos | term_rot                                    # simulator faults (bad) are truncations, below
+         # contact placement error (paper, Results 0.3): commanded vs realised contact position at contact onset
+         c_now = c_meas > 0.5
+         # the commanded target switches to the following step around touchdown, so the realised contact is compared with the
+@@ -450,12 +460,13 @@
+         self.air = torch.where(c_now, torch.zeros_like(self.air), self.air + 1)
+         self.c_prev = c_now
+         clip = m.clip_id[f]
+-        timeout = (f >= m.clip_end[clip]) & ~term
++        timeout = ((f >= m.clip_end[clip]) | bad) & ~term
++        r = torch.where(bad, torch.zeros_like(r), r)                  # the step was computed on a broken state
+         done = term | timeout
+         ph = (f - m.clip_start[clip]).float() / (m.clip_len[clip] - 1).float().clamp(min=1)
+-        finished = done & ~term & (ph >= CSI_DONE)
++        finished = done & ~term & ~bad & (ph >= CSI_DONE)
+         if self.csi and not self.eval_mode:                           # Table S4: -0.05 after reaching phase 0.99, +0.05 otherwise
+-            self.phase = torch.where(done, (self.phase + torch.where(finished, -CSI_STEP, CSI_STEP)).clamp(0.0, CSI_MAX), self.phase)
++            self.phase = torch.where(done & ~bad, (self.phase + torch.where(finished, -CSI_STEP, CSI_STEP)).clamp(0.0, CSI_MAX), self.phase)
+         self.a_prev2, self.a_prev = self.a_prev, a.clone()
+         self.v_prev = vel
+         self.hist = torch.cat((self.hist[:, 1:], self._proprio(S, self.a_prev, noise=not self.eval_mode).unsqueeze(1)), 1)
+@@ -463,7 +474,7 @@
+                 "e_joint": (q - rq).abs().mean(), "e_contact_pos": (pb - rpb).norm(dim=-1).mean(),
+                 "contact_match": ((c_meas > 0.5) == (c_ref > 0.5)).float().mean(),
+                 "term": term.float().sum(), "done": done.float().sum(), "finished": finished.float().sum(),
+-                "bad": bad.float().sum(), "done_mask": done, "term_mask": term, "finished_mask": finished,
++                "bad": bad.float().sum(), "sim_fault": {k: x.float().sum() for k, x in why.items()}, "done_mask": done, "term_mask": term, "finished_mask": finished,
+                 "term_pos": term_pos.float().sum(), "term_rot": term_rot.float().sum(), "timeout": timeout.float().sum(),
+                 "place_sum": place.sum(), "place_n": onset.float().sum(), "place": place, "onset": onset,
+                 "phase": ph, "e_pos_env": e_pos, "reward_max": DT * sum(v for v in wts.values() if v > 0),
+@@ -475,6 +486,7 @@
+             self.rec.end(done, done & ~term & (ph >= 0.9))
+         if not self.eval_mode:
+             self.reset(ids)
++            self.fault_det.reset(ids)
+         return r, term, timeout, info
+ 
+ 
+--- a/acp/train.py	2026-11-12 15:29:26.876329800 -0800
++++ b/acp/train.py	2026-11-12 15:29:30.974396900 -0800
+@@ -66,6 +66,11 @@
+         return self.critic(self.cn(co)).squeeze(-1)
+ 
+ 
++import sys as _sys
++_sys.path.insert(0, "/mnt/filesystem-g4/tools")
++from simcheck import alarm as _alarm
++
++
+ def heartbeat(path, **kw):
+     kw.update(track="acp", time=time.strftime("%Y-%m-%dT%H:%M:%S%z"), unix=time.time())
+     tmp = path + ".tmp"
+@@ -372,7 +377,8 @@
+             cks = sorted(glob.glob(os.path.join(args.run, "ckpt_*.pt")))
+             heartbeat(args.heartbeat, state="training", stage=args.stage, run=os.path.abspath(args.run), iteration=n, iterations=args.iters,
+                       newest_checkpoint=os.path.abspath(cks[-1]) if cks else None, fps=row["fps"], reward=row["reward"],
+-                      csi_phase=row["csi_phase"], finish_frac=row["finish_frac"], term_frac=row["term_frac"], e_pos=row["e_pos"])
++                      csi_phase=row["csi_phase"], finish_frac=row["finish_frac"], term_frac=row["term_frac"], e_pos=row["e_pos"],
++                      **_alarm.fields({"sim_fault": ep["bad"]}, total=ep["done"]))
+             acc, nacc = {}, 0
+             ep = dict(done=0.0, term=0.0, fin=0.0, bad=0.0)
+             set_done.zero_(); set_fin.zero_()

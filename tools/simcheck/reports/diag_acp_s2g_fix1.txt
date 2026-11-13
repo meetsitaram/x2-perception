@@ -1,0 +1,7 @@
+[data] x2_loco_flat_train_hold.pkl: 208 of 351 clips left out by the quality filters
+[data] x2_loco_blocks_train_hold.pkl: 208 of 351 clips left out by the quality filters
+[data] x2_chains_far_hs.pkl: 55 of 96 clips left out by the quality filters
+[data] gst_v1_hs.pkl: 27 of 113 clips left out by the quality filters
+[data] tp_t4x4u_y20_hs.pkl: 2 of 56 clips left out by the quality filters
+[data] pico_2026-10-29_2x2_train_hold.pkl: 1 of 10 clips left out by the quality filters
+{"kind": "edge", "v": 1.0, "x": 33.22, "y": 1.33, "warp_deep_mm": 183.0, "warp_t": 0.8, "warp_pull": 0.0, "c_deep_mm": 12.6, "c_t": 0.8, "c_pull": 0.0, "dist_to_field_border_m": [1.718]}

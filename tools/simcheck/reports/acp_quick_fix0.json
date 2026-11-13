@@ -1,0 +1,345 @@
+{
+ "track": "acp",
+ "time_utc": "2026-11-12T23:27:00Z",
+ "checks": [
+  {
+   "check": "hfield_size",
+   "passed": true,
+   "limit": 400,
+   "n_fields": 1,
+   "max_nrow": 117,
+   "max_ncol": 133,
+   "n_over": 0,
+   "over": []
+  },
+  {
+   "check": "foot_drop",
+   "passed": false,
+   "limits": {
+    "depth_m": 0.01,
+    "hold_s": 0.07,
+    "pull_N": 150.0,
+    "freed_m": 0.02,
+    "mass_kg": 10.0,
+    "speeds": [
+     1.0,
+     2.0,
+     3.0,
+     4.5
+    ]
+   },
+   "kinds_missing": [],
+   "summary": {
+    "flat": {
+     "n": 8,
+     "failed": 0,
+     "deep_mm_max": 71.7,
+     "t_over_1cm_max": 0.055,
+     "pull_moved_min": 0.076
+    },
+    "slope": {
+     "n": 8,
+     "failed": 1,
+     "deep_mm_max": 74.1,
+     "t_over_1cm_max": 0.065,
+     "pull_moved_min": 0.012
+    },
+    "edge": {
+     "n": 8,
+     "failed": 7,
+     "deep_mm_max": 93.6,
+     "t_over_1cm_max": 0.055,
+     "pull_moved_min": 0.002
+    }
+   },
+   "failed_cases": [
+    {
+     "kind": "slope",
+     "v": 4.5,
+     "x": 31.7,
+     "y": 1.41,
+     "deep_mm": 74.1,
+     "t_over_1cm_s": 0.065,
+     "longest_hold_s": 0.065,
+     "pull_moved_m": 0.012,
+     "nan": false,
+     "passed": false
+    },
+    {
+     "kind": "edge",
+     "v": 1.0,
+     "x": 31.78,
+     "y": 1.13,
+     "deep_mm": 19.2,
+     "t_over_1cm_s": 0.035,
+     "longest_hold_s": 0.035,
+     "pull_moved_m": 0.002,
+     "nan": false,
+     "passed": false
+    },
+    {
+     "kind": "edge",
+     "v": 2.0,
+     "x": 31.78,
+     "y": 1.13,
+     "deep_mm": 21.2,
+     "t_over_1cm_s": 0.03,
+     "longest_hold_s": 0.03,
+     "pull_moved_m": 0.013,
+     "nan": false,
+     "passed": false
+    },
+    {
+     "kind": "edge",
+     "v": 4.5,
+     "x": 31.78,
+     "y": 1.13,
+     "deep_mm": 93.6,
+     "t_over_1cm_s": 0.045,
+     "longest_hold_s": 0.04,
+     "pull_moved_m": 0.017,
+     "nan": false,
+     "passed": false
+    },
+    {
+     "kind": "edge",
+     "v": 1.0,
+     "x": 32.02,
+     "y": 1.05,
+     "deep_mm": 13.4,
+     "t_over_1cm_s": 0.02,
+     "longest_hold_s": 0.015,
+     "pull_moved_m": 0.014,
+     "nan": false,
+     "passed": false
+    },
+    {
+     "kind": "edge",
+     "v": 2.0,
+     "x": 32.02,
+     "y": 1.05,
+     "deep_mm": 20.0,
+     "t_over_1cm_s": 0.015,
+     "longest_hold_s": 0.015,
+     "pull_moved_m": 0.009,
+     "nan": false,
+     "passed": false
+    },
+    {
+     "kind": "edge",
+     "v": 3.0,
+     "x": 32.02,
+     "y": 1.05,
+     "deep_mm": 14.6,
+     "t_over_1cm_s": 0.025,
+     "longest_hold_s": 0.025,
+     "pull_moved_m": 0.01,
+     "nan": false,
+     "passed": false
+    },
+    {
+     "kind": "edge",
+     "v": 4.5,
+     "x": 32.02,
+     "y": 1.05,
+     "deep_mm": 21.2,
+     "t_over_1cm_s": 0.055,
+     "longest_hold_s": 0.045,
+     "pull_moved_m": 0.008,
+     "nan": false,
+     "passed": false
+    }
+   ],
+   "n_cases": 24,
+   "seconds": 1.9
+  },
+  {
+   "check": "rollouts",
+   "passed": false,
+   "limits": {
+    "depth_m": 0.05,
+    "speed_jump_ms": 20.0,
+    "diverged_share": 0.01,
+    "diverge_qvel": 200.0,
+    "seconds": 1.0,
+    "noise_rad": 0.5,
+    "worlds_per_tile": 2
+   },
+   "worlds": 24,
+   "diverged_share": 0.0,
+   "diverge_events": 0,
+   "nan_worlds": 0,
+   "depth_terrain_mm_max": 103.0,
+   "depth_self_mm_max": 31.0,
+   "speed_jump_ms_max": 2.4,
+   "contact_overflow": 0,
+   "failed_tiles": [
+    {
+     "tile": "tp_ramp_sh2_hs",
+     "depth_terrain_mm": 103.0,
+     "depth_self_mm": 13.3,
+     "speed_jump_ms": 1.52,
+     "body_speed_max_ms": 3.24,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 0.0
+    }
+   ],
+   "tiles": [
+    {
+     "tile": "x2_loco_flat_train_hold",
+     "depth_terrain_mm": 19.5,
+     "depth_self_mm": 7.9,
+     "speed_jump_ms": 1.66,
+     "body_speed_max_ms": 3.69,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    },
+    {
+     "tile": "x2_loco_blocks_train_hold",
+     "depth_terrain_mm": 15.4,
+     "depth_self_mm": 12.5,
+     "speed_jump_ms": 1.19,
+     "body_speed_max_ms": 2.72,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    },
+    {
+     "tile": "x2_chains_far_hs",
+     "depth_terrain_mm": 25.6,
+     "depth_self_mm": 25.7,
+     "speed_jump_ms": 2.4,
+     "body_speed_max_ms": 4.21,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    },
+    {
+     "tile": "tp_stairs_x10_sh2_hs",
+     "depth_terrain_mm": 10.8,
+     "depth_self_mm": 31.0,
+     "speed_jump_ms": 0.88,
+     "body_speed_max_ms": 4.04,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    },
+    {
+     "tile": "gst_v1_hs",
+     "depth_terrain_mm": 17.5,
+     "depth_self_mm": 17.3,
+     "speed_jump_ms": 1.32,
+     "body_speed_max_ms": 3.48,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    },
+    {
+     "tile": "gs2dn_v2_hs",
+     "depth_terrain_mm": 14.0,
+     "depth_self_mm": 20.8,
+     "speed_jump_ms": 1.59,
+     "body_speed_max_ms": 4.09,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    },
+    {
+     "tile": "gs2lo_v1_hs",
+     "depth_terrain_mm": 19.4,
+     "depth_self_mm": 11.5,
+     "speed_jump_ms": 2.3,
+     "body_speed_max_ms": 4.23,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    },
+    {
+     "tile": "tp_ramp_sh2_hs",
+     "depth_terrain_mm": 103.0,
+     "depth_self_mm": 13.3,
+     "speed_jump_ms": 1.52,
+     "body_speed_max_ms": 3.24,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 0.0
+    },
+    {
+     "tile": "tp_t4x4u_y20_hs",
+     "depth_terrain_mm": 10.4,
+     "depth_self_mm": 26.9,
+     "speed_jump_ms": 0.93,
+     "body_speed_max_ms": 2.85,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    },
+    {
+     "tile": "pico_2026-10-29_2x2_train_hold",
+     "depth_terrain_mm": 13.7,
+     "depth_self_mm": 18.0,
+     "speed_jump_ms": 0.93,
+     "body_speed_max_ms": 5.23,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    },
+    {
+     "tile": "stand_edge_v1",
+     "depth_terrain_mm": 9.7,
+     "depth_self_mm": 11.1,
+     "speed_jump_ms": 0.81,
+     "body_speed_max_ms": 3.06,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    },
+    {
+     "tile": "turn_place_v1",
+     "depth_terrain_mm": 8.2,
+     "depth_self_mm": 14.8,
+     "speed_jump_ms": 1.23,
+     "body_speed_max_ms": 2.99,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "passed": 1.0
+    }
+   ],
+   "seconds": 5.5
+  }
+ ],
+ "passed": false,
+ "config": {
+  "cfg": "cfg/stage2g_sets.json",
+  "hmap": "tp_ramp_hmap_x30_40mm.npz",
+  "ACP_HF_FIX": "0",
+  "ACP_HF_CHUNK": "400",
+  "ACP_PLANT": "mc_20261024",
+  "X2_EXCLUDE_PAIRS": "hip"
+ },
+ "model": {
+  "nbody": 113,
+  "ngeom": 168,
+  "nhfield": 1,
+  "nmocap": 80,
+  "timestep": 0.005,
+  "tiles": [
+   "x2_loco_flat_train_hold",
+   "x2_loco_blocks_train_hold",
+   "x2_chains_far_hs",
+   "tp_stairs_x10_sh2_hs",
+   "gst_v1_hs",
+   "gs2dn_v2_hs",
+   "gs2lo_v1_hs",
+   "tp_ramp_sh2_hs",
+   "tp_t4x4u_y20_hs",
+   "pico_2026-10-29_2x2_train_hold",
+   "stand_edge_v1",
+   "turn_place_v1"
+  ],
+  "build_s": 2.2
+ },
+ "seconds": 10.5
+}

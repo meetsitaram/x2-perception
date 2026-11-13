@@ -1,0 +1,106 @@
+{
+ "recorded": "2026-11-12 09:20 UTC",
+ "seconds": 12.0,
+ "trials": {
+  "acp_4250_corrected/1000": {
+   "waypoints": 5,
+   "outcome": "time limit",
+   "final": [
+    3.2849,
+    0.4709,
+    0.6623
+   ],
+   "qpos_hash": "eb3c215d3d61f04c"
+  },
+  "acp_4250_corrected/1001": {
+   "waypoints": 5,
+   "outcome": "time limit",
+   "final": [
+    3.3077,
+    0.4585,
+    0.6611
+   ],
+   "qpos_hash": "7df8329171bde774"
+  },
+  "acp_4250_corrected/1002": {
+   "waypoints": 5,
+   "outcome": "time limit",
+   "final": [
+    3.2826,
+    0.3721,
+    0.6656
+   ],
+   "qpos_hash": "a4b35319d5ce7e32"
+  },
+  "acp_4250_corrected/1003": {
+   "waypoints": 4,
+   "outcome": "time limit",
+   "final": [
+    3.3052,
+    0.4019,
+    0.6574
+   ],
+   "qpos_hash": "3a3e478d66593855"
+  },
+  "acp_4250_corrected/1004": {
+   "waypoints": 5,
+   "outcome": "time limit",
+   "final": [
+    3.3136,
+    0.4038,
+    0.6548
+   ],
+   "qpos_hash": "4ec3b54683f3fea8"
+  },
+  "acp_4250_corrected/1005": {
+   "waypoints": 5,
+   "outcome": "time limit",
+   "final": [
+    3.253,
+    0.4255,
+    0.6661
+   ],
+   "qpos_hash": "e7ae0df79c363565"
+  },
+  "baseline_20261102_old_model/1000": {
+   "waypoints": 4,
+   "outcome": "time limit",
+   "final": [
+    3.2106,
+    0.5983,
+    0.6658
+   ],
+   "qpos_hash": "8b7485e078ad795e"
+  },
+  "baseline_20261102_old_model/1001": {
+   "waypoints": 3,
+   "outcome": "time limit",
+   "final": [
+    2.794,
+    0.9076,
+    0.6722
+   ],
+   "qpos_hash": "393589b79c66f769"
+  },
+  "baseline_20261102_old_model/1002": {
+   "waypoints": 4,
+   "outcome": "fall: pelvis tilted 61 deg",
+   "final": [
+    3.3769,
+    0.7724,
+    0.7011
+   ],
+   "qpos_hash": "80c143311e95cb23"
+  },
+  "baseline_20261102_old_model/1003": {
+   "waypoints": 4,
+   "outcome": "time limit",
+   "final": [
+    3.3675,
+    0.942,
+    0.6392
+   ],
+   "qpos_hash": "bd9a32cd7f848ca1"
+  }
+ }
+}

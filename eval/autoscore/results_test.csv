@@ -1,0 +1,3 @@
+track,checkpoint,floor,trials_per_test,flat_walk,flat_stop_stand,flat_turn_in_place,flat_turn_and_return,flat_gate,gate,leg1,leg2,leg3,leg4,leg5,product,route,route_ci95,route_sections,flags,finished_utc,minutes,out
+acp,pair_s2_v3_007250,"solid, trimmed",5,5/5,5/5,5/5,5/5,PASSED,PASS 4/5 (turn-around 3/3),5/5,5/5,5/5,5/5,5/5,1.000,not run,,,"legs+route 25 trials: joint-limit 0, trapped-foot 0, limb-clamp 0",2026-11-12 21:34,4,eval/out/acp/pair_s2_v3_007250/autotest
+hiking,x2_parkour_v4_4750,"solid, trimmed",5,5/5,5/5,2/5,5/5,NOT PASSED,,1/5,3/5,0/5,0/5,0/5,0.000,not run,,,"legs+route 25 trials: joint-limit 6, trapped-foot 1, limb-clamp 0",2026-11-12 21:43,13,eval/out/hiking/x2_parkour_v4_4750/autotest

@@ -1,0 +1,828 @@
+{
+ "track": "ssr",
+ "time_utc": "2026-11-12T23:28:36Z",
+ "checks": [
+  {
+   "check": "hfield_size",
+   "passed": true,
+   "limit": 400,
+   "n_fields": 180,
+   "max_nrow": 400,
+   "max_ncol": 400,
+   "n_over": 0,
+   "over": []
+  },
+  {
+   "check": "foot_drop",
+   "passed": false,
+   "limits": {
+    "depth_m": 0.01,
+    "hold_s": 0.07,
+    "pull_N": 150.0,
+    "freed_m": 0.02,
+    "mass_kg": 10.0,
+    "speeds": [
+     1.0,
+     2.0,
+     3.0,
+     4.5
+    ]
+   },
+   "kinds_missing": [],
+   "summary": {
+    "flat": {
+     "n": 8,
+     "failed": 0,
+     "deep_mm_max": 36.8,
+     "t_over_1cm_max": 0.065,
+     "pull_moved_min": 0.087
+    },
+    "slope": {
+     "n": 8,
+     "failed": 0,
+     "deep_mm_max": 52.4,
+     "t_over_1cm_max": 0.07,
+     "pull_moved_min": 0.166
+    },
+    "edge": {
+     "n": 8,
+     "failed": 4,
+     "deep_mm_max": 164.6,
+     "t_over_1cm_max": 0.39,
+     "pull_moved_min": -0.091
+    }
+   },
+   "failed_cases": [
+    {
+     "kind": "edge",
+     "v": 3.0,
+     "x": 9.25,
+     "y": 49.35,
+     "pull_dir": [
+      1.0,
+      -0.0
+     ],
+     "deep_mm": 155.2,
+     "t_over_1cm_s": 0.07,
+     "longest_hold_s": 0.065,
+     "pull_moved_m": -0.053,
+     "nan": false,
+     "passed": false
+    },
+    {
+     "kind": "edge",
+     "v": 4.5,
+     "x": 9.25,
+     "y": 49.35,
+     "pull_dir": [
+      1.0,
+      -0.0
+     ],
+     "deep_mm": 164.6,
+     "t_over_1cm_s": 0.055,
+     "longest_hold_s": 0.055,
+     "pull_moved_m": -0.091,
+     "nan": false,
+     "passed": false
+    },
+    {
+     "kind": "edge",
+     "v": 3.0,
+     "x": 10.62,
+     "y": 67.78,
+     "pull_dir": [
+      -1.0,
+      -0.0
+     ],
+     "deep_mm": 155.8,
+     "t_over_1cm_s": 0.39,
+     "longest_hold_s": 0.39,
+     "pull_moved_m": 0.026,
+     "nan": false,
+     "passed": false
+    },
+    {
+     "kind": "edge",
+     "v": 4.5,
+     "x": 10.62,
+     "y": 67.78,
+     "pull_dir": [
+      -1.0,
+      -0.0
+     ],
+     "deep_mm": 154.0,
+     "t_over_1cm_s": 0.325,
+     "longest_hold_s": 0.31,
+     "pull_moved_m": 0.05,
+     "nan": false,
+     "passed": false
+    }
+   ],
+   "n_cases": 24,
+   "seconds": 7.8
+  },
+  {
+   "check": "rollouts",
+   "passed": true,
+   "limits": {
+    "depth_m": 0.05,
+    "speed_jump_ms": 20.0,
+    "diverged_share": 0.01,
+    "diverge_qvel": 60.0,
+    "seconds": 1.0,
+    "noise_rad": 0.5,
+    "worlds_per_tile": 2
+   },
+   "worlds": 86,
+   "diverged_share": 0.0,
+   "diverge_events": 0,
+   "nan_worlds": 0,
+   "depth_terrain_mm_max": 29.8,
+   "depth_self_mm_max": 26.1,
+   "speed_jump_ms_max": 2.06,
+   "contact_overflow": 0,
+   "failed_tiles": [],
+   "tiles": [
+    {
+     "tile": "ramp_L0",
+     "depth_terrain_mm": 11.4,
+     "depth_self_mm": 4.4,
+     "speed_jump_ms": 0.75,
+     "body_speed_max_ms": 3.02,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_0_0|right_ankle_roll_link#253",
+      0.84
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ramp_L10",
+     "depth_terrain_mm": 11.5,
+     "depth_self_mm": 4.2,
+     "speed_jump_ms": 0.92,
+     "body_speed_max_ms": 4.01,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_0_1596|left_ankle_roll_link#226",
+      0.04
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ramp_L19",
+     "depth_terrain_mm": 13.8,
+     "depth_self_mm": 12.9,
+     "speed_jump_ms": 0.81,
+     "body_speed_max_ms": 3.57,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_0_3192|left_ankle_roll_link#226",
+      0.13
+     ],
+     "passed": true
+    },
+    {
+     "tile": "stairs_L0",
+     "depth_terrain_mm": 25.1,
+     "depth_self_mm": 9.1,
+     "speed_jump_ms": 1.83,
+     "body_speed_max_ms": 4.9,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_399_0|right_hand_guard",
+      0.9
+     ],
+     "passed": true
+    },
+    {
+     "tile": "stairs_L10",
+     "depth_terrain_mm": 14.8,
+     "depth_self_mm": 19.4,
+     "speed_jump_ms": 0.82,
+     "body_speed_max_ms": 4.23,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_yaw_link#244|right_wrist_roll_link#304",
+      0.82
+     ],
+     "passed": true
+    },
+    {
+     "tile": "stairs_L19",
+     "depth_terrain_mm": 17.1,
+     "depth_self_mm": 26.1,
+     "speed_jump_ms": 0.78,
+     "body_speed_max_ms": 3.8,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_roll_link#242|right_wrist_roll_link#304",
+      0.86
+     ],
+     "passed": true
+    },
+    {
+     "tile": "beam_L0",
+     "depth_terrain_mm": 13.1,
+     "depth_self_mm": 17.2,
+     "speed_jump_ms": 0.83,
+     "body_speed_max_ms": 3.32,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_yaw_link#244|right_wrist_roll_link#304",
+      0.345
+     ],
+     "passed": true
+    },
+    {
+     "tile": "beam_L10",
+     "depth_terrain_mm": 8.5,
+     "depth_self_mm": 8.2,
+     "speed_jump_ms": 0.81,
+     "body_speed_max_ms": 3.25,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_399_1596|left_ankle_roll_link#222",
+      0.255
+     ],
+     "passed": true
+    },
+    {
+     "tile": "beam_L19",
+     "depth_terrain_mm": 14.8,
+     "depth_self_mm": 11.5,
+     "speed_jump_ms": 0.91,
+     "body_speed_max_ms": 2.6,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_399_3192|right_ankle_roll_link#256",
+      0.345
+     ],
+     "passed": true
+    },
+    {
+     "tile": "platform_L0",
+     "depth_terrain_mm": 16.5,
+     "depth_self_mm": 5.5,
+     "speed_jump_ms": 0.96,
+     "body_speed_max_ms": 3.22,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_798_0|right_ankle_roll_link#257",
+      0.14
+     ],
+     "passed": true
+    },
+    {
+     "tile": "platform_L10",
+     "depth_terrain_mm": 13.7,
+     "depth_self_mm": 7.4,
+     "speed_jump_ms": 1.06,
+     "body_speed_max_ms": 4.28,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_798_1596|right_ankle_roll_link#256",
+      0.14
+     ],
+     "passed": true
+    },
+    {
+     "tile": "platform_L19",
+     "depth_terrain_mm": 10.5,
+     "depth_self_mm": 5.7,
+     "speed_jump_ms": 0.78,
+     "body_speed_max_ms": 2.89,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_798_3192|left_ankle_roll_link#222",
+      0.275
+     ],
+     "passed": true
+    },
+    {
+     "tile": "flat_L0",
+     "depth_terrain_mm": 10.2,
+     "depth_self_mm": 16.3,
+     "speed_jump_ms": 1.37,
+     "body_speed_max_ms": 3.83,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "left_hip_roll_link#210|left_wrist_pitch_link#287",
+      0.69
+     ],
+     "passed": true
+    },
+    {
+     "tile": "flat_L10",
+     "depth_terrain_mm": 9.9,
+     "depth_self_mm": 13.7,
+     "speed_jump_ms": 1.03,
+     "body_speed_max_ms": 3.3,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_yaw_link#244|right_wrist_roll_link#304",
+      0.385
+     ],
+     "passed": true
+    },
+    {
+     "tile": "flat_L19",
+     "depth_terrain_mm": 14.9,
+     "depth_self_mm": 10.4,
+     "speed_jump_ms": 1.18,
+     "body_speed_max_ms": 3.39,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1197_3192|right_ankle_roll_link#256",
+      0.35
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_0",
+     "depth_terrain_mm": 17.2,
+     "depth_self_mm": 5.6,
+     "speed_jump_ms": 0.76,
+     "body_speed_max_ms": 4.3,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1596_0|right_ankle_roll_link#258",
+      0.435
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_1",
+     "depth_terrain_mm": 13.4,
+     "depth_self_mm": 14.0,
+     "speed_jump_ms": 0.81,
+     "body_speed_max_ms": 3.53,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "left_ankle_roll_link#229|right_ankle_roll_link#257",
+      0.75
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_2",
+     "depth_terrain_mm": 10.4,
+     "depth_self_mm": 13.3,
+     "speed_jump_ms": 0.88,
+     "body_speed_max_ms": 4.27,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_yaw_link#244|right_wrist_roll_link#304",
+      0.55
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_3",
+     "depth_terrain_mm": 12.8,
+     "depth_self_mm": 9.8,
+     "speed_jump_ms": 0.95,
+     "body_speed_max_ms": 3.78,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1995_399|right_ankle_roll_link#256",
+      0.135
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_4",
+     "depth_terrain_mm": 10.6,
+     "depth_self_mm": 19.4,
+     "speed_jump_ms": 0.82,
+     "body_speed_max_ms": 3.01,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_yaw_link#244|right_wrist_roll_link#304",
+      0.49
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_5",
+     "depth_terrain_mm": 18.3,
+     "depth_self_mm": 11.7,
+     "speed_jump_ms": 1.28,
+     "body_speed_max_ms": 3.96,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1995_798|left_ankle_roll_link#226",
+      0.945
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_6",
+     "depth_terrain_mm": 11.8,
+     "depth_self_mm": 9.0,
+     "speed_jump_ms": 0.92,
+     "body_speed_max_ms": 3.89,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1596_798|left_ankle_roll_link#231",
+      0.135
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_7",
+     "depth_terrain_mm": 9.9,
+     "depth_self_mm": 19.1,
+     "speed_jump_ms": 0.9,
+     "body_speed_max_ms": 4.19,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "left_hip_yaw_link#212|left_wrist_roll_link#289",
+      0.625
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_8",
+     "depth_terrain_mm": 14.1,
+     "depth_self_mm": 12.2,
+     "speed_jump_ms": 1.07,
+     "body_speed_max_ms": 3.68,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1596_1197|left_ankle_roll_link#224",
+      0.245
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_9",
+     "depth_terrain_mm": 13.0,
+     "depth_self_mm": 3.6,
+     "speed_jump_ms": 0.83,
+     "body_speed_max_ms": 3.08,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1995_1197|right_ankle_roll_link#254",
+      0.17
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_10",
+     "depth_terrain_mm": 13.1,
+     "depth_self_mm": 11.0,
+     "speed_jump_ms": 0.87,
+     "body_speed_max_ms": 3.62,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1596_1596|left_ankle_roll_link#221",
+      0.16
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_11",
+     "depth_terrain_mm": 22.7,
+     "depth_self_mm": 10.2,
+     "speed_jump_ms": 1.51,
+     "body_speed_max_ms": 4.36,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1995_1596|right_ankle_roll_link#256",
+      0.235
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_12",
+     "depth_terrain_mm": 10.3,
+     "depth_self_mm": 8.9,
+     "speed_jump_ms": 0.74,
+     "body_speed_max_ms": 3.37,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1596_1995|right_ankle_roll_link#257",
+      0.045
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_13",
+     "depth_terrain_mm": 16.6,
+     "depth_self_mm": 23.4,
+     "speed_jump_ms": 1.2,
+     "body_speed_max_ms": 4.87,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "left_hip_yaw_link#212|left_wrist_roll_link#289",
+      0.755
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_14",
+     "depth_terrain_mm": 11.9,
+     "depth_self_mm": 10.7,
+     "speed_jump_ms": 1.04,
+     "body_speed_max_ms": 3.08,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1596_2394|left_ankle_roll_link#221",
+      0.04
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_15",
+     "depth_terrain_mm": 15.3,
+     "depth_self_mm": 13.2,
+     "speed_jump_ms": 0.79,
+     "body_speed_max_ms": 3.95,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1995_2394|right_ankle_roll_link#258",
+      0.15
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_16",
+     "depth_terrain_mm": 12.5,
+     "depth_self_mm": 8.4,
+     "speed_jump_ms": 1.82,
+     "body_speed_max_ms": 4.69,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1596_2793|right_elbow_guard",
+      0.995
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_17",
+     "depth_terrain_mm": 15.2,
+     "depth_self_mm": 6.1,
+     "speed_jump_ms": 0.86,
+     "body_speed_max_ms": 2.55,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_1995_2394|left_ankle_roll_link#223",
+      0.55
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_18",
+     "depth_terrain_mm": 11.4,
+     "depth_self_mm": 11.8,
+     "speed_jump_ms": 0.76,
+     "body_speed_max_ms": 3.6,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "left_ankle_roll_link#223|right_ankle_roll_link#260",
+      0.63
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_19",
+     "depth_terrain_mm": 10.1,
+     "depth_self_mm": 11.6,
+     "speed_jump_ms": 0.77,
+     "body_speed_max_ms": 3.19,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "left_hip_yaw_link#212|left_wrist_roll_link#289",
+      0.23
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_1",
+     "depth_terrain_mm": 12.8,
+     "depth_self_mm": 16.4,
+     "speed_jump_ms": 1.08,
+     "body_speed_max_ms": 4.19,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_hip_yaw_link#244|right_wrist_roll_link#304",
+      0.565
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_2",
+     "depth_terrain_mm": 26.1,
+     "depth_self_mm": 8.9,
+     "speed_jump_ms": 1.13,
+     "body_speed_max_ms": 4.07,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_2793_0|left_ankle_roll_link#222",
+      0.665
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_3",
+     "depth_terrain_mm": 13.5,
+     "depth_self_mm": 13.4,
+     "speed_jump_ms": 1.44,
+     "body_speed_max_ms": 4.35,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_3591_0|left_elbow_guard",
+      0.99
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_4",
+     "depth_terrain_mm": 19.8,
+     "depth_self_mm": 13.2,
+     "speed_jump_ms": 1.55,
+     "body_speed_max_ms": 5.45,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_4389_0|right_hand_guard",
+      0.79
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_5",
+     "depth_terrain_mm": 12.6,
+     "depth_self_mm": 14.0,
+     "speed_jump_ms": 0.88,
+     "body_speed_max_ms": 3.25,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "right_ankle_roll_link#253|left_knee_link#214",
+      0.995
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_6",
+     "depth_terrain_mm": 29.8,
+     "depth_self_mm": 26.0,
+     "speed_jump_ms": 2.06,
+     "body_speed_max_ms": 4.6,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_5586_0|right_hand_guard",
+      0.875
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_7",
+     "depth_terrain_mm": 13.8,
+     "depth_self_mm": 12.6,
+     "speed_jump_ms": 1.02,
+     "body_speed_max_ms": 3.46,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_5985_0|left_ankle_roll_link#231",
+      0.83
+     ],
+     "passed": true
+    },
+    {
+     "tile": "ext_8",
+     "depth_terrain_mm": 12.9,
+     "depth_self_mm": 12.2,
+     "speed_jump_ms": 0.74,
+     "body_speed_max_ms": 3.39,
+     "nan_worlds": 0,
+     "diverged_worlds": 0,
+     "deepest_pair_t": [
+      "terrain_6783_0|right_ankle_roll_link#263",
+      0.135
+     ],
+     "passed": true
+    }
+   ],
+   "seconds": 16.6
+  }
+ ],
+ "passed": false,
+ "config": {
+  "ssr": {
+   "seed": 0,
+   "plant": "mc_20261024",
+   "excl_pelvis_hiproll": true,
+   "ext_types": "tight_spots,log_corridors,homes,street_front,stairs,wedges,single_beams,beam_fields,blocks",
+   "ext_variants": 2,
+   "ext_min_clear": 0.0,
+   "ext_stairs_inset": true,
+   "ext_prop_routes": true,
+   "ext_stations": 1,
+   "ext_slope_turns": 2,
+   "ext_phys": 24
+  },
+  "X2_HF_CHUNK": "400 (builder default)",
+  "X2_PLANT": "mc_20261024",
+  "raster_shape": [
+   7601,
+   3361
+  ]
+ },
+ "model": {
+  "nbody": 33,
+  "ngeom": 310,
+  "nhfield": 180,
+  "nmocap": 0,
+  "timestep": 0.005,
+  "tiles": [
+   "ramp_L0",
+   "ramp_L10",
+   "ramp_L19",
+   "stairs_L0",
+   "stairs_L10",
+   "stairs_L19",
+   "beam_L0",
+   "beam_L10",
+   "beam_L19",
+   "platform_L0",
+   "platform_L10",
+   "platform_L19",
+   "flat_L0",
+   "flat_L10",
+   "flat_L19",
+   "ext_0",
+   "ext_1",
+   "ext_2",
+   "ext_3",
+   "ext_4",
+   "ext_5",
+   "ext_6",
+   "ext_7",
+   "ext_8",
+   "ext_9",
+   "ext_10",
+   "ext_11",
+   "ext_12",
+   "ext_13",
+   "ext_14",
+   "ext_15",
+   "ext_16",
+   "ext_17",
+   "ext_18",
+   "ext_19",
+   "ext_1",
+   "ext_2",
+   "ext_3",
+   "ext_4",
+   "ext_5",
+   "ext_6",
+   "ext_7",
+   "ext_8"
+  ],
+  "build_s": 12.9
+ },
+ "seconds": 39.0
+}
