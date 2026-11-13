@@ -237,7 +237,7 @@
   "reward": -8.1,
   "episode_len": 80,
   "terrain_level": 0.0,
-  "note": "run 4 from scratch"
+  "note": "run 4 from scratch; episode length in steps of 1,000"
  },
  {
   "id": "acp-3340",
@@ -273,7 +273,7 @@
   "reward": -2.02,
   "episode_len": 440,
   "terrain_level": 0.45,
-  "note": "26% of commanded speed at 500"
+  "note": "26% of commanded speed at 500; episode length in steps of 1,000"
  },
  {
   "id": "acp-3590",
@@ -297,7 +297,7 @@
   "reward": 6.75,
   "episode_len": 539,
   "terrain_level": 0.77,
-  "note": "32% of commanded speed at 550"
+  "note": "32% of commanded speed at 550; episode length in steps of 1,000"
  },
  {
   "id": "acp-3630",
@@ -321,7 +321,7 @@
   "reward": 5.7,
   "episode_len": 522,
   "terrain_level": 0.86,
-  "note": "38% of commanded speed at 750"
+  "note": "38% of commanded speed at 750; episode length in steps of 1,000"
  },
  {
   "id": "acp-3760",
@@ -345,7 +345,7 @@
   "reward": 15.6,
   "episode_len": 634,
   "terrain_level": 1.37,
-  "note": "38% of commanded speed at 750"
+  "note": "38% of commanded speed at 750; episode length in steps of 1,000"
  },
  {
   "id": "acp-3900",
@@ -369,7 +369,7 @@
   "reward": null,
   "episode_len": 644,
   "terrain_level": 1.55,
-  "note": "41% of commanded speed"
+  "note": "41% of commanded speed; episode length in steps of 1,000"
  },
  {
   "id": "hiking-v4-1095",
@@ -381,7 +381,7 @@
   "reward": 22.58,
   "episode_len": 591,
   "terrain_level": 1.16,
-  "note": "air-time reward added at 1,000"
+  "note": "air-time reward added at 1,000; episode length in steps of 1,000"
  },
  {
   "id": "acp-4000",
@@ -405,7 +405,7 @@
   "reward": 35.63,
   "episode_len": 713,
   "terrain_level": 2.61,
-  "note": "72% of commanded speed at 1,250"
+  "note": "72% of commanded speed at 1,250; episode length in steps of 1,000"
  },
  {
   "id": "acp-s1v2-4240",
@@ -429,7 +429,7 @@
   "reward": 38.17,
   "episode_len": 730,
   "terrain_level": 3.78,
-  "note": "72% of commanded speed at 1,250"
+  "note": "72% of commanded speed at 1,250; episode length in steps of 1,000"
  },
  {
   "id": "acp-s1v2-4480",
@@ -453,7 +453,7 @@
   "reward": 49.14,
   "episode_len": 838,
   "terrain_level": 4.32,
-  "note": "56% of commanded speed at 1,500"
+  "note": "56% of commanded speed at 1,500; episode length in steps of 1,000"
  },
  {
   "id": "acp-s1v2-4710",
@@ -477,7 +477,7 @@
   "reward": 30.19,
   "episode_len": 863,
   "terrain_level": null,
-  "note": "restarted at 1,750 with turn-in-place commands"
+  "note": "restarted at 1,750 with turn-in-place commands; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-70",
@@ -513,7 +513,7 @@
   "reward": 49.09,
   "episode_len": 676,
   "terrain_level": null,
-  "note": "terrain levels reset to 0 at 1,760; climbing again"
+  "note": "terrain levels reset to 0 at 1,760; climbing again; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-350",
@@ -561,7 +561,7 @@
   "reward": 58.51,
   "episode_len": 828,
   "terrain_level": 4.98,
-  "note": "70% of commanded speed at 2,000"
+  "note": "70% of commanded speed at 2,000; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-640",
@@ -597,7 +597,7 @@
   "reward": 52.54,
   "episode_len": 784,
   "terrain_level": 5.07,
-  "note": "turn in place works at 2,125"
+  "note": "turn in place works at 2,125; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-910",
@@ -633,7 +633,7 @@
   "reward": 65.78,
   "episode_len": 900,
   "terrain_level": 5.38,
-  "note": "stop and stand 45 of 50 at 2,250"
+  "note": "stop and stand 45 of 50 at 2,250; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-1180",
@@ -669,7 +669,7 @@
   "reward": null,
   "episode_len": 852,
   "terrain_level": 5.44,
-  "note": "before the stop-penalty trial"
+  "note": "before the stop-penalty trial; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-1460",
@@ -705,7 +705,7 @@
   "reward": 62.13,
   "episode_len": 803,
   "terrain_level": 4.65,
-  "note": "recovering after a restart"
+  "note": "recovering after a restart; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-1730",
@@ -741,7 +741,7 @@
   "reward": 63.89,
   "episode_len": 864,
   "terrain_level": 5.3,
-  "note": "stop and stand 50 of 50 at 3,000"
+  "note": "stop and stand 50 of 50 at 3,000; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-1980",
@@ -909,7 +909,7 @@
   "reward": 72.76,
   "episode_len": 882.6,
   "terrain_level": 5.76,
-  "note": "overspeed penalty; 3,500 failed its eval test"
+  "note": "overspeed penalty; 3,500 failed its eval test; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-2890",
@@ -945,7 +945,7 @@
   "reward": 62.81,
   "episode_len": 866.0,
   "terrain_level": 5.73,
-  "note": "sliding penalty since 3,875; reward scale changed"
+  "note": "sliding penalty since 3,875; reward scale changed; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-2920",
@@ -981,7 +981,7 @@
   "reward": 75.97,
   "episode_len": 925.4,
   "terrain_level": 5.73,
-  "note": "sliding penalty since 3,875"
+  "note": "sliding penalty since 3,875; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-3070",
@@ -1017,7 +1017,7 @@
   "reward": 69.49,
   "episode_len": 859.2,
   "terrain_level": 5.83,
-  "note": "sliding penalty since 3,875"
+  "note": "sliding penalty since 3,875; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-3280",
@@ -1053,7 +1053,7 @@
   "reward": null,
   "episode_len": 932.5,
   "terrain_level": 5.82,
-  "note": "paused for the extended-map construction check"
+  "note": "paused for the extended-map construction check; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-3540",
@@ -1089,7 +1089,7 @@
   "reward": 64.2,
   "episode_len": 778.5,
   "terrain_level": 5.37,
-  "note": "extended map since 4,500; level now over 32 terrain types"
+  "note": "extended map since 4,500; level now over 32 terrain types; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-3750",
@@ -1125,7 +1125,7 @@
   "reward": 69.65,
   "episode_len": 845.0,
   "terrain_level": null,
-  "note": "extended map since 4,500"
+  "note": "extended map since 4,500; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-4010",
@@ -1161,7 +1161,7 @@
   "reward": null,
   "episode_len": 860.0,
   "terrain_level": 5.82,
-  "note": "map routes as start-to-target walks from here"
+  "note": "map routes as start-to-target walks from here; episode length in steps of 1,000"
  },
  {
   "id": "ssr-r7-3820b",
@@ -1246,5 +1246,77 @@
   "episode_len": null,
   "terrain_level": 9.22,
   "note": "restarted from 3,550 with passable routes only"
+ },
+ {
+  "id": "ssr-r7-5650",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r7",
+  "iteration": 5650,
+  "total": 20000,
+  "reward": 1.82,
+  "episode_len": 13.0,
+  "terrain_level": 12.91,
+  "note": "simulator fix (terrain split); episode length in seconds of a 20 s episode"
+ },
+ {
+  "id": "ssr-r7-6200",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r7",
+  "iteration": 6200,
+  "total": 20000,
+  "reward": null,
+  "episode_len": 13.4,
+  "terrain_level": 13.22,
+  "note": "episode length in seconds (max 20 s)"
+ },
+ {
+  "id": "ssr-r7-7120",
+  "run": "ssr",
+  "robot": "X2",
+  "track": "SSR, run r7",
+  "iteration": 7120,
+  "total": 20000,
+  "reward": null,
+  "episode_len": 14.5,
+  "terrain_level": 10.49,
+  "note": "v14 resumed after the v15 fall-back; level mean now includes the new discrete type; episode length in seconds of a 20 s episode; terrain level is the mean over SSR's lane tiles (of 19) and the extended-map tiles (about 0.5-2.7 of 9)"
+ },
+ {
+  "id": "hiking-v4-6485",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 4 (audit fixes)",
+  "iteration": 6485,
+  "total": 30000,
+  "reward": 83.95,
+  "episode_len": 945.0,
+  "terrain_level": 5.89,
+  "note": "episode length in steps of 1,000; terrain level of 9; extended-map columns 3.3-6.5 of 9 at 4,758"
+ },
+ {
+  "id": "hiking-v4-7379",
+  "run": "hiking",
+  "robot": "X2",
+  "track": "Hiking run 4 (audit fixes)",
+  "iteration": 7379,
+  "total": 30000,
+  "reward": 87.79,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "v5b restart armed for 7,500"
+ },
+ {
+  "id": "acp-s2v3-9230",
+  "run": "acp",
+  "robot": "X2",
+  "track": "ACP, planner stage on the corrected model",
+  "iteration": 9230,
+  "total": 14000,
+  "reward": 0.163,
+  "episode_len": null,
+  "terrain_level": null,
+  "note": "restarted tracker from 7,000 at 18:54"
  }
 ]

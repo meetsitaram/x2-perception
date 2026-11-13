@@ -11,7 +11,7 @@
 <body><div id="dash-root"></div>
 <script>
 (async () => {
-  const ids = ['tracks', 'targets', 'progress', 'apparatus_results', 'g1_results', 'details', 'robot', 'renders', 'open_items', 'worklog', 'eval_rules'];
+  const ids = ['tracks', 'targets', 'progress', 'apparatus_results', 'g1_results', 'details', 'robot', 'renders', 'open_items', 'worklog', 'eval_rules', 'paper_diffs'];
   const store = {};
   for (const id of ids) store[id] = await (await fetch('data/' + id + '.json')).json();
   store.renders.forEach((r) => { r.url = 'images/' + r.id + '.jpg'; });

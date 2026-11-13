@@ -1,22 +1,28 @@
 {
- "updated": "2026-11-13T02:03Z",
+ "updated": "2026-11-13T05:07Z",
  "pid": 44828,
  "running": [
-  "ssr:r7_v12_last leg4",
-  "ssr:r7_v12_last leg5",
-  "hiking:x2_parkour_v4_6125 leg3"
+  "ssr:r8_v15_p100 leg4",
+  "ssr:r8_v15_p100 leg5",
+  "acp:pair_s2_v3_009500 flat_stop_stand"
  ],
  "active": [
-  "ssr:r7_v12_last",
-  "hiking:x2_parkour_v4_6125",
-  "acp:pair_s2_v3_008000"
+  "ssr:r8_v15_p100",
+  "acp:pair_s2_v3_009500",
+  "hiking:x2_parkour_v4_7750"
  ],
  "done": [
   "acp:pair_s2_v3_007750",
-  "ssr:r7_v14_p250"
+  "ssr:r7_v14_p250",
+  "ssr:r7_v12_last",
+  "acp:pair_s2_v3_008000",
+  "hiking:x2_parkour_v4_6125"
  ],
  "last_rows": [
   "acp pair_s2_v3_007750 flat PASSED, gate FAIL 2/5 (turn-around 1/3), legs -/-/-/-/- (product -), route -",
-  "ssr r7_v14_p250 flat PASSED, gate -, legs 2/10/9/5/0 (product 0.000), route not run"
+  "ssr r7_v14_p250 flat PASSED, gate -, legs 2/10/9/5/0 (product 0.000), route not run",
+  "ssr r7_v12_last flat NOT PASSED, gate -, legs 17/18/3/0/0 (product 0.000), route not run",
+  "acp pair_s2_v3_008000 flat PASSED, gate PASS 4/5 (turn-around 3/3), legs 49/43/45/50/44 (product 0.667), route not run",
+  "hiking x2_parkour_v4_6125 flat NOT PASSED, gate -, legs 37/39/1/0/0 (product 0.000), route not run"
  ]
 }

@@ -186,7 +186,7 @@ def _apply_extended(self):
         cmd.velocity_ranges[name] = {"lin_vel_x": (0.45, 0.8), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (-1.0, 1.0)}
     cmd.velocity_ranges["perlin_rough_velocity"] = {"lin_vel_x": (0.0, 0.0), "lin_vel_y": (0.0, 0.0), "ang_vel_z": (0.0, 0.0)}
     cmd.random_velocity_terrain = ["perlin_rough_stand", "perlin_rough_velocity"]
-    cmd.ranges.lin_vel_x = (-0.4, 0.8)
+    cmd.ranges.lin_vel_x = (float(os.environ.get("HIKING_X2_VX_BACK", "-0.4")), 0.8)  # v4k: 0 (user 2026-11-12: never step back)
     cmd.ranges.lin_vel_y = (-0.3, 0.3)
     cmd.ranges.ang_vel_z = (-1.0, 1.0)
     # rewards (body_names preserve_order so index 0 is the left foot, as the two height scanners are ordered)

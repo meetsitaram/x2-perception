@@ -5,10 +5,10 @@
   "track": "ACP",
   "checkpoint": "2 November baseline pair (acp3_v2 1000 + planner_v2_hist1, SuperMimic-based), goal shrinking near waypoints",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 200,
   "success_pct": 7.5,
-  "note": "RETIRED 2026-11-12: scored with an eval adapter version that was never saved and cannot be reproduced; replaced by the 50-trial baseline rows below. baseline reference; current rule; clean 0"
+  "note": "Old floor (height field). RETIRED 2026-11-12: scored with an eval adapter version that was never saved and cannot be reproduced; replaced by the 50-trial baseline rows below. baseline reference; current rule; clean 0"
  },
  {
   "id": "baseline-ours-keep",
@@ -16,10 +16,10 @@
   "track": "ACP",
   "checkpoint": "2 November baseline pair, original goal convention",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 200,
   "success_pct": 2.0,
-  "note": "RETIRED 2026-11-12: scored with an eval adapter version that was never saved and cannot be reproduced; replaced by the 50-trial baseline rows below. baseline reference; current rule; clean 0"
+  "note": "Old floor (height field). RETIRED 2026-11-12: scored with an eval adapter version that was never saved and cannot be reproduced; replaced by the 50-trial baseline rows below. baseline reference; current rule; clean 0"
  },
  {
   "id": "acp2250-ours",
@@ -27,11 +27,11 @@
   "track": "ACP",
   "checkpoint": "This round, tracker 2,250 + planner, October gains",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 200,
   "success_pct": 0.0,
   "door_pct": 84.0,
-  "note": "108 stalls (most 0.2-0.4 m short of a waypoint), 89 falls; goal convention mismatch; re-run pending"
+  "note": "Old floor (height field). 108 stalls (most 0.2-0.4 m short of a waypoint), 89 falls; goal convention mismatch; re-run pending"
  },
  {
   "id": "acp2250-ours-goal02",
@@ -39,10 +39,10 @@
   "track": "ACP",
   "checkpoint": "Tracker 2,250 + planner, goal kept to 0.20 m (no lookahead)",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 200,
   "success_pct": 1.0,
-  "note": "2 of 200; clean 0; 102 falls, 96 stalls; the goal + lookahead variant (3 of 200) stays the reference"
+  "note": "Old floor (height field). 2 of 200; clean 0; 102 falls, 96 stalls; the goal + lookahead variant (3 of 200) stays the reference"
  },
  {
   "id": "acp2250-ours-goal02-look03",
@@ -50,10 +50,10 @@
   "track": "ACP",
   "checkpoint": "Tracker 2,250 + planner, goal kept to 0.20 m with a 0.30 m lookahead",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 200,
   "success_pct": 1.5,
-  "note": "3 of 200 (95% interval 0.5-4.3); clean 0; falls/stalls by section: 4x4s 80/61, ramps 15/17, door 5/6, wall 0/6, stairs 2/1; 42 stalls at the door-side corner"
+  "note": "Old floor (height field). 3 of 200 (95% interval 0.5-4.3); clean 0; falls/stalls by section: 4x4s 80/61, ramps 15/17, door 5/6, wall 0/6, stairs 2/1; 42 stalls at the door-side corner"
  },
  {
   "id": "acp3500-ours-oldmodel",
@@ -61,14 +61,14 @@
   "track": "ACP",
   "checkpoint": "Stage-2 pair from 3,500 (tracker + attention planner), goal 0.20 m + 0.30 m lookahead; robot model WITH the false hip contact it was trained on",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 200,
   "success_pct": 25.5,
   "door_pct": 100.0,
   "stepovers_pct": 83.5,
   "ramps_pct": 64.0,
   "stairs_pct": 42.0,
-  "note": "51 of 200 (95% interval 20.0-32.0); clean 0; 120 falls, 29 stalls; on the corrected robot model this pair falls while standing, so this number does not transfer"
+  "note": "Old floor (height field). 51 of 200 (95% interval 20.0-32.0); clean 0; 120 falls, 29 stalls; on the corrected robot model this pair falls while standing, so this number does not transfer"
  },
  {
   "id": "acp-s1v2-4250-ours-corrected",
@@ -76,10 +76,10 @@
   "track": "ACP",
   "checkpoint": "Interim pair: tracker from 4,250 trained on the corrected robot model + the earlier planner; goal 0.20 m + 0.30 m lookahead; corrected robot model",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 34.0,
-  "note": "17 of 50 (95% interval 22-48); clean 0; 25 falls, 8 stalls; a first look at 50 trials; planner export not yet checked"
+  "note": "Old floor (height field). 17 of 50 (95% interval 22-48); clean 0; 25 falls, 8 stalls; a first look at 50 trials; planner export not yet checked"
  },
  {
   "id": "acp-s1v2-4500-ours-corrected",
@@ -87,10 +87,10 @@
   "track": "ACP",
   "checkpoint": "Interim pair: tracker from 4,500 (corrected robot model) + the same earlier planner; goal 0.20 m + 0.30 m lookahead; corrected robot model",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 10.0,
-  "note": "5 of 50 (95% interval 4-21), down from 17 of 50 at 4,250 on the same seeds; the tracker keeps training without the planner and the frozen planner no longer fits it; not a measure of progress until the planner stage restarts"
+  "note": "Old floor (height field). 5 of 50 (95% interval 4-21), down from 17 of 50 at 4,250 on the same seeds; the tracker keeps training without the planner and the frozen planner no longer fits it; not a measure of progress until the planner stage restarts"
  },
  {
   "id": "baseline-ours-disc-1112",
@@ -98,10 +98,10 @@
   "track": "ACP",
   "checkpoint": "2 November baseline pair (SuperMimic-based), today's checked eval, old stand check",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 4.0,
-  "note": "2 of 50, old disc-only check; old robot model (the one it trained on)"
+  "note": "Old floor (height field). 2 of 50, old disc-only check; old robot model (the one it trained on)"
  },
  {
   "id": "baseline-ours-strict-1112",
@@ -109,10 +109,10 @@
   "track": "ACP",
   "checkpoint": "2 November baseline pair (SuperMimic-based), today's checked eval, STRICT stand check",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 0.0,
-  "note": "0 of 50 strict; this is the like-for-like starting point under the current rule"
+  "note": "Old floor (height field). 0 of 50 strict; this is the like-for-like starting point under the current rule"
  },
  {
   "id": "acp3500-ours-oldmodel-strict",
@@ -120,10 +120,10 @@
   "track": "ACP",
   "checkpoint": "Stage-2 pair from 3,500, old robot model with the false hip contact, STRICT stand check",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 0.0,
-  "note": "0 of 50 strict (16 of 50 under the old check on the same seeds); 43 falls: landing 21, 4x4s 9, stairs 7, ramps 6"
+  "note": "Old floor (height field). 0 of 50 strict (16 of 50 under the old check on the same seeds); 43 falls: landing 21, 4x4s 9, stairs 7, ramps 6"
  },
  {
   "id": "acp-s1v2-4250-ours-corrected-strict",
@@ -131,10 +131,10 @@
   "track": "ACP",
   "checkpoint": "Interim pair: tracker from 4,250 + the earlier planner; corrected robot model; STRICT stand check (feet loaded, nearly still, upright afterwards)",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 0.0,
-  "note": "0 of 50 strict on the held-out route (17 of 50 under the old check); it holds a real stand at buttons 1-4 and never at button 5, which is 0.3 m from an open 1.12 m drop. In a TEST copy of the route with that station moved to the middle of the landing the same policy scores 30 of 50 strict (60%)."
+  "note": "Old floor (height field). 0 of 50 strict on the held-out route (17 of 50 under the old check); it holds a real stand at buttons 1-4 and never at button 5, which is 0.3 m from an open 1.12 m drop. In a TEST copy of the route with that station moved to the middle of the landing the same policy scores 30 of 50 strict (60%)."
  },
  {
   "id": "acp-s2v2-5750-ours-corrected-strict",
@@ -142,10 +142,10 @@
   "track": "ACP",
   "checkpoint": "First planner-stage pair on the corrected robot model (iteration 5,750, fine-tuned planner, stands next to a drop in training); STRICT stand check",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 42.0,
-  "note": "21 of 50 strict (95% interval 29-56); 29 of 50 under the old check; clean 0; all 22 trials that reached the last station held a real stand there; 19 of the 23 falls are going up the stairs; 200 trials running"
+  "note": "Superseded by the 200-trial run (114 of 200). Old floor (height field). 21 of 50 strict (95% interval 29-56); 29 of 50 under the old check; clean 0; all 22 trials that reached the last station held a real stand there; 19 of the 23 falls are going up the stairs; 200 trials running"
  },
  {
   "id": "acp-s2v2-6000-ours-corrected-strict",
@@ -153,10 +153,10 @@
   "track": "ACP",
   "checkpoint": "Planner-stage pair on the corrected robot model (iteration 6,000); STRICT stand check with the final-stand retry; first look",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 36.0,
-  "note": "18 of 50 strict (95% interval 24-50); the 5,750 pair scored 21 of 50 on the same seeds before the retry; fewer stairs falls (5 against 19), more stalls at the 4x4s and ramps (18 against 5); not separable from 5,750 on 50 trials; 200 trials queued"
+  "note": "Superseded by the 200-trial run (79 of 200). Old floor (height field). 18 of 50 strict (95% interval 24-50); the 5,750 pair scored 21 of 50 on the same seeds before the retry; fewer stairs falls (5 against 19), more stalls at the 4x4s and ramps (18 against 5); not separable from 5,750 on 50 trials; 200 trials queued"
  },
  {
   "id": "acp-s2v2-6000-ours-corrected-strict-200",
@@ -164,10 +164,10 @@
   "track": "ACP",
   "checkpoint": "Planner-stage pair on the corrected robot model (iteration 6,000); STRICT stand check with the final-stand retry",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 200,
   "success_pct": 39.5,
-  "note": "79 of 200 strict (95% interval 33-46), clearly below the 5,750 pair's 114 of 200; 65 of 200 under the old check; 56 stalls (14 at 5,750), 31 of them short of the front 4x4; stairs falls 34 (45 at 5,750); last station held 79 of 80"
+  "note": "Old floor (height field). 79 of 200 strict (95% interval 33-46), clearly below the 5,750 pair's 114 of 200; 65 of 200 under the old check; 56 stalls (14 at 5,750), 31 of them short of the front 4x4; stairs falls 34 (45 at 5,750); last station held 79 of 80"
  },
  {
   "id": "hiking-3000-ours-strict",
@@ -175,10 +175,10 @@
   "track": "Hiking",
   "checkpoint": "Run 4, iteration 3,000; its training command rule; STRICT stand check with the final-stand retry; corrected robot model",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 0.0,
-  "note": "0 of 50: 29 falls, 21 stalls; 4x4 section 23 falls and 16 stalls, door 3 falls, ramps 3 falls and 5 stalls; the furthest any trial got is button 3 (3 trials); the last station was never reached; it passes every level-1 obstacle test"
+  "note": "Old floor (height field). 0 of 50: 29 falls, 21 stalls; 4x4 section 23 falls and 16 stalls, door 3 falls, ramps 3 falls and 5 stalls; the furthest any trial got is button 3 (3 trials); the last station was never reached; it passes every level-1 obstacle test"
  },
  {
   "id": "acp-s2v2-6250-ours-corrected-strict",
@@ -186,10 +186,10 @@
   "track": "ACP",
   "checkpoint": "Planner-stage pair on the corrected robot model (iteration 6,250); STRICT stand check with the final-stand retry; first look",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 36.0,
-  "note": "18 of 50 strict (95% interval 24-50); 21 of 50 under the old check; first ACP pair to pass the flat gate (50 of 50 on all four flat tests); failures: 4x4s 10 falls and 11 stalls, ramps 2 and 5, stairs 4 falls; last station held 18 of 18; 200 trials queued"
+  "note": "Superseded by the 200-trial run (72 of 200). Old floor (height field). 18 of 50 strict (95% interval 24-50); 21 of 50 under the old check; first ACP pair to pass the flat gate (50 of 50 on all four flat tests); failures: 4x4s 10 falls and 11 stalls, ramps 2 and 5, stairs 4 falls; last station held 18 of 18; 200 trials queued"
  },
  {
   "id": "acp-s2v2-5750-ours-corrected-strict-200",
@@ -197,11 +197,11 @@
   "track": "ACP",
   "checkpoint": "Planner-stage pair on the corrected robot model (iteration 5,750); STRICT stand check, final stand with a retry",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 200,
   "success_pct": 57.0,
   "door_pct": 100.0,
-  "note": "114 of 200 strict (95% interval 50-64); 105 of 200 before the final-stand retry; 113 of 200 under the old check; clean 0; last station held in 114 of 117 that reached it; failures: stairs 45 falls (34 at the foot or first step), 4x4s 21 falls and 5 stalls, ramps 4 falls and 8 stalls"
+  "note": "Old floor (height field). 114 of 200 strict (95% interval 50-64); 105 of 200 before the final-stand retry; 113 of 200 under the old check; clean 0; last station held in 114 of 117 that reached it; failures: stairs 45 falls (34 at the foot or first step), 4x4s 21 falls and 5 stalls, ramps 4 falls and 8 stalls"
  },
  {
   "id": "acp-s2v2-6250-ours-strict",
@@ -209,10 +209,10 @@
   "track": "ACP",
   "checkpoint": "Planner stage on the corrected model, pair at iteration 6,250; STRICT stand check with the final-stand retry",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 200,
   "success_pct": 36.0,
-  "note": "72 of 200 (old count 96 of 200); 4x4s 24 falls and 57 stalls, ramps 5 and 16, stairs 24 falls; 52 stalls are the turn-around after the first station; the last station held 72 of 74; stairs better than the 5,750 pair, the turn-around worse"
+  "note": "Old floor (height field). 72 of 200 (old count 96 of 200); 4x4s 24 falls and 57 stalls, ramps 5 and 16, stairs 24 falls; 52 stalls are the turn-around after the first station; the last station held 72 of 74; stairs better than the 5,750 pair, the turn-around worse"
  },
  {
   "id": "ssr-r7-2250-ours-strict",
@@ -220,10 +220,10 @@
   "track": "SSR",
   "checkpoint": "Run r7, iteration 2,250; standard command; STRICT stand check with the final-stand retry; corrected robot model",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 0.0,
-  "note": "0 of 50: 49 stalls, 1 fall; the first station was reached and held in 42 trials; 40 stalls come right after it, where the robot must turn around on the spot and does not turn at slow commanded rates; old count also 0 of 50"
+  "note": "Old floor (height field). 0 of 50: 49 stalls, 1 fall; the first station was reached and held in 42 trials; 40 stalls come right after it, where the robot must turn around on the spot and does not turn at slow commanded rates; old count also 0 of 50"
  },
  {
   "id": "acp-s2v2-6500-ours-strict-50",
@@ -231,10 +231,10 @@
   "track": "ACP",
   "checkpoint": "Planner stage on the corrected model, pair at iteration 6,500; STRICT stand check with the final-stand retry",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 38.0,
-  "note": "19 of 50 (first look, no 200-trial run planned): 23 stalls, 8 falls; 4x4s 4 falls and 20 stalls, ramps 3 stalls, stairs 4 falls; from the period before the planner was frozen"
+  "note": "Old floor (height field). 19 of 50 (first look, no 200-trial run planned): 23 stalls, 8 falls; 4x4s 4 falls and 20 stalls, ramps 3 stalls, stairs 4 falls; from the period before the planner was frozen"
  },
  {
   "id": "acp-s2v2-7000-ours-strict-50",
@@ -242,10 +242,10 @@
   "track": "ACP",
   "checkpoint": "Planner stage, pair at iteration 7,000 with the planner frozen at its 5,750 state; STRICT stand check with the final-stand retry",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 52.0,
-  "note": "26 of 50 (first 50 trials; 200 queued): 18 falls (13 at the 4x4s, 2 ramps, 3 stairs), 6 stalls, 1 at the turn-around; the last station held 26 of 26; on the same 50 trials the 5,750 pair scored 22 and the 6,250 pair 18"
+  "note": "Superseded by the 200-trial runs of the same pair. Old floor (height field). 26 of 50 (first 50 trials; 200 queued): 18 falls (13 at the 4x4s, 2 ramps, 3 stairs), 6 stalls, 1 at the turn-around; the last station held 26 of 26; on the same 50 trials the 5,750 pair scored 22 and the 6,250 pair 18"
  },
  {
   "id": "hiking-4125-ours-strict",
@@ -253,10 +253,10 @@
   "track": "Hiking",
   "checkpoint": "Run 4, iteration 4,125 (sliding penalty; before the extended map); its training command rule; STRICT stand check with the final-stand retry",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 50,
   "success_pct": 0.0,
-  "note": "0 of 50: 35 falls, 15 stalls; 21 falls at the turn out of the doorway toward the front 4x4 (3 at iteration 3,000); the furthest any trial got is button 3; the last station was never reached; it passes every single obstacle and the street route 50 of 50"
+  "note": "Old floor (height field). 0 of 50: 35 falls, 15 stalls; 21 falls at the turn out of the doorway toward the front 4x4 (3 at iteration 3,000); the furthest any trial got is button 3; the last station was never reached; it passes every single obstacle and the street route 50 of 50"
  },
  {
   "id": "acp-s2v2-7000-ours-strict",
@@ -264,10 +264,10 @@
   "track": "ACP",
   "checkpoint": "Planner stage, pair at iteration 7,000 with the planner frozen at its 5,750 state; STRICT stand check with the final-stand retry",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, old floor",
   "trials": 200,
   "success_pct": 62.5,
-  "note": "125 of 200, the best of any track (reference pair 5,750: 57.0%; the ranges overlap). 50 falls and 25 stalls: 4x4s 37 falls and 14 stalls, ramps 4 and 8, stairs 9 and 2; the last station held 125 of 126. Provisional: a fault in the eval's floor physics (feet jamming in the floor cells) is being tested and may change the 4x4 results"
+  "note": "Superseded by the final-floor run of the same pair (114 of 200). Old floor (height field). 125 of 200, the best of any track (reference pair 5,750: 57.0%; the ranges overlap). 50 falls and 25 stalls: 4x4s 37 falls and 14 stalls, ramps 4 and 8, stairs 9 and 2; the last station held 125 of 126. Provisional: a fault in the eval's floor physics (feet jamming in the floor cells) is being tested and may change the 4x4 results"
  },
  {
   "id": "acp-s2v2-7000-ours-solid",
@@ -275,10 +275,87 @@
   "track": "ACP",
   "checkpoint": "Pair 7,000 (planner frozen at 5,750); strict stand check; SOLID FLOOR (planes and boxes)",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, solid floor (untrimmed)",
   "trials": 200,
   "success_pct": 57.5,
-  "note": "115 of 200 (51-64%); old floor 125 of 200 (56-69%), ranges overlap. 60 falls, 25 stalls: 4x4s 45, ramps 21, stairs 18, landing 1. Station legs 47 / 39 / 49 / 50 / 41 (product 0.589). A ramp-slab side stands 1.5-2 cm in front of the edge the policy scans; being trimmed and re-checked"
+  "note": "Superseded by the final floor (ramp slabs trimmed): 114 of 200. 115 of 200 (51-64%); old floor 125 of 200 (56-69%), ranges overlap. 60 falls, 25 stalls: 4x4s 45, ramps 21, stairs 18, landing 1. Station legs 47 / 39 / 49 / 50 / 41 (product 0.589). A ramp-slab side stands 1.5-2 cm in front of the edge the policy scans; being trimmed and re-checked"
+ },
+ {
+  "id": "acp-s2v2-7000-legs",
+  "date": "2026-11-12",
+  "track": "ACP",
+  "checkpoint": "Pair 7,000 (planner frozen at 5,750), station legs",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU, solid floor (untrimmed)",
+  "trials": 250,
+  "success_pct": null,
+  "note": "Station legs (of 50 each, legs 1-5): 47 / 39 / 49 / 50 / 41 (product 0.589; old floor 49 / 39 / 46 / 50 / 43). The full-route runs of this pair are the rows above."
+ },
+ {
+  "id": "acp-s2v2-7500-legs",
+  "date": "2026-11-12",
+  "track": "ACP",
+  "checkpoint": "Pair s2_v2 7,500, station legs",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU, old floor",
+  "trials": 250,
+  "success_pct": null,
+  "note": "Old floor (height field). Station legs (of 50 each, legs 1-5): 45 / 36 / 41 / 49 / 43 (product 0.448); hold-out gate failed 1 of 5. Full route not run."
+ },
+ {
+  "id": "acp-s2v2-7750-legs",
+  "date": "2026-11-12",
+  "track": "ACP",
+  "checkpoint": "Pair s2_v2 7,750, station legs",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU, solid floor (untrimmed)",
+  "trials": 250,
+  "success_pct": null,
+  "note": "Station legs (of 50 each, legs 1-5): 50 / 43 / 43 / 50 / 43 (product 0.636); hold-out gate failed 3 of 5 (falls at the stairs and the ramps). Full route not run."
+ },
+ {
+  "id": "acp-s2v3-7250-legs",
+  "date": "2026-11-12",
+  "track": "ACP",
+  "checkpoint": "Pair s2_v3 7,250 (first pair of the restarted tracker), station legs",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU, final floor",
+  "trials": 250,
+  "success_pct": null,
+  "note": "Station legs (of 50 each, legs 1-5): 49 / 41 / 43 / 50 / 44 (product 0.608); hold-out gate passed 4 of 5. Legs 2, 3 and 5 under 45, so the full route was not run."
+ },
+ {
+  "id": "acp-s2v3-7750-legs",
+  "date": "2026-11-12",
+  "track": "ACP",
+  "checkpoint": "Pair s2_v3 7,750, flat tests and hold-out gate",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU, final floor",
+  "trials": 200,
+  "success_pct": null,
+  "note": "Flat tests 4 x 50/50 passed; hold-out gate failed 2 of 5 (turn-around 1 of 3), so legs and full route not run (automatic scorer)."
+ },
+ {
+  "id": "hiking-4750-legs",
+  "date": "2026-11-12",
+  "track": "Hiking",
+  "checkpoint": "Run 4, iteration 4,750 (first trained on the map), station legs",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU, solid floor (untrimmed)",
+  "trials": 250,
+  "success_pct": null,
+  "note": "Flat gate failed: turn in place 12 of 50 (37 stalled), other flat tests 50/50. Station legs (of 50 each, legs 1-5): 22 / 30 / 0 / 0 / 0; legs 3-5 mostly stalls. Full route not run."
+ },
+ {
+  "id": "ssr-r7-3550-legs",
+  "date": "2026-11-12",
+  "track": "SSR",
+  "checkpoint": "Run r7, iteration 3,550, station legs",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU, solid floor (untrimmed)",
+  "trials": 250,
+  "success_pct": null,
+  "note": "Flat gate failed: stop-and-stand 2 of 50 (39 stalled), other flat tests 50/50. Station legs (of 50 each, legs 1-5): 28 / 5 / 23 / 34 / 0. Full route not run."
  },
  {
   "id": "acp-s2v2-7000-ours-trim",
@@ -286,9 +363,31 @@
   "track": "ACP",
   "checkpoint": "Pair 7,000 (planner frozen at 5,750); strict stand check; FINAL FLOOR (solid, ramp slabs trimmed)",
   "apparatus": "ours",
-  "simulator": "MuJoCo CPU",
+  "simulator": "MuJoCo CPU, final floor",
   "trials": 200,
   "success_pct": 57.0,
   "note": "114 of 200 (50-64%), the headline on the final floor; untrimmed solid floor 115 of 200, old floor 125 of 200 (ranges overlap). 65 falls, 21 stalls; failures by section: 4x4s 48, stairs 18, ramps 16, landing 4. Station legs (untrimmed) 47 / 39 / 49 / 50 / 41."
+ },
+ {
+  "id": "ssr-r7-v14-5050-legs",
+  "date": "2026-11-13",
+  "track": "SSR",
+  "checkpoint": "Run r7 v14, iteration 5,050 (r7_v14_p250), station legs",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU, final floor",
+  "trials": 250,
+  "success_pct": null,
+  "note": "Flat tests 4 x 50/50 passed (stop-and-stand fixed). Station legs (of 50 each, legs 1-5): 2 / 10 / 9 / 5 / 0. Full route not run. Flags in 250 trials: joint limit 7, trapped foot 2, limb clamp 16 (automatic scorer)."
+ },
+ {
+  "id": "ssr-r7-v12last-legs",
+  "date": "2026-11-13",
+  "track": "SSR",
+  "checkpoint": "Run r7, v12's last save (r7_v12_last), station legs",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU, final floor",
+  "trials": 250,
+  "success_pct": null,
+  "note": "Flat gate not passed: stop-and-stand 38 of 50. Station legs (of 50 each, legs 1-5): 17 / 18 / 3 / 0 / 0. Full route not run (automatic scorer)."
  }
 ]

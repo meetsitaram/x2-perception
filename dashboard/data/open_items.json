@@ -1,59 +1,83 @@
 [
  {
-  "id": "edge-station",
-  "item": "Last station on our apparatus (button 5) is 0.3 m from the open landing edge. ACP: 0 of 50 there, 30 of 50 with the station moved to the middle of the landing. Keep the station where the real button is and train for it, or move it?",
+  "id": "todo1",
+  "item": "Leaning board at the door of our apparatus is modelled as a solid wedge; the real board is open underneath. Going with: wait for the labelled test; the held-out course is not changed without your yes.",
   "who": "You",
   "who_kind": "you",
   "status": "Waiting",
   "status_kind": "waiting"
  },
  {
-  "id": "strictstand",
-  "item": "Eval rule tightened to match your '1 s stand': a station now counts only if the feet carry load, the robot is nearly still and it is upright afterwards (one 'success' was scored while stepping off the landing). Earlier counts are kept beside the new ones. Confirm or change.",
+  "id": "todo4",
+  "item": "Should a track's own eval command rule be its headline (SSR's speed floor, ACP's turn rule)? Going with: no, the standard command stays the headline; variants reported beside it.",
   "who": "You",
   "who_kind": "you",
   "status": "Waiting",
   "status_kind": "waiting"
  },
  {
-  "id": "hipcol",
-  "item": "Robot model corrected: the pelvis and hip-roll collision shapes overlap in simulation but not on the real robot; all tracks move to a model without that contact (decided while you were away; old model and checkpoints kept)",
+  "id": "todo5",
+  "item": "Hiking's chest camera sees toe tips to 1.66 m (you asked for 10 cm behind the toes to 2 m); the policy leans its waist back to the limit. Can the real mount pitch up about 5 degrees? Going with: leave mount and lean for now.",
   "who": "You",
   "who_kind": "you",
   "status": "Waiting",
   "status_kind": "waiting"
  },
  {
-  "id": "actscale",
-  "item": "Action scale: ours is 0.485 rad per unit on ankle roll, shoulder yaw and elbow (from the plant rule) against the SSR paper's 0.25 legs / 0.2 arms; allow a test with the paper's scales?",
+  "id": "todo6",
+  "item": "Pass mark for a station leg. Going with: 45 of 50 on each leg before the full route is run.",
   "who": "You",
   "who_kind": "you",
   "status": "Waiting",
   "status_kind": "waiting"
  },
  {
-  "id": "share",
-  "item": "New terrain is 18 of 38 columns of the training map; confirm the share",
+  "id": "todo8",
+  "item": "Stair tiles regenerated with the stair foot 2.5-3 m inside the tile, as an added set (your map untouched). Acting on it: built and in SSR and Hiking training.",
   "who": "You",
   "who_kind": "you",
   "status": "Waiting",
   "status_kind": "waiting"
  },
  {
-  "id": "routes",
-  "item": "61 of 327 commanded routes still blocked in the terrain preview (mostly street front)",
-  "who": "Coordinator",
+  "id": "todo9",
+  "item": "Simulator pre-flight fails every current build. Allow launches no worse than the running build while each failure has an owner and a fix date; depth limit 5 cm for feet and sustained contacts, 10 cm for brief impacts? Going with: yes to both.",
+  "who": "You",
+  "who_kind": "you",
+  "status": "Waiting",
+  "status_kind": "waiting"
+ },
+ {
+  "id": "ssr-v16",
+  "item": "SSR v16: find why the paper-aligned v15 slowed to a shuffle (style data or fresh judges) on CPU, then one corrected restart",
+  "who": "SSR track",
   "who_kind": "agent",
   "status": "In progress",
   "status_kind": "progress"
  },
  {
-  "id": "motions",
-  "item": "Retarget Pico prop captures to the robots; scan for backward and sideways walking",
+  "id": "acp-2h",
+  "item": "ACP data-2h restart at 06:00 UTC (corrected and mirrored Pico takes, foot-trap fix); stage-2 additions merged into the stage-3 code",
+  "who": "ACP track",
+  "who_kind": "agent",
+  "status": "In progress",
+  "status_kind": "progress"
+ },
+ {
+  "id": "hiking-v5b",
+  "item": "Hiking v5b trial (paper reference v2 alone, body-part style weights, turn and slow commands) and the scan of every term before the GPU start",
   "who": "Hiking track",
   "who_kind": "agent",
-  "status": "Not started",
-  "status_kind": "todo"
+  "status": "In progress",
+  "status_kind": "progress"
+ },
+ {
+  "id": "simcheck",
+  "item": "Simulator pre-flight (tools/simcheck) failures: feet trapped at edges, hands and wrists sinking into terrain; each track adopts the patches at its next planned restart",
+  "who": "Tracks",
+  "who_kind": "agent",
+  "status": "In progress",
+  "status_kind": "progress"
  },
  {
   "id": "g1",

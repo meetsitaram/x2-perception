@@ -22,6 +22,7 @@ REQUIRED = {
     "open_items": ["id", "item", "who", "who_kind", "status", "status_kind"],
     "worklog": ["id", "date", "area", "what", "where"],
     "eval_rules": ["id", "rule", "text", "status", "status_kind"],
+    "paper_diffs": ["id", "track", "item", "paper", "ours", "decision", "status", "status_kind"],
 }
 ALLOWED = {
     ("tracks", "id"): {"acp", "ssr", "hiking", "eval"},
@@ -40,6 +41,8 @@ ALLOWED = {
     ("open_items", "who_kind"): {"you", "agent"},
     ("open_items", "status_kind"): {"waiting", "progress", "todo", "paused"},
     ("eval_rules", "status_kind"): {"done", "partial", "waiting"},
+    ("paper_diffs", "track"): {"SSR", "ACP"},
+    ("paper_diffs", "status_kind"): {"done", "pending", "kept"},
 }
 errors = []
 for name, fields in REQUIRED.items():

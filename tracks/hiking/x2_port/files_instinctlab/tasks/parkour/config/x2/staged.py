@@ -291,7 +291,7 @@ class X2ParkourStagedEnvCfg(X2ParkourTorsoCamEnvCfg):
     def __post_init__(self):
         super().__post_init__()
         opts = _opts()
-        unknown = opts - set("abcdefgrstkyzowv")  # g: v4j graded contact (2026-11-12 20:20)
+        unknown = opts - set("abcdefgrstkyzowvj")  # j: v5 weighted style input (fixed.py.v5, 2026-11-13)  # g: v4j graded contact (2026-11-12 20:20)
         assert not unknown, "unknown HIKING_X2_OPTS: %s" % sorted(unknown)
         from instinct_rl.algorithms.wasabi import WasabiPPO
         install_style_schedule(WasabiPPO, float(os.environ.get("HIKING_X2_STYLE_EARLY", "0.3")) if "s" in opts else 1.0)

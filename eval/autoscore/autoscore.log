@@ -71,3 +71,63 @@
 11-13 01:40:59 start hiking:x2_parkour_v4_6125 leg2
 11-13 02:02:31 end hiking:x2_parkour_v4_6125 leg2: done
 11-13 02:02:34 start hiking:x2_parkour_v4_6125 leg3
+11-13 02:11:06 end ssr:r7_v12_last leg5: done
+11-13 02:11:12 start hiking:x2_parkour_v4_6125 leg4
+11-13 02:19:47 end ssr:r7_v12_last leg4: done
+11-13 02:20:00 ROW ssr r7_v12_last flat NOT PASSED, gate -, legs 17/18/3/0/0 (product 0.000), route not run
+11-13 02:20:00 start hiking:x2_parkour_v4_6125 leg5
+11-13 02:21:22 activate ssr:r8_v15_p100
+11-13 03:01:11 end hiking:x2_parkour_v4_6125 leg3: done
+11-13 03:01:25 start acp:pair_s2_v3_008000 fetch
+11-13 03:01:53 end acp:pair_s2_v3_008000 fetch: done
+11-13 03:02:02 start acp:pair_s2_v3_008000 gate
+11-13 03:03:50 end acp:pair_s2_v3_008000 gate: done
+11-13 03:03:50 start acp:pair_s2_v3_008000 flat_walk
+11-13 03:06:28 end acp:pair_s2_v3_008000 flat_walk: done
+11-13 03:06:35 start acp:pair_s2_v3_008000 flat_stop_stand
+11-13 03:09:33 end acp:pair_s2_v3_008000 flat_stop_stand: done
+11-13 03:09:35 start acp:pair_s2_v3_008000 flat_turn_in_place
+11-13 03:10:05 end hiking:x2_parkour_v4_6125 leg4: done
+11-13 03:10:20 start acp:pair_s2_v3_008000 flat_turn_and_return
+11-13 03:11:35 end acp:pair_s2_v3_008000 flat_turn_in_place: done
+11-13 03:11:50 start acp:pair_s2_v3_008000 leg1
+11-13 03:12:00 end acp:pair_s2_v3_008000 flat_turn_and_return: done
+11-13 03:12:13 start acp:pair_s2_v3_008000 leg2
+11-13 03:15:17 end acp:pair_s2_v3_008000 leg1: done
+11-13 03:15:30 start acp:pair_s2_v3_008000 leg3
+11-13 03:16:03 end acp:pair_s2_v3_008000 leg2: done
+11-13 03:16:15 start acp:pair_s2_v3_008000 leg4
+11-13 03:18:32 end acp:pair_s2_v3_008000 leg3: done
+11-13 03:18:45 start acp:pair_s2_v3_008000 leg5
+11-13 03:19:21 end acp:pair_s2_v3_008000 leg4: done
+11-13 03:19:30 start ssr:r8_v15_p100 fetch
+11-13 03:19:42 end ssr:r8_v15_p100 fetch: done
+11-13 03:19:45 start ssr:r8_v15_p100 flat_walk
+11-13 03:22:44 end ssr:r8_v15_p100 flat_walk: done
+11-13 03:22:55 start ssr:r8_v15_p100 flat_stop_stand
+11-13 03:24:46 end acp:pair_s2_v3_008000 leg5: done
+11-13 03:24:56 ROW acp pair_s2_v3_008000 flat PASSED, gate PASS 4/5 (turn-around 3/3), legs 49/43/45/50/44 (product 0.667), route not run
+11-13 03:24:56 start ssr:r8_v15_p100 flat_turn_in_place
+11-13 03:26:07 end ssr:r8_v15_p100 flat_stop_stand: done
+11-13 03:26:11 start ssr:r8_v15_p100 flat_turn_and_return
+11-13 03:28:37 end hiking:x2_parkour_v4_6125 leg5: done
+11-13 03:28:41 ROW hiking x2_parkour_v4_6125 flat NOT PASSED, gate -, legs 37/39/1/0/0 (product 0.000), route not run
+11-13 03:28:41 start ssr:r8_v15_p100 leg1
+11-13 03:28:59 end ssr:r8_v15_p100 flat_turn_and_return: done
+11-13 03:29:11 start ssr:r8_v15_p100 leg2
+11-13 03:30:51 end ssr:r8_v15_p100 flat_turn_in_place: done
+11-13 03:30:56 start ssr:r8_v15_p100 leg3
+11-13 03:32:34 activate acp:pair_s2_v3_009500
+11-13 03:32:34 activate hiking:x2_parkour_v4_7750
+11-13 03:51:50 end ssr:r8_v15_p100 leg1: done
+11-13 03:52:02 start ssr:r8_v15_p100 leg4
+11-13 04:11:52 end ssr:r8_v15_p100 leg2: done
+11-13 04:11:56 start ssr:r8_v15_p100 leg5
+11-13 05:02:06 end ssr:r8_v15_p100 leg3: done
+11-13 05:02:09 start acp:pair_s2_v3_009500 fetch
+11-13 05:02:34 end acp:pair_s2_v3_009500 fetch: done
+11-13 05:02:39 start acp:pair_s2_v3_009500 gate
+11-13 05:03:43 end acp:pair_s2_v3_009500 gate: done
+11-13 05:03:54 start acp:pair_s2_v3_009500 flat_walk
+11-13 05:05:48 end acp:pair_s2_v3_009500 flat_walk: done
+11-13 05:05:51 start acp:pair_s2_v3_009500 flat_stop_stand

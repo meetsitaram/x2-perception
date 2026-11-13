@@ -55,6 +55,11 @@
    "title": "Common eval definition",
    "description": "How an apparatus trial is run and scored, with what is still open.",
    "blob": "c6d3ea3018b4f5720893b0da7d49659d"
+  },
+  "paper_diffs": {
+   "title": "Paper vs code: items not followed",
+   "description": "One row per item the SSR or ACP paper specifies and our code did not follow (from the 2026-11-13 audits), with the user's decision and its status.",
+   "blob": "PENDING_UPLOAD"
   }
  }
 }

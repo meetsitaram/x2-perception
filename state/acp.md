@@ -2150,7 +2150,68 @@ in 2g has take `pico_20261029_211326_0_2x2` with a retarget artefact), plus the 
 User rules to respect in 2h / stage 3 (USER_RULES last sections): backward travel paid less than forward or turning in place; turn
 in place learned, also beside walls and on slopes.
 
-## HOW TO RESUME (current at 2026-11-12 23:00 UTC node clock)
+### 17d. Data-2h restart prepared and scheduled for 06:00 UTC; stage-3 plan (new ACP agent, 2026-11-13, node clock 04:30-04:50)
+Decisions (user via coordinator, 2026-11-13, USER_RULES "ACP back to the paper"): stage-2 paper items in this restart; planner
+co-training, eta to 1 and all of the paper's stage-3 rules at the stage-3 switch, except the goal terrain (ours + extended map
+v2b, no ladders / vaults); env count (36,000) and data choices stay ours.
+**Check before acting (base vs next step):** s2_v3 pair 8,000 is the best pair yet (scorer: flat 4 x 50/50, hold-out gate PASS 4/5,
+legs 49/43/45/50/44 = 231/250; 7,000: 226). Training finish over the last 150 iterations (9,857-10,006): 0.98-0.99 on every set,
+planner-contact probe 0.87 (turn_place) to 0.97; the base gate 16f is not met, so stage 3 does not start; this restart adds the
+stage-2 data and the paper's stage-2 randomisation only. Per the SSR v15 lesson the policy is resumed (not re-initialised), no
+reward weight or normalisation is changed, so no warm-up is added; the fall-back gates below cover the rest.
+**What the restart carries** (`code/ops/restart_2h.sh`, fired by tmux `acp-restart` at 06:00:00 UTC; cancel: touch
+`runs/s2_v4/CANCEL`): run `runs/s2_v4` from s2_v3 `latest.pt`, planner frozen at 5,750, `--eta-obs-max 0.8` kept, `--gate-rebase`, to 16,000.
+1. Data 2h (`code_next/tools/mk_stage2h.py`, cfg `cfg/stage2h_sets.json`, labels + arm fix built, 1,469 clips, 558,062 frames):
+   2x2 v1_1 (9) + mirror (9) replace the old 2x2 set (slot kept at weight 0 so set indices and exclude_clips do not move);
+   tp_stairs_all_v1_1 (44) + mirror (44) + a 12-clip turn/approach subset (C, S, side approach, down then turn; weight 0.01);
+   4x4 mirror (56, the mirrors of the two 2f-excluded clips excluded too); ramp mirror (15) on ONE raster
+   `data/clips/tp_ramp_hmap_x30_2h_40mm.npz` (133 x 267, mirror 6.0 m beside the original, its clips shifted [0, 6]; the
+   trained 40 mm raster is the 20 mm one at every second vertex, checked max diff 0; no other clip enters the raster). Stairs
+   x10 minus 114308 / 114330 (11 variants each). End stand / start stand as 2g. Weights: stairs 0.03 x10 + 0.03 + 0.02 mir +
+   0.01 turn; 4x4 0.08 + 0.04; ramp 0.035 + 0.015; 2x2 0.02 + 0.01; flat 0.11; rest as 2g. BONES-SEED (flat, blocks) unchanged.
+   Not done: the per-clip CPU closed loop with the 7,000 tracker (17b); the meta checks (2 cm contacts) select the clips, and the
+   per-set training finish of the new sets is logged by the watcher.
+2. `ACP_HF_FIX=1` (chunked fields <= 400 vertices; the 2h raster is one field of 267 x 133) and the simcheck patch
+   (`/mnt/filesystem-g4/tools/simcheck/patches/acp.diff`: faults are truncations with zero reward, sim_fault_share in the heartbeat).
+   **Preflight** `reports/acp_s2h_fix1.json` against the running build `acp_s2g_fix0.json`: drop failures 2/36 (was 7/36), max
+   terrain depth in rollouts 45.5 mm (was 231.4), failing roll sets 1 (was 2): no worse (interim rule met). The one roll failure is a
+   hip / wrist self-contact (72.9 mm) in the stairs turn subset; training runs with X2_EXCLUDE_PAIRS=hip, which removes that pair.
+   Interaction found: with ACP_HF_FIX the field has priority 1, so MuJoCo uses the FIELD's friction (0.3 in training) on the ramp
+   instead of max(robot, ground): the friction item below fixes that too.
+3. `ACP_PAPER_DR=1` (Table S2, `acp/env.py`, default off = previous behaviour): contact-target noise U(+-0.1 m) on planner
+   targets fed to the tracker (valid slots only; command and reward stay noise-free); tracker scan per-step U(+-0.1) instead of
+   N(0, 0.03) (per-episode offset kept); friction: robot U(0.3, 1.2), ground 1.0, applied as the paper's effective value under
+   PhysX average combine, (r + 1) / 2 in [0.65, 1.1], on robot AND ground geoms (MuJoCo max-combine and the field priority both
+   give that value; was effectively 0.3-1.2); odometry drift per episode (XY in a 0.05 m disk, Z U(+-0.05)) on the base estimate
+   used for the reference targets and the goal. Odometry delay (50-100 ms) not modelled (needs a pose history; left as DN).
+   Stumbling / slippage (Table 3) are goal-only terms in the paper (stage 3), not stage 2: they go into stage 3 (below).
+**Fall-back** (`code/ops/watch_2h.sh`, tmux `acp-watch2h`, started by the restart): gate A at +150 iterations, B at +400, window 100
+rows against s2_v3's last 150: crash (> 3 trainer starts or no metrics row 45 min), throughput >= 0.70 x 74,900 steps/s,
+sim_fault_share <= 0.05 (warn 0.02), mean training finish on the 2g sets >= base - 0.05 (A) / - 0.03 (B), mean probe finish on the
+4 gate sets >= base - 0.08 / - 0.05. Fail: s2_v4 stops, previous code back, s2_v3 resumes from its own latest with 2g and no flags.
+Writes `runs/s2_v4/GATE_A_PASS`, `GATE_B_PASS` or `FALLBACK`. A failed 3-iteration check run inside the restart also resumes s2_v3
+unchanged. Eval gate (scorer, off the node): the first two s2_v4 pairs; both failing the hold-out gate, or legs >= 10 below 8,000's
+231/250, means fall back to s2_v3 by hand (ACP's decision, logged). The live paper eval (`acp-evallive2`) finished its list at 10,000
+and is not running: it halves the throughput while it runs, so do not start it before gate B, or the throughput gate fails.
+**Stage 3, how it will follow the paper (to build before the base gate is met; switch script `code_s3/to_stage3.sh`):**
+- Rewritten 2026-11-13 (old one: s2_v1, v1 config, n-ann 1,500, no hip exclusion, no HF fix); refuses unless `code_s3/MERGED`
+  exists; manual fire with CK=<checkpoint>; run s3_v2, cfg stage3v2b, env ACP_HF_FIX=1 ACP_PAPER_DR=1 X2_EXCLUDE_PAIRS=hip.
+- `code_s3/acp/train.py` now carries eta_hold from the checkpoint (`tools/s3_etahold.py`, backup `backup/code_s3_train.py.pre_etahold_20261113`),
+  so eta_obs goes on from 0.59 and eta_rew from 0.09 by 1/3,000 per iteration to 1 (no jump), no 0.8 cap; planner unfrozen.
+- Still to build in code_s3 (paper, Methods / Tables S4-S6): goal success and replay admission at 0.5 m horizontal AND 0.1 m
+  vertical (our 0.2 m station rule stays for standatgoal / eval), goal segment truncated 0.2 m before the goal, replay partitioned
+  per tile with work-per-metre eviction and balanced sampling types -> tiles -> steps, goal reset yaw U(+-0.4), all stage-3 envs
+  at phase 0, V_fs value clipping off in its warm-up, stumbling sum over feet 1[F_xy > 1.1 F_z + 1] and slippage sum over feet
+  1[contact > 0.026 s] 1[v_f > 0.5 m/s]; plus the merge of the stage-2 additions (probe gate, eta_hold, data features, simcheck
+  patch, ACP_PAPER_DR). Then touch code_s3/MERGED.
+
+## HOW TO RESUME (current at 2026-11-13 04:50 UTC node clock)
+- 06:00 UTC: tmux `acp-restart` runs `code/ops/restart_2h.sh` (17d). Result in `runs/s2_v4/restart.log`. Then `acp-watch2h`
+  writes GATE_A_PASS (~+150 it, about 07:00) / GATE_B_PASS (~+400, about 08:00) or FALLBACK. No planned restart for 2,000
+  iterations after it (user rule). Next agent check: after 08:00 read restart.log, gate_A.txt, gate_B.txt and the new sets' finish.
+- Everything below this line (23:00 block) is the state before 17d; the run is s2_v4 after 06:00.
+
+## HOW TO RESUME (previous, 2026-11-12 23:00 UTC node clock)
 - Node: `config/nodes.local.json` key `acp`, user `NODE_USER`, `ssh -i ~/.ssh/nebius_corpus -o IdentitiesOnly=yes -o BatchMode=yes`.
   tmux: `acp` (run **s2_v3**, started 18:54:48 from tracker 7,000, planner frozen at 5,750, data 2g, probe gate `--gate-backoff 1
   --gate-rebase`, to 14,000; iteration 8,208 at 22:51), `acp-evallive2` (live paper eval of s2_v3), `acp-export` (pairs every 250 ->

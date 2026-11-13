@@ -575,3 +575,9 @@ Catalogue at `terrain-park/catalog/` (135 takes, 6 props, 36 categories, 47 MuJo
   signature check rejects). Each failure so far was a check the CPU pre-flight did not reproduce (option whitelist, motion joint
   names, observation-function signatures); each is now in the pre-flight. Lesson: a CPU pre-flight must mirror every validation
   Isaac does at construction, not only test the new code on stubs.
+
+### E3a. First paper-aligned SSR run slowed to a shuffle (2026-11-13) — v14 resumed
+- v15 (Table 11 prior from Pico + the paper's reference, separate advantage normalisation, paper kernel and commands) ran 150
+  iterations from v14's 7,000: speed made good fell 0.80 -> 0.45 of the command, double support 0.21 -> 0.50; its gate fell
+  back to v14. Not yet separated: the new prior (5x smaller, no flat group, slow Pico takes dominate several groups) vs fresh
+  discriminators. CPU checks before any v16.

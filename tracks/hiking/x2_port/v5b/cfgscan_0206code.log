@@ -1,0 +1,5 @@
+[X2 simfault] wrapped terminations: ['base_contact', 'bad_orientation', 'root_height', 'stalled']
+cfgscan: 42 terms checked in ['curriculum', 'events', 'observations', 'rewards', 'terminations']
+FAIL terminations/bad_orientation: func _unless_sim_fault.<locals>.wrapped expects mandatory ['args', 'kwargs'], optional [], given ['limit_angle']
+FAIL terminations/root_height: func _unless_sim_fault.<locals>.wrapped expects mandatory ['args', 'kwargs'], optional [], given ['minimum_height']
+FAIL terminations/stalled: func _unless_sim_fault.<locals>.wrapped expects mandatory ['args', 'kwargs'], optional [], given ['command_name']

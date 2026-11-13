@@ -1,0 +1,512 @@
+[
+ {
+  "id": "ssr-01",
+  "track": "SSR",
+  "item": "Base height map size",
+  "paper": "18 x 10 (Table 12)",
+  "ours": "17 x 10",
+  "decision": "Keep ours for now (user: \"Don't change for now\"); a shape change would force a fresh start",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "ssr-02",
+  "track": "SSR",
+  "item": "Waist action scale in the paper option",
+  "paper": "Waist 0.2 (Table 14)",
+  "ours": "Opt-in flag set waist yaw to 0.25 (bug); flag not used",
+  "decision": "Follow the paper: fix the flag",
+  "status": "Fixed in code v15 / v16",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-03",
+  "track": "SSR",
+  "item": "Velocity tracking kernel",
+  "paper": "sigma_v 0.25 (Table 7)",
+  "ours": "sigma_v ramped to 0.1",
+  "decision": "Follow the paper",
+  "status": "In r9 (v16, from 04:02 UTC): 0.1 to 0.25 over iterations +200 to +500",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-04",
+  "track": "SSR",
+  "item": "Staged schedule of reward terms",
+  "paper": "Single stage, all terms from the start (Sec. 3.1, 4.1)",
+  "ours": "Core terms only until 150, rest ramped to 400 (over since 400)",
+  "decision": "Follow the paper",
+  "status": "Inactive; r9 resumes with no staging",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-05",
+  "track": "SSR",
+  "item": "How group advantages combine",
+  "paper": "Each group normalised separately, then weighted (Sec. 3.1, refs 12, 46)",
+  "ours": "One joint normalisation of the weighted sum",
+  "decision": "Follow the paper",
+  "status": "In r9 (v16, from 04:02 UTC): blended to separate by +500",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-06",
+  "track": "SSR",
+  "item": "Projected vy clamp",
+  "paper": "None (projection only)",
+  "ours": "vy clamped to +-0.4 on slopes",
+  "decision": "Follow the paper: no clamp for terrain robots",
+  "status": "In r9 (v16, from 04:02 UTC)",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-07",
+  "track": "SSR",
+  "item": "Discrete terrain speed / heading",
+  "paper": "U(0, 1.2) m/s, +-30 deg (A.2)",
+  "ours": "No discrete terrain type",
+  "decision": "Follow the paper",
+  "status": "In r9 (v16, from 04:02 UTC) (discrete type added)",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-08",
+  "track": "SSR",
+  "item": "Gap terrain speed / heading",
+  "paper": "U(0, 1.2) m/s, +-15 deg (A.2)",
+  "ours": "No gap terrain type",
+  "decision": "Keep ours: the extended map instead of gap terrain (user)",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "ssr-09",
+  "track": "SSR",
+  "item": "When omnidirectional commands start",
+  "paper": "Only after clearing the top level and leaving the terrain (A.2)",
+  "ours": "30% of robots on open flat ground from the start",
+  "decision": "Follow the paper",
+  "status": "In r9 (v16, from 04:02 UTC) (graduates walk on a free area)",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-10",
+  "track": "SSR",
+  "item": "Omnidirectional command ranges",
+  "paper": "vx U(-1, 1), vy U(-0.4, 0.4), wz U(-1.2, 1.2) (Table 5)",
+  "ours": "Only 20% got the Table 5 draw (turn-in-place and slow-forward extras)",
+  "decision": "Follow the paper",
+  "status": "In r9 per the decision; flag not yet confirmed in the SSR state file",
+  "status_kind": "pending"
+ },
+ {
+  "id": "ssr-11",
+  "track": "SSR",
+  "item": "Terrain curriculum promotion",
+  "paper": "Up at half the terrain length, down below half the commanded distance (A.1, ref 30)",
+  "ours": "Up only on reaching the tile end (8 m)",
+  "decision": "Follow the paper",
+  "status": "In r9 (v16, from 04:02 UTC) (promotion at half the tile)",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-12",
+  "track": "SSR",
+  "item": "Terrain mix",
+  "paper": "5 terrain types, all robots on terrain (A.1)",
+  "ours": "Flat phase, then obstacle share ramp; at least 20% on flat for good",
+  "decision": "Follow the paper",
+  "status": "In r9 (v16, from 04:02 UTC) (flat type replaced by discrete)",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-13",
+  "track": "SSR",
+  "item": "Terrain types",
+  "paper": "Slope, stairs, discrete, gap, platform (A.1, Fig. 10)",
+  "ours": "Ramp, stairs, beam, platform, flat",
+  "decision": "Partly: discrete added; beam and the extended map stay instead of gap (user)",
+  "status": "In r9 (v16, from 04:02 UTC): ramp, stairs, beam, platform, discrete",
+  "status_kind": "kept"
+ },
+ {
+  "id": "ssr-14",
+  "track": "SSR",
+  "item": "Discrete obstacle height",
+  "paper": "[0.05, 0.2] m (Table 3)",
+  "ours": "Not built",
+  "decision": "Follow the paper",
+  "status": "In r9 (v16, from 04:02 UTC) (blocks 0.05-0.2 m)",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-15",
+  "track": "SSR",
+  "item": "Gap width / depth",
+  "paper": "[0.1, 0.8] m / [0.3, 0.6] m (Table 3)",
+  "ours": "Not built",
+  "decision": "Keep ours: the extended map instead of gap terrain (user)",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "ssr-16",
+  "track": "SSR",
+  "item": "Gap termination: foot below ground",
+  "paper": "Yes (A.7)",
+  "ours": "No gap terrain, no check",
+  "decision": "Keep ours: follows from no gap terrain",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "ssr-17",
+  "track": "SSR",
+  "item": "One discriminator per terrain type",
+  "paper": "5: slope, stairs, discrete, gap, platform (Sec. 3.4)",
+  "ours": "5: ramp, stairs, beam, platform, flat",
+  "decision": "Follow the paper's terrain set where built; no flat discriminator",
+  "status": "In r9 (v16, from 04:02 UTC): ramp, stairs, discrete, beam, platform",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-18",
+  "track": "SSR",
+  "item": "What the discriminator sees",
+  "paper": "All 63 dims (Sec. 3.4)",
+  "ours": "Arm positions, velocities and wrists masked out",
+  "decision": "Keep ours, changed: weighted by body part (legs / pelvis / waist 1.0, shoulders / elbows 0.3, wrists / head out) (user)",
+  "status": "In r9 (v16, from 04:02 UTC)",
+  "status_kind": "kept"
+ },
+ {
+  "id": "ssr-19",
+  "track": "SSR",
+  "item": "Motion prior set sizes",
+  "paper": "261 / 296 / 136 / 175 / 182 s, 1049 s in all (Table 11)",
+  "ours": "5316 s in all",
+  "decision": "Follow the paper: Pico + the paper's reference retargeted to X2, no BONES-SEED",
+  "status": "In r9 (v16, from 04:02 UTC) (amp_v5, Table 11 sizes)",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-20",
+  "track": "SSR",
+  "item": "Prior composition",
+  "paper": "Flat forward + turn in every set (Table 11)",
+  "ours": "150 s flat share drawn by clip name",
+  "decision": "Follow the paper",
+  "status": "In r9 (v16, from 04:02 UTC) (forward 35% + turn 15% per set)",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-21",
+  "track": "SSR",
+  "item": "Backward walking only in the slope set",
+  "paper": "Table 11",
+  "ours": "Backward and lateral frames in every set",
+  "decision": "Keep the user's no-backward rule (none in any set)",
+  "status": "Kept (r9: no backward anywhere)",
+  "status_kind": "kept"
+ },
+ {
+  "id": "ssr-22",
+  "track": "SSR",
+  "item": "Prior traversal types",
+  "paper": "Slope, stairs, step, gap, platform (Table 11)",
+  "ours": "Ramp, stairs, beam, platform",
+  "decision": "Follow the terrain set; no gap takes (extended map instead)",
+  "status": "In r9 (v16, from 04:02 UTC)",
+  "status_kind": "kept"
+ },
+ {
+  "id": "ssr-23",
+  "track": "SSR",
+  "item": "Separate flat set / discriminator",
+  "paper": "None (Table 11)",
+  "ours": "Flat set of 999 s",
+  "decision": "Follow the paper: flat walking inside each set",
+  "status": "In r9 (v16, from 04:02 UTC) (no flat group)",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-24",
+  "track": "SSR",
+  "item": "Number of environments",
+  "paper": "4,096 (Table 9, Sec. 4.1)",
+  "ours": "8,192",
+  "decision": "Keep ours (user: \"we have more gpu\"); 16,384 approved for the next planned restart",
+  "status": "Kept: 8,192 in r9; 16,384 at the next restart",
+  "status_kind": "kept"
+ },
+ {
+  "id": "ssr-25",
+  "track": "SSR",
+  "item": "Foothold loss frame (Eq. 1)",
+  "paper": "Gaussian NLL in the full base frame",
+  "ours": "Targets in the heading (yaw) frame",
+  "decision": "Follow the paper",
+  "status": "In r9 (v16, from 04:02 UTC) (base-frame targets)",
+  "status_kind": "done"
+ },
+ {
+  "id": "ssr-26",
+  "track": "SSR",
+  "item": "Single-stage training",
+  "paper": "One stage, about 20k iterations (Sec. 3.1, 4.1)",
+  "ours": "Flat, obstacle, reward and style phases (all over by 1,500)",
+  "decision": "Follow the paper",
+  "status": "r9 resumes with no phases (500-iteration transition only)",
+  "status_kind": "done"
+ },
+ {
+  "id": "acp-01",
+  "track": "ACP",
+  "item": "Skills in the data",
+  "paper": "Box climb, stairs, ladder, sit, walk, get-up, vault, sparse terrain (Table S1)",
+  "ours": "Flat / blocks walking, stairs, ramps, 4x4, Pico 2x2, edges, turns",
+  "decision": "Keep the user's data choices (BONES-SEED, Pico takes); apparatus scope",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "acp-02",
+  "track": "ACP",
+  "item": "Data length",
+  "paper": "13.2 min (Table 1)",
+  "ours": "About 197 min",
+  "decision": "Keep the user's data choices",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "acp-03",
+  "track": "ACP",
+  "item": "Stumbling penalty (-10)",
+  "paper": "Per foot 1[F_xy > 1.1 F_z + 1] (Table 3)",
+  "ours": "Any foot 1[F_xy > 5 F_z]",
+  "decision": "Follow the paper",
+  "status": "Pending: 06:00 UTC stage-2 restart",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-04",
+  "track": "ACP",
+  "item": "Slippage penalty (-10)",
+  "paper": "Per foot 1[contact > 0.026 s] 1[v_f > 0.5 m/s] (Table 3)",
+  "ours": "Sum of v_f^2 x contact",
+  "decision": "Follow the paper",
+  "status": "Pending: 06:00 UTC stage-2 restart",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-05",
+  "track": "ACP",
+  "item": "MLP baseline planner input",
+  "paper": "939 = history + goal + 187 x 3 points (Table S3)",
+  "ours": "Heights only",
+  "decision": "Ignore: baseline only, not used",
+  "status": "Kept (unused)",
+  "status_kind": "kept"
+ },
+ {
+  "id": "acp-06",
+  "track": "ACP",
+  "item": "Stage-1 envs",
+  "paper": "12,000 per worker x 3 GPUs (Table S6)",
+  "ours": "12,000, then 36,000 on 1 GPU",
+  "decision": "Keep the larger counts",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "acp-07",
+  "track": "ACP",
+  "item": "Planner co-trained online",
+  "paper": "Trained jointly, 10 updates per iteration (Methods, Table S5)",
+  "ours": "Frozen at the 5,750 planner",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-08",
+  "track": "ACP",
+  "item": "eta_obs ceiling",
+  "paper": "Ramps to 1 (Methods, Eq. 3)",
+  "ours": "Capped at 0.8",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-09",
+  "track": "ACP",
+  "item": "Stage-2 envs / minibatch",
+  "paper": "2,400 x 2 = 4,800; minibatch 14,400 (Table S6)",
+  "ours": "36,000; minibatch 108,000",
+  "decision": "Keep the larger counts",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "acp-10",
+  "track": "ACP",
+  "item": "Goal terrains",
+  "paper": "32 configurations in 4 groups incl. gaps, stones, beams, pallets, ladders, vaults (Supp. Terrains)",
+  "ours": "6 goal families + the extended map (884 routes)",
+  "decision": "Keep ours (user: \"we dont need ladders, vaults, etc.\")",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "acp-11",
+  "track": "ACP",
+  "item": "Initial phase in stage 3",
+  "paper": "Phase 0 (Table S2)",
+  "ours": "Goal envs 0, reference envs U(0, 0.98)",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-12",
+  "track": "ACP",
+  "item": "Reset yaw for goal envs",
+  "paper": "+-0.4 rad (Table S2)",
+  "ours": "Fixed spawn yaw per tile",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-13",
+  "track": "ACP",
+  "item": "Goal success height",
+  "paper": "Reached within 0.1 m height (Table S4)",
+  "ours": "Horizontal only, 0.2 m held 1 s",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-14",
+  "track": "ACP",
+  "item": "Demotion distance",
+  "paper": "Qualifying distance with vertical < 0.1 m, > 1.0 m (Table S4)",
+  "ours": "Horizontal closest approach",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-15",
+  "track": "ACP",
+  "item": "Value clipping in warm-up",
+  "paper": "V_fs clipping off in warm-up (Table S6)",
+  "ours": "Always clipped",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-16",
+  "track": "ACP",
+  "item": "Stage-3 envs",
+  "paper": "2,100 x 4 = 8,400 (Table S6)",
+  "ours": "36,000",
+  "decision": "Keep the larger counts",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "acp-17",
+  "track": "ACP",
+  "item": "Hindsight goal admission",
+  "paper": "0.5 m horizontal and 0.1 m vertical (Methods, Table S5)",
+  "ours": "0.2 m, 1 s, no vertical",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-18",
+  "track": "ACP",
+  "item": "Goal segment cut",
+  "paper": "Truncated at 0.2 m of the goal (Table S5)",
+  "ours": "Not implemented",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-19",
+  "track": "ACP",
+  "item": "Replay buffer",
+  "paper": "Per tile, quality eviction by work per metre (Methods, Table S5)",
+  "ours": "One FIFO ring",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-20",
+  "track": "ACP",
+  "item": "Replay sampling",
+  "paper": "Balanced over types, then tiles, then steps (Methods)",
+  "ours": "Uniform",
+  "decision": "Follow the paper",
+  "status": "Pending: Stage-3 switch",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-21",
+  "track": "ACP",
+  "item": "Ground friction",
+  "paper": "Robot U(0.3, 1.2), ground fixed 1.0 (Table S2)",
+  "ours": "Ground 0.3, max-combined",
+  "decision": "Follow the paper",
+  "status": "Pending: 06:00 UTC stage-2 restart",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-22",
+  "track": "ACP",
+  "item": "Contact-target noise",
+  "paper": "+-0.1 m on all actor observations (Table S2)",
+  "ours": "Reference targets only; planner targets without noise",
+  "decision": "Follow the paper (with scan noise per Table S2)",
+  "status": "Pending: 06:00 UTC stage-2 restart",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-23",
+  "track": "ACP",
+  "item": "Odometry delay and drift",
+  "paper": "50-100 ms delay, 0.05 m XY drift, Z +-0.05 m (Table S2)",
+  "ours": "Not implemented",
+  "decision": "Follow the paper",
+  "status": "Pending: 06:00 UTC stage-2 restart",
+  "status_kind": "pending"
+ },
+ {
+  "id": "acp-24",
+  "track": "ACP",
+  "item": "Batch size",
+  "paper": "Per stage (Table S6)",
+  "ours": "36,000 envs throughout (stage 2: 7.5 x the paper's batch)",
+  "decision": "Keep the larger counts",
+  "status": "Kept",
+  "status_kind": "kept"
+ },
+ {
+  "id": "acp-25",
+  "track": "ACP",
+  "item": "Eval groups",
+  "paper": "Reference (123), goal-reaching (32), unseen, 8 composite courses (Supp. Evaluation)",
+  "ours": "Reference sets only",
+  "decision": "Extend the eval to the paper's groups later",
+  "status": "Pending: later",
+  "status_kind": "pending"
+ }
+]

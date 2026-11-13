@@ -1,5 +1,77 @@
 [
  {
+  "id": "w19",
+  "n": 19,
+  "date": "2026-11-13",
+  "area": "Repo",
+  "what": "Commit 92d74f6 pushed to main at your request (195 files: eval, simulator checks, track code with the node login scrubbed, docs, state, dashboard); no motion data or checkpoints",
+  "where": "perception-agents"
+ },
+ {
+  "id": "w18",
+  "n": 18,
+  "date": "2026-11-13",
+  "area": "Hiking",
+  "what": "Three restarts failed only on the GPU (motion file with wrong joint names; style and termination wrappers rejected by Isaac Lab); a CPU scan of every term now runs first; v5b armed from 7,500",
+  "where": "state/hiking.md, docs/FINDINGS.md F6, F7"
+ },
+ {
+  "id": "w17",
+  "n": 17,
+  "date": "2026-11-13",
+  "area": "SSR",
+  "what": "Paper-vs-code audit: 108 match, 26 paper-specified deviations; the paper-aligned restart v15 slowed to a shuffle (speed 0.45 of command) and fell back; v14 resumed from 7,000 at 02:15 UTC",
+  "where": "docs/findings/ssr_paper_vs_code.md, docs/FINDINGS.md E3, E3a"
+ },
+ {
+  "id": "w16",
+  "n": 16,
+  "date": "2026-11-13",
+  "area": "Motion data",
+  "what": "pico_style_v1 built from your Pico takes (88 windows, 233 s) and approved; the Hiking paper's reference retargeted to X2, feet fixed in v2, approved; BONES-SEED dropped from SSR and Hiking style",
+  "where": "terrain-park data/style; shared filesystem data/motions/hiking_release_x2 (not in any repo)"
+ },
+ {
+  "id": "w15",
+  "n": 15,
+  "date": "2026-11-13",
+  "area": "Simulator",
+  "what": "MuJoCo Warp mis-collides on very large height fields (ACP, SSR); SSR split its field at 23:16 UTC (simulator faults 10.6% -> 0.1% of episode ends); simulator pre-flight tools/simcheck built",
+  "where": "docs/FINDINGS.md B10, B11; tools/simcheck"
+ },
+ {
+  "id": "w14",
+  "n": 14,
+  "date": "2026-11-12",
+  "area": "Eval",
+  "what": "Automatic scorer running without an agent since 21:46 UTC: flat gate, ACP hold-out gate, five station legs, full route only when every leg passes",
+  "where": "eval/autoscore"
+ },
+ {
+  "id": "w13",
+  "n": 13,
+  "date": "2026-11-12",
+  "area": "Eval",
+  "what": "Eval floor made of planes and boxes (the height field trapped feet), ramp slabs trimmed; ACP pair 7,000 scores 114 of 200 = 57% on the final floor (125 on the old floor)",
+  "where": "docs/EVAL.md; docs/FINDINGS.md B9"
+ },
+ {
+  "id": "w12",
+  "n": 12,
+  "date": "2026-11-12",
+  "area": "Terrain map",
+  "what": "Extended map in training: Hiking from 16:23 UTC, SSR from 17:21 (route bug fixed); inset stair tiles and prop routes added; ACP takes it with stage 3",
+  "where": "state/hiking.md, state/ssr.md, state/acp.md"
+ },
+ {
+  "id": "w11",
+  "n": 11,
+  "date": "2026-11-12",
+  "area": "ACP",
+  "what": "Planner stage on the corrected robot model; planner frozen at 5,750; tracker restarted from pair 7,000 at 18:54 UTC (run s2_v3)",
+  "where": "state/acp.md"
+ },
+ {
   "id": "w10",
   "n": 10,
   "date": "2026-11-12",
@@ -69,7 +141,7 @@
   "date": "2026-11-11",
   "area": "Team",
   "what": "Team repo perception-agents created: five roles, isolation rules, common eval, status files",
-  "where": "C:/Users/PC/projects/perception-agents"
+  "where": "perception-agents"
  },
  {
   "id": "w7",

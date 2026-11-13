@@ -1,12 +1,15 @@
 {
  "done": {
   "acp:pair_s2_v3_007750": "2026-11-12 21:53",
-  "ssr:r7_v14_p250": "2026-11-13 01:06"
+  "ssr:r7_v14_p250": "2026-11-13 01:06",
+  "ssr:r7_v12_last": "2026-11-13 02:20",
+  "acp:pair_s2_v3_008000": "2026-11-13 03:24",
+  "hiking:x2_parkour_v4_6125": "2026-11-13 03:28"
  },
  "active": [
-  "ssr:r7_v12_last",
-  "hiking:x2_parkour_v4_6125",
-  "acp:pair_s2_v3_008000"
+  "ssr:r8_v15_p100",
+  "acp:pair_s2_v3_009500",
+  "hiking:x2_parkour_v4_7750"
  ],
  "seen": {
   "acp:pair_s1_v2_004250": 1794471644,
@@ -100,7 +103,21 @@
   "acp:pair_s2_v3_008750": 1794530812,
   "hiking:x2_parkour_v4_7125": 1794530897,
   "hiking:x2_parkour_v4_7250": 1794532227,
-  "acp:pair_s2_v3_009000": 1794533622
+  "acp:pair_s2_v3_009000": 1794533622,
+  "hiking:x2_parkour_v4_7375": 1794535364,
+  "ssr:r8_v15_p100": 1794536054,
+  "acp:pair_s2_v3_009250": 1794536566,
+  "hiking:x2_parkour_v4_7500": 1794537296,
+  "hiking:x2_parkour_v4_7625": 1794539350,
+  "acp:pair_s2_v3_009500": 1794539507,
+  "hiking:x2_parkour_v4_7750": 1794540560,
+  "acp:pair_s2_v3_009750": 1794542448,
+  "hiking:x2_parkour_v4_7875": 1794541891,
+  "hiking:x2_parkour_v4_8000": 1794543222,
+  "ssr:r9_v16_p300": 1794544484,
+  "hiking:x2_parkour_v4_8125": 1794544432,
+  "acp:pair_s2_v3_010000": 1794545276,
+  "hiking:x2_parkour_v4_8250": 1794545763
  },
  "since": "2026-11-12 21:46Z"
 }

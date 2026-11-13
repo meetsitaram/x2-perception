@@ -2,10 +2,10 @@
  {
   "id": "r1",
   "area": "Robot",
-  "item": "AgiBot X2 Ultra, the only robot for this round; one set of model files for all three tracks",
+  "item": "AgiBot X2 Ultra, the only robot for this round; one set of model files for all tracks, corrected (no pelvis / hip-roll contact)",
   "amount": "",
-  "status": "To copy to the shared filesystem",
-  "status_kind": "todo"
+  "status": "On the shared filesystem; used by all tracks and the eval",
+  "status_kind": "ready"
  },
  {
   "id": "r2",
@@ -20,32 +20,32 @@
   "area": "Retargeted motion",
   "item": "Pico prop captures (terrain-park), 187 takes, about 26 min: every take retargeted to the X2",
   "amount": "about 26 min",
-  "status": "Exists locally; contact quality still being iterated",
-  "status_kind": "partial"
+  "status": "Retargeted; corrected (v1_1) and mirrored sets built; catalogue in terrain-park",
+  "status_kind": "ready"
  },
  {
   "id": "r4",
   "area": "Retargeted motion",
   "item": "Bones-SEED human motion retargeted to the X2: about 13,000 locomotion clips, 3,700 prop clips, 139 stair climbs",
   "amount": "about 16,800 clips",
-  "status": "Exists locally; Bones Studio credit required on shown results",
-  "status_kind": "ready"
+  "status": "Used only in ACP's tracker data; dropped from SSR and Hiking style references (your rule, 2026-11-13)",
+  "status_kind": "partial"
  },
  {
   "id": "r5",
   "area": "Retargeted motion",
   "item": "Backward and sideways walking clips for the X2",
   "amount": "",
-  "status": "Not found yet; captures to be scanned",
-  "status_kind": "missing"
+  "status": "Not needed for backward: no commanded backward travel (your rule); side-walk windows in pico_style_v1",
+  "status_kind": "partial"
  },
  {
   "id": "r6",
   "area": "Props",
   "item": "Fitted props from the captures: 4x4 beam, 4x4 T, two-step stair at two places, folding ramp onto a step, sloped driveway",
   "amount": "",
-  "status": "Fitted as boxes and slopes; not yet in a training map",
-  "status_kind": "partial"
+  "status": "Prop routes on the extended map (SSR v14, ACP import v2b)",
+  "status_kind": "ready"
  },
  {
   "id": "r7",
@@ -58,9 +58,33 @@
  {
   "id": "r8",
   "area": "Camera",
-  "item": "X2 depth camera pose per track (head camera 40 degrees down; SSR also tried a chest camera)",
+  "item": "X2 depth camera pose per track (Hiking: chest camera 61.6 degrees down, 58 degree field, as the real RealSense)",
   "amount": "",
-  "status": "To confirm per track",
-  "status_kind": "todo"
+  "status": "Hiking's pitch is an open question for you",
+  "status_kind": "partial"
+ },
+ {
+  "id": "r9",
+  "area": "Retargeted motion",
+  "item": "pico_style_v1: compact style set cut from your Pico takes by category (flat walk, ramp, logs, stairs, turn in place, side walk)",
+  "amount": "233 s",
+  "status": "Approved by you 2026-11-13; in SSR's amp_v5",
+  "status_kind": "ready"
+ },
+ {
+  "id": "r10",
+  "area": "Retargeted motion",
+  "item": "The Hiking paper's released reference (50 clips) retargeted to X2, v2 with the floating feet fixed; shared filesystem only (CC BY-NC licence)",
+  "amount": "about 380 s",
+  "status": "Approved by you 2026-11-13; Hiking v5b and SSR amp_v5",
+  "status_kind": "ready"
+ },
+ {
+  "id": "r11",
+  "area": "Props",
+  "item": "Extended map additions: stair tiles with the stair foot inset 2.5-3 m and prop routes of your capture shapes (straight, side, cross, C, L, S)",
+  "amount": "",
+  "status": "Built; in SSR and Hiking training",
+  "status_kind": "ready"
  }
 ]

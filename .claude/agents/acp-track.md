@@ -39,3 +39,7 @@ Before anything else in a session, read `docs/TOKEN_EFFICIENCY.md` (about 50 lin
 context size times your number of turns, so read narrowly, keep command output out of your context, never wait in a loop of
 turns, report in ten lines, and keep a "HOW TO RESUME" block at the end of your state file because the coordinator replaces any
 agent past about 200,000 tokens with a fresh one.
+
+**Never write node details in any file (2026-11-13):** no node address, login, cloud id or home path (`/home/<login>/...`) in state files, docs, scripts or reports - use `$HOME` or a placeholder; the real values live only in the git-ignored `config/nodes.local.json`. The secrets check runs before every commit.
+
+**One code folder (2026-11-13):** `code_s3/` is temporary. After the stage-3 switch is running and stable, fold it back into `code/` (stage chosen by `--stage`), move the copy to `_trash/`, and keep one code folder; running jobs are protected by their per-run `code_snapshot`, not by a second folder.

@@ -30,9 +30,9 @@
  {
   "id": "success",
   "rule": "Success",
-  "text": "Reaches the last waypoint within the time limit without a fall and without leaving the course. Also reported per section (door, 4x4s, ramps, stairs), with time and foot-contact quality.",
-  "status": "Time limit and button rule open",
-  "status_kind": "waiting"
+  "text": "Reaches every waypoint within 180 s, both 4x4s stepped over, no fall, never off the course, and a strict 1 s stand at each station (feet loaded, nearly still, upright afterwards). Also reported per section, with falls, stalls and where.",
+  "status": "Set (time limit 180 s; strict stand confirmed by you)",
+  "status_kind": "done"
  },
  {
   "id": "size",
@@ -44,7 +44,28 @@
  {
   "id": "sims",
   "rule": "Simulators",
-  "text": "Each track's training simulator plus MuJoCo as the common cross-check. A number counts only if it holds in MuJoCo too.",
+  "text": "Scores are measured in MuJoCo on CPU, the common cross-check, with the gains each policy trained with. A track's number counts only if it holds there.",
+  "status": "Set",
+  "status_kind": "done"
+ },
+ {
+  "id": "floor",
+  "rule": "Floor",
+  "text": "Feet collide with planes and boxes (floor, steps, ramp slabs trimmed to the scanned edge, 4x4s); the height field is drawn and scanned only. Results on the earlier height-field floor are marked 'old floor'.",
+  "status": "Set 2026-11-12",
+  "status_kind": "done"
+ },
+ {
+  "id": "order",
+  "rule": "Order per checkpoint",
+  "text": "Flat gate (walk, stop and stand, turn in place, turn and return; 50 each), ACP's hold-out gate, then five station legs of 50 trials; the full route (200 trials) only when every leg reaches 45 of 50.",
+  "status": "Pass mark 45 of 50 waiting for your yes",
+  "status_kind": "partial"
+ },
+ {
+  "id": "artefacts",
+  "rule": "Simulator artefacts",
+  "text": "Each trial is checked for trapped feet, clamped limbs, joints past their range and unphysical contacts; a failure counts against a policy only when the physics around it is plausible.",
   "status": "Set",
   "status_kind": "done"
  }

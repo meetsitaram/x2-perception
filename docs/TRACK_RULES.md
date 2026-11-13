@@ -44,3 +44,6 @@ height field). Package: `/mnt/filesystem-g4/tools/simcheck/` (README there; mirr
    curriculum move (`simcheck.episode_end`; each track's patch in `tools/simcheck/patches/`).
 3. **`sim_fault_share` in every heartbeat** (`simcheck.alarm`): share of episode ends that were simulator faults; over 1 %
    the heartbeat carries `sim_fault_warn` and the track stops trusting new checkpoints until the cause is found.
+
+## One code folder (user, 2026-11-13)
+One code folder per track; stages and variants by flags; per-run `code_snapshot` protects running jobs. No copied code trees. Where an installed copy must exist (Hiking's InstinctLab files), keep one source and an install step that verifies the installed copy is identical before every launch (part of the pre-flight).

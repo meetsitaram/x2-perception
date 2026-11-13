@@ -7,7 +7,7 @@
   "origin": "True to paper",
   "origin_kind": "paper",
   "decided": "",
-  "status": "In the G1 reproduction",
+  "status": "In X2 run 4 (and the G1 reproduction)",
   "status_kind": "done"
  },
  {
@@ -18,8 +18,8 @@
   "origin": "Added, from other papers",
   "origin_kind": "papers",
   "decided": "",
-  "status": "Confirmed by you for the extended run; not started",
-  "status_kind": "planned"
+  "status": "In run 4: feet_stumble (weight -2) since iteration 4,500",
+  "status_kind": "done"
  },
  {
   "id": "h3",
@@ -29,7 +29,7 @@
   "origin": "Added, from other papers",
   "origin_kind": "papers",
   "decided": "",
-  "status": "Confirmed by you for the extended run; not started",
+  "status": "Not in run 4 yet",
   "status_kind": "planned"
  },
  {
@@ -40,19 +40,19 @@
   "origin": "Added, from other papers",
   "origin_kind": "papers",
   "decided": "",
-  "status": "Confirmed by you for the extended run; not started",
-  "status_kind": "planned"
+  "status": "Written for the extended task (foot_clearance -0.5); not confirmed in the running build",
+  "status_kind": "partial"
  },
  {
   "id": "h5",
   "track": "Hiking",
   "area": "Rewards",
-  "item": "Knee and shin contact cost graded by force and duration; brushes stay cheap so recovery is learnable; 10% of robots exempt from contact terminations",
+  "item": "Body contact cost graded by body part and force (your rule: shoulders, hips, feet strong; forearm brushes cheap); side-stepping in tight spots",
   "origin": "Added, ours",
   "origin_kind": "ours",
   "decided": "",
-  "status": "Confirmed by you for the extended run; not started",
-  "status_kind": "planned"
+  "status": "In run 4 since v4j (wall_contact_graded)",
+  "status_kind": "done"
  },
  {
   "id": "h6",
@@ -62,7 +62,7 @@
   "origin": "True to paper",
   "origin_kind": "paper",
   "decided": "",
-  "status": "In the G1 reproduction",
+  "status": "In X2 run 4 (and the G1 reproduction)",
   "status_kind": "done"
  },
  {
@@ -73,8 +73,8 @@
   "origin": "Added, ours",
   "origin_kind": "ours",
   "decided": "",
-  "status": "Preview built; not ported to the simulator",
-  "status_kind": "partial"
+  "status": "In training since 2026-11-12 16:23 UTC (routes 17:53, inset stairs 21:09); levels 3.3-6.5 of 9 at 4,758",
+  "status_kind": "done"
  },
  {
   "id": "h8",
@@ -84,41 +84,41 @@
   "origin": "True to paper",
   "origin_kind": "paper",
   "decided": "",
-  "status": "In the G1 reproduction",
+  "status": "In X2 run 4 (and the G1 reproduction)",
   "status_kind": "done"
  },
  {
   "id": "h9",
   "track": "Hiking",
   "area": "Commands",
-  "item": "Waypoint routes through each section's main walk area; backward, sideways and turn-in-place commands; dead-end spawns",
+  "item": "Waypoint routes through each section's walk area; turn-in-place and slow commands; no commanded backward travel (your rule)",
   "origin": "Added, ours",
   "origin_kind": "ours",
   "decided": "",
-  "status": "Planned; 61 of 327 preview routes still blocked",
-  "status_kind": "planned"
+  "status": "Routes in training (693 at the v4k check); turn and slow-command training in v5b",
+  "status_kind": "partial"
  },
  {
   "id": "h10",
   "track": "Hiking",
   "area": "Style data",
-  "item": "Paper's released motion file, about 380 s, for the style reward",
+  "item": "Paper's released motion file, 380 s, retargeted to X2 (v2, feet fixed) as the only style reference, one discriminator (your rule)",
   "origin": "True to paper",
   "origin_kind": "paper",
   "decided": "",
-  "status": "In the G1 reproduction",
-  "status_kind": "done"
+  "status": "In v5b (armed for 7,500); v4j still uses the earlier 827 s set",
+  "status_kind": "partial"
  },
  {
   "id": "h11",
   "track": "Hiking",
   "area": "Style data",
-  "item": "Our Pico captures: 67 min of general walking and 26 min on props",
+  "item": "Our Pico captures for style",
   "origin": "Added, ours",
   "origin_kind": "ours",
   "decided": "",
-  "status": "Planned; needs retargeting",
-  "status_kind": "planned"
+  "status": "Not for Hiking: its reference stays the paper's motion only (your correction, 2026-11-13); Pico style set goes to SSR",
+  "status_kind": "done"
  },
  {
   "id": "h12",
@@ -139,8 +139,8 @@
   "origin": "True to paper",
   "origin_kind": "paper",
   "decided": "Your decision, 2026-11-11",
-  "status": "Pipeline to be written down from the paper before training",
-  "status_kind": "planned"
+  "status": "Running: stage 1 tracker and stage 2 planner done on the corrected robot model; stage 3 (extended map) next",
+  "status_kind": "done"
  },
  {
   "id": "s1",
@@ -150,7 +150,95 @@
   "origin": "True to paper",
   "origin_kind": "paper",
   "decided": "Your decision, 2026-11-11",
-  "status": "Risk: with rewards alone the robot stood still in earlier runs",
+  "status": "Running r7 v14 (no SuperMimic); one paper-aligned restart (v15) fell back, v16 being prepared",
   "status_kind": "risk"
+ },
+ {
+  "id": "h13",
+  "track": "Hiking",
+  "area": "Style data",
+  "item": "Style weights by body part: legs, pelvis, waist 1.0; shoulders, elbows 0.3; wrists and head out",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "Your decision, 2026-11-13",
+  "status": "In v5b",
+  "status_kind": "planned"
+ },
+ {
+  "id": "h14",
+  "track": "Hiking",
+  "area": "Checks",
+  "item": "Simulator pre-flight and a CPU scan of every reward and termination term before a GPU start (three starts failed only on the GPU on 2026-11-12/13)",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "Your rule, 2026-11-12",
+  "status": "In v5b",
+  "status_kind": "done"
+ },
+ {
+  "id": "s2",
+  "track": "SSR",
+  "area": "Method",
+  "item": "Back to the paper on all 26 paper-specified items the audit found, except 8,192 robots, the 17 x 10 height map and your overrides",
+  "origin": "True to paper",
+  "origin_kind": "paper",
+  "decided": "Your decision, 2026-11-13",
+  "status": "v15 tried and fell back (slow shuffle); v16 being prepared",
+  "status_kind": "risk"
+ },
+ {
+  "id": "s3",
+  "track": "SSR",
+  "area": "Style data",
+  "item": "Motion prior to the paper's Table 11 sizes per terrain: your Pico style set (pico_style_v1, 233 s) plus the paper's reference retargeted to X2; no BONES-SEED",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "Your decision, 2026-11-13",
+  "status": "Built (amp_v5); first used in v15, which fell back",
+  "status_kind": "partial"
+ },
+ {
+  "id": "s4",
+  "track": "SSR",
+  "area": "Terrain",
+  "item": "Extended map on 40% of robots (9 tile types, inset stairs, prop routes) beside SSR's own lanes",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "Your rule, 2026-11-12",
+  "status": "In training since 17:21 UTC; map tiles at about 0.5-2.7 of 9",
+  "status_kind": "done"
+ },
+ {
+  "id": "s5",
+  "track": "SSR",
+  "area": "Rewards",
+  "item": "Less reward for backward travel than for forward walking or turning in place; graded wall contact; slow-walking (creep) reward",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "Your rules, 2026-11-12",
+  "status": "In v14 (slow walking restored at 5,050)",
+  "status_kind": "done"
+ },
+ {
+  "id": "a2",
+  "track": "ACP",
+  "area": "Data",
+  "item": "Tracker data: BONES-SEED clips (kept for ACP, your rule) plus your Pico takes, corrected and mirrored",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "Your rule, 2026-11-13",
+  "status": "Data 2h, at the 06:00 UTC restart",
+  "status_kind": "planned"
+ },
+ {
+  "id": "a3",
+  "track": "ACP",
+  "area": "Terrain",
+  "item": "Extended map (import v2b: 884 routes, inset stairs, prop routes)",
+  "origin": "Added, ours",
+  "origin_kind": "ours",
+  "decided": "Your decision, 2026-11-12",
+  "status": "Enters with stage 3",
+  "status_kind": "planned"
  }
 ]

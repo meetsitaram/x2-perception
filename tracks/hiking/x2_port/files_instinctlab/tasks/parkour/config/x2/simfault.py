@@ -4,6 +4,7 @@ over 20 m/s in one step) ends the episode as a time-out (bootstrapped, no termin
 failure term ignores a faulted env. HIKING_X2_SIMFAULT=0 turns it off. Wired by staged.py (v5) at the end of __post_init__."""
 from __future__ import annotations
 
+import functools
 import inspect
 import os
 
@@ -31,6 +32,9 @@ def sim_fault(env, jump_ms: float = 20.0, speed_max: float = 50.0, asset_cfg=Non
 
 
 def _unless_sim_fault(func):
+    # 2026-11-13: functools.wraps sets __wrapped__, so Isaac Lab's term check (inspect.signature) sees the wrapped
+    # function's parameters; without it *args/**kwargs counted as mandatory (v5b construction check 02:06).
+    @functools.wraps(func)
     def wrapped(env, *args, **kwargs):
         return func(env, *args, **kwargs) & ~sim_fault(env)
     wrapped.__name__ = getattr(func, "__name__", "term")

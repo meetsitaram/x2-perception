@@ -1921,17 +1921,72 @@ lin_vel there, which is why it stands) and `--ext_hold_r 0.10` (route robots mus
   (shared tool untouched; owner of the adapter could add SSR_CODE upstream).
 - No `tests/test_equivariance.py` existed; written (checkpoint-based encoder / actor / involution checks).
 
-## HOW TO RESUME (current at 01:55 UTC 2026-11-13, node clock)
+### 2026-11-13 02:20 UTC: v15 export bug fixed, v15 fell back at +150 (fresh agent, replaced the 282k one)
+- **What went wrong 1 (export)**: `r8_v15_p100` export failed `IndexError: index 5 ... size 5` in `env._command_reset`: v15 made
+  `T.FLAT = FREE = 5` (open-floor column) but the per-type heading table `hmax` kept 5 entries; export_eval.py (and paper_eval.py,
+  disc_score.py) put the robot on T.FLAT. Training never indexes 5 (types 0-4), so the trainer was not affected.
+  Fix: `code_v15/ssr/env.py` line 404 table gets a 6th entry 30 deg (= v14 flat); backup `ssr/env.py.bak_0215`. Running trainer untouched.
+  Re-exported **`eval/export/r8_v15_p100/`** (iter 7,050; ONNX vs torch max err 3.7e-6; mean_vx 0.60) with DONE marker.
+- **Pre-flight**: new `runs/export_dryrun.sh <code> <smoke_run_dir> <out>` exports the CPU train-smoke checkpoint with the new code
+  and checks policy.onnx / adapter_card.json / obs_check.npz and max_err < 1e-4. Verified: old env.py -> FAIL (the IndexError),
+  fixed -> PASS. Added to `runs/v15_cpu_checks.sh` (log `$O/export_dryrun.log`); every future queue gate must also require
+  `grep -q "EXPORT_DRYRUN PASS" $O/export_dryrun.log`.
+- **What went wrong 2 (v15 rejected by its own gate)**: +150 at 7,150: ep_len 13.64 (ok vs 0.7 x 13.61), **vx_ratio 0.556 <
+  0.584 (0.75 x 0.778)** -> FALL BACK at 02:14:47; queue32 resumed r7 v14 from r7_v14_final (7,000) at 02:15:32 (one trainer, pid
+  in tmux ssr32). Evidence (r8 log every 10 it): after the 50-it warm-up vx_ratio fell monotonically 0.80 (7,050) -> 0.45 (7,150),
+  double support 0.21 -> 0.50, single 0.75 -> 0.48, steps/s 5.2 -> 5.8, cmd_speed steady 0.74: a shuffle in place, the
+  standing/creep failure again. Style per group fell during the policy updates: 7,010 ramp .72 stairs .74 beam .72 platform .74
+  discrete .75 -> 7,160 ramp .63 stairs .66 beam .64 platform .66 discrete .65; r_s 0.73 -> 0.65; r_l 1.66 -> 1.56; r_f 0.81 -> 0.88.
+  Levels held (discrete 0 -> 2.0), so it is not a terrain collapse. Suspects (not yet separated): amp_v5 is about 5x smaller than
+  amp_v4 (ramp 13k vs 35k frames, stairs 15k vs 92k) and has **no flat group** (v4 had flat 50k); fresh discriminators on it.
+- **Decision (mine, 02:20)**: v15 not kept (the gate decided; the evidence agrees). v14 continues. Next experiment (v16) only after
+  the cheap checks: (a) reference speed and double-support share per group, amp_v5 vs amp_v4 (find the 63-feature layout in the
+  amp builder); (b) disc_score.py of the v14 policy against fresh amp_v5 discriminators. Candidate v16 = v15 + longer D-only
+  warm-up (200 it) + the flat group kept from v4, if (a) shows v5 references are slower or more double-support.
+- r8_v15_p100 (7,050, before the slowdown) is a valid export to score; low priority behind r7_v14_p250.
 
-- **Running**: r7 **v14** (tmux `ssr31`, queue31) until queue32 switches. **queue32** (tmux `ssr32`, `runs/queue32.log`, prefix
-  QUEUE32) arms v15 = run **r8** (`code_v15/`, `runs/r7_flags_v15.txt`, used flags in `runs/r8_flags_used.txt`). Never close tmux
-  ssr32 after the switch: the r8 supervisor is its child (SIGHUP orphaned a trainer on 2026-11-12). Stop training: touch runs/STOP.
-- **Waiting on**: `/mnt/filesystem-g4/data/motions/hiking_release_x2/paper_ref_x2_v2.pkl` (coordinator's fix of the 3.6 cm sole
-  float). queue32 polls 12 h, then logs HOLD and v14 keeps running. A HOLD line anywhere = nothing changed, read the reason.
-- **Next check** (after the switch, about 40 min for +60 / +150): QUEUE32 lines +60 / +150 / exports; r8 log `runs/r8/log.jsonl`
-  fields `critic_warmup`, `style_by_group`, `disc.<g>.grad_share` (arms should read about 0.3^2 of legs per feature), `omni_share`
-  (small until robots clear level 19), levels per type (discrete from 0). Eval: `eval/export/r8_v15_p100` for the autoscorer.
-- **Open**: preflight not a pass (one ext edge trap site, guard depth at chunk borders; B11 owners); actor mirror error 0.085 is near
-  my 0.10 tolerance; backward / sidestep / open-floor turning missing from the prior (gap list).
-- **Helper**: ssh `~/bin/ssr_ssh.sh <timeout_s> '<cmd>'`; CPU work from `code_v15/`: `env CUDA_VISIBLE_DEVICES= X2_PLANT=mc_20261024
-  X2_EXCL_PELVIS_HIPROLL=1 nice -n 10 ../env/venv/bin/python ...`. v15 checks: `runs/v15_cpu_checks.sh`; preflight pick: `runs/v15_pick.py`.
+### 2026-11-13 03:30-04:00 UTC: v16 checks, v16 = v15 + resume transition, armed (fresh agent)
+All outputs in `runs/v16_checks/` (script `code_v15/scripts/v16_checks.py`; checks.json, tiles.json, replay/summary.txt).
+- **(a) amp_v5 vs amp_v4 per group** (kinematic contact: foot world speed < 0.3 m/s; moving = |v| > 0.2): v5 is NOT slower or more
+  double-support. Mean moving speed v5 0.52-0.55 m/s (v4 0.43-0.58), standing share v5 0.11-0.21 (v4 0.19-0.31), double support
+  v5 0.12-0.19 (v4 0.08-0.21), steps/s v5 1.9-2.8 (v4 1.5-2.3), vx p90 v5 0.88-1.07 (v4 0.60-0.82). Hypothesis rejected.
+- **(b) fresh amp_v5 discriminators** (r8 at 7,050 = 50 warm-up iterations, and r8 last 7,160), flat open floor, cmd 0.5/0.74/1.0:
+  every group's D already rates v14's walk below v15's shuffle at 7,050 (style 0.51-0.65 vs 0.58-0.67, gap 0.02-0.07), gap wider at
+  7,160 (0.48-0.55 vs 0.60-0.67 at 0.74 m/s). References all ~0.81-0.85 incl. standing windows (D does not separate standing). So a
+  push toward the shuffle exists. Its pull grew because v15 also switched **adv_norm joint -> separate**: logged adv_sd (weighted
+  spreads) v14 [0.171, 0.019, 0.0072] = style 3.7 % of the policy gradient; separate with WEIGHTS (1, 0.25, 0.2) = style 14 %, foothold
+  17 % (was 10 %). And sigma_v 0.1 (v14) -> 0.25 (Table 7) softened the speed penalty (0.45 x command earns 0.51 vs 0.19).
+- **(c) where the shuffle is** (extra check): deterministic CPU rollouts at heading 0 do NOT show it (v15@7,160 as fast as v14 on
+  flat and on ramp 13 / stairs 10 / beam 13 / platform 10 / discrete 2; only cadence +1-2 steps/s and beam double 0.38 vs 0.24).
+  Both policies frozen in the v15 TRAINING env on CPU (64 robots, sampled actions, real command mix, 14 iterations): **v14 vx_ratio
+  0.95 / double 0.18, v15 0.70 / 0.33**. So it is a property of the v15 policy under training conditions, not the curriculum.
+- **Decision (mine, 03:58)**: v16 = v15 unchanged (paper end state) + a resume transition: `--critic_warmup 200` (policy frozen;
+  critics + fresh D train against v14), then `--to_paper_ramp 300 --sig_v_start 0.1`: advantage blend joint -> separate and sigma_v
+  0.1 -> 0.25 over 300 iterations; paper values from +500. Not changed: flat group (the paper has none; v5 is not slower),
+  foothold base frame (paper; ramps with the separate norm). Code `code_v16/` = code_v15 + train.py patch (`runs/v16_checks/patch_v16.py`);
+  flags `runs/r7_flags_v16.txt`. CPU checks `runs/v16_cpu_checks.sh`: equivariance (actor 0.080), mirror 4/4, env smoke 17/17, train
+  smoke 3 lines with to_paper 0 -> 0.5, sig_v 0.1 -> 0.175, EXPORT_DRYRUN PASS (err 1.4e-6). Terrain code unchanged -> v15 pick solref 0.005.
+- **Armed** 03:59:34: queue33 (tmux `ssr33`, `runs/queue33.log`, prefix QUEUE33), gate 1 passed; at the next r7 save it stops r7, saves
+  `eval/export/ckpts/r7_v14_final2.pt`, starts **r9** (code_v16, 8,192 envs; `NUM_ENVS=16384` in the queue's environment is the one
+  change for doubling, after the coordinator confirms). Fallback to v14 (resume r7): crash; from +60 sps < 0.8x or tilt > +0.05;
+  at +350 and +500 ep_len < 0.7x or vx_ratio < 0.75x v14. Exports `r9_v16_p300`, `r9_v16_p500`.
+
+### What went wrong this turn
+- train smoke caught my log bug (`sig_v` logged twice -> TypeError); fixed before arming. queue33 first start lacked its path line
+  (built from queue32 with an off-by-one); killed after 15 s, nothing ran (log kept as `v16_checks/queue33_badstart.log`).
+- The node has 24 cores (not 28): one replay failed taskset on 24-27 and was rerun on 16-19.
+
+## HOW TO RESUME (current at 04:00 UTC 2026-11-13, node clock)
+
+- **Running**: r7 **v14** (tmux `ssr32`, code `code/`) until queue33 (tmux `ssr33`) switches to **r9 = v16** at the next r7 save
+  (~04:05). Never close a tmux holding a supervisor. Stop training: touch runs/STOP.
+- **Next check** (~06:00, r9 +500): `grep QUEUE33 runs/queue33.log` for +60 / +350 / +500 lines or FALL BACK. Healthy: vx_ratio
+  >= 0.57 (0.75 x v14 0.76), to_paper 1.0 and sig_v 0.25 at +500, gait.double near 0.2. Then score `eval/export/r9_v16_p500`.
+- **If v16 falls back**: separate the causes on CPU with the frozen-policy replay (`runs/v16_checks/replay_train.sh`, NE/K env):
+  v15 flags with only one of {adv_norm joint, sig_v 0.1, fresh D warm 200} changed.
+- **Exports**: `r7_v14_p250` top priority; `r8_v15_p100` low.
+- **Open**: preflight terrain not a pass (ext edge site, chunk-border guards; FINDINGS B11); actor mirror error 0.080 (tol 0.10);
+  backward / sidestep / open-floor turning missing from the prior; beam D scores ~48 % of style samples (tight_spots / homes routes
+  are mapped to beam).
+- **Helper**: ssh `~/bin/ssr_ssh.sh <timeout_s> '<cmd>'` (stdin is not passed: upload files as base64 in the command). CPU work from
+  `code_v16/`: `env CUDA_VISIBLE_DEVICES= X2_PLANT=mc_20261024 X2_EXCL_PELVIS_HIPROLL=1 X2_HF_CHUNK=400 nice -n 10 ../env/venv/bin/python ...`.

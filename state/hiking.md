@@ -1482,7 +1482,23 @@ Plan: a small monitor term for per-type terrain level, actual vs commanded speed
 
 None. Open: the user's measured camera height and angle; which pelvis mass is right (URDF 3.52 kg or MJCF 5.03 kg).
 
-## HOW TO RESUME (updated 2026-11-13 01:57 node clock; supersedes everything below where they differ)
+## HOW TO RESUME (updated 2026-11-13 02:17 node clock; supersedes everything below where they differ)
+
+- WHAT WENT WRONG (2nd): v5b's construction check failed at 02:06 for the same reason as v5. `simfault.py` `_unless_sim_fault`
+  wrapped the termination terms (bad_orientation, root_height, stalled) as `wrapped(env, *args, **kwargs)`, and Isaac Lab's
+  term check read args/kwargs as mandatory parameters. My 01:50 signature check covered only the 4 style terms. v4j resumed.
+- FIX: `@functools.wraps(func)` (Isaac's inspect.signature follows __wrapped__) in both copies of simfault.py (bad copy in
+  `_trash/2026-11-13/simfault.py.v5bad`). New generic gate: `code/x2_port/v5b/cfgscan.py` builds the FINAL env cfg on CPU
+  (simulator modules stubbed, launcher env vars, v5b file swaps on an overlay copy via `v5b/cfgscan_v5b.sh`) and applies Isaac's
+  rule to every term of observations, rewards, terminations, events and curriculum (42 terms). Proof: on the 02:06 code it
+  FAILS on bad_orientation, root_height and stalled (`v5b/cfgscan_0206code.log`); on the fixed code it passes
+  (`v5b/cfgscan_fixed.log`). `continue_v5b.sh` runs it after precheck_v5b.py and does not stop v4j if it fails (edited by hand
+  after mk_v5b.py generated the file, so do not regenerate it).
+- RE-ARMED 02:16:44: tmux `cont5b`, restart from model_7500 (v4j was at 7401 at 02:16, so about 02:33). Content unchanged:
+  paper v2 motion alone, plus everything from v5. Trial: 75 iterations; fall-back to v4j.
+- NEXT CHECK about 03:00: launch.txt (cfg scan, check exit, trial line).
+
+## (older) HOW TO RESUME (updated 2026-11-13 01:57 node clock; supersedes everything below where they differ)
 
 - WHAT WENT WRONG: v5 never trained. 01:32 construction check died in Isaac Lab's term check
   (`manager_base._resolve_common_term_cfg`: "amp_policy/joint_pos_rel expects mandatory parameters ['asset_cfg','kw']"),

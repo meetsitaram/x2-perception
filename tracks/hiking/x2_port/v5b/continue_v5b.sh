@@ -28,6 +28,12 @@ if ! $HOME/hiking-env/bin/python $X/v5b/precheck_v5b.py $X/v5b/continue_v5b.sh $
   echo "$(date +%T) v5b NOT started: CPU pre-flight failed ($(grep -a FAIL $S/precheck_v5b.log | head -3 | tr '\n' ' ')); v4j keeps training, not stopped" >> $S/launch.txt
   exit 1
 fi
+# 02:20 (after the 02:06 failure): Isaac Lab term-signature scan of EVERY term of the final env cfg on CPU (v5b/cfgscan.py)
+if ! bash $X/v5b/cfgscan_v5b.sh $S/cfgscan_v5b.log; then
+  echo "$(date +%T) v5b NOT started: CPU cfg scan failed ($(grep -a "^FAIL\|Error" $S/cfgscan_v5b.log | head -3 | tr "
+" " " | cut -c1-300)); v4j keeps training, not stopped" >> $S/launch.txt
+  exit 1
+fi
 echo "$(date +%T) v5b CPU pre-flight passed ($(grep -a '^motion\|^discriminator' $S/precheck_v5b.log | tr '\n' ' '))" >> $S/launch.txt
 L0=$(grep -a "Curriculum/terrain_levels" $S/train.log | tail -20 | awk '{s+=$NF;n++} END{print s/n}')
 E0=$(grep -a "Mean episode length" $S/train.log | tail -20 | awk '{s+=$NF;n++} END{print s/n}')

@@ -1,6 +1,6 @@
 # Review dashboard
 
-The user's review page: https://claude.ai/artifact/JaZDeLFXXN28HLMd1Sia3V (a claude.ai Artifact of the "Data" type, private to the user).
+The user's review page (2026-11-13 on): https://claude.ai/artifact/KcRGuVx3sH1nV9FdsUdjGi (slug 96b67cc3-34e8-4fe5-a22e-30be43693b07), a self-contained snapshot built by the session scratchpad's `make_snapshot.py` into `dashboard/snapshot/` (git-ignored) and republished with publish_files (slug + base_version). The older Data-type page https://claude.ai/artifact/JaZDeLFXXN28HLMd1Sia3V (a claude.ai Artifact of the "Data" type, private to the user).
 This folder is its source of truth. Nothing here is published as a file: the page and each dataset are documents in the artifact's
 store, written with the `ArtifactData` tool, and each dataset points at a JSON file uploaded with the `Artifact` tool.
 

@@ -116,7 +116,19 @@ class X2ParkourFixedEnvCfg(X2ParkourStagedEnvCfg):
             actuators=make_x2_implicit_actuators_mc(),
         )
         self.actions.joint_pos.scale = dict(RUN4_ACTION_SCALE)
-        for group in (self.observations.amp_policy, self.observations.amp_reference):
-            for term in ("joint_pos_rel", "joint_vel"):
-                old = getattr(group, term).params["asset_cfg"]  # a new object, so no other group that shares it changes
-                getattr(group, term).params["asset_cfg"] = SceneEntityCfg(old.name, joint_names=list(LEG_JOINTS))
+        import os as _os
+        if "j" in {o.strip() for o in _os.environ.get("HIKING_X2_OPTS", "").split(",")}:
+            # v5 (user 2026-11-13): legs, pelvis, waist 1.0; shoulders, elbows 0.3; wrists, head out (style_weights.py)
+            from instinct_rl.algorithms.wasabi import WasabiPPO
+            from .style_weights import apply_to_cfg, install_discriminator_reset
+            apply_to_cfg(self, SceneEntityCfg)
+            install_discriminator_reset(WasabiPPO)
+        else:
+            for group in (self.observations.amp_policy, self.observations.amp_reference):
+                for term in ("joint_pos_rel", "joint_vel"):
+                    old = getattr(group, term).params["asset_cfg"]  # a new object, so no other group that shares it changes
+                    getattr(group, term).params["asset_cfg"] = SceneEntityCfg(old.name, joint_names=list(LEG_JOINTS))
+        # simcheck (TRACK_RULES "Simulator checks"): simulator faults end as time-outs, never failures (simfault.py)
+        from isaaclab.managers import TerminationTermCfg as _DoneTerm
+        from .simfault import install as _install_simfault
+        print("[X2 simfault] wrapped terminations:", _install_simfault(self, _DoneTerm), flush=True)
