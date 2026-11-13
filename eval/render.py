@@ -19,11 +19,37 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import pathlib
 import sys
 
 import mujoco
 import numpy as np
+
+def _wrap(dr, text, font, width):
+    """Split a label at ' | ' (then at spaces) into lines that fit `width` pixels."""
+    out, cur = [], ""
+    for part in text.split(" | "):
+        cand = part if not cur else cur + " | " + part
+        if dr.textlength(cand, font=font) <= width:
+            cur = cand
+            continue
+        if cur:
+            out.append(cur)
+        cur = ""
+        for w in part.split(" "):
+            c2 = w if not cur else cur + " " + w
+            if dr.textlength(c2, font=font) <= width or not cur:
+                cur = c2
+            else:
+                out.append(cur)
+                cur = w
+    if cur:
+        out.append(cur)
+    return out
+
+
+CREDIT = os.environ.get("RENDER_CREDIT", "Motion data used in training: Bones Studio. Robot: AgiBot X2 model.")
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import x2 as X  # noqa: E402
@@ -145,22 +171,28 @@ def render(run: pathlib.Path, seed: int, view: str, track: str, t0=None, t1=None
                 _add(ren.scene, mujoco.mjtGeom.mjGEOM_CYLINDER, [0.006, 0.20, 0], [e["xy"][0], e["xy"][1], e["z"] + 0.23], c)
         im = Image.fromarray(ren.render())
         dr = ImageDraw.Draw(im)
-        dr.rectangle((0, 0, W, 52), fill=(15, 18, 24))
-        dr.text((10, 4), label, fill=(240, 240, 240), font=font)
-        dr.text((10, 29), label2, fill=(200, 210, 220), font=small)
-        dr.rectangle((0, H - 52, W, H), fill=(15, 18, 24))
+        top = [(l_, font, (240, 240, 240)) for l_ in _wrap(dr, label, font, W - 20)] + [(l_, small, (200, 210, 220)) for l_ in _wrap(dr, label2, small, W - 20)]
+        top_h = 6 + sum(26 if f_ is font else 22 for _, f_, _ in top)
+        dr.rectangle((0, 0, W, top_h), fill=(15, 18, 24))
+        y_ = 4
+        for l_, f_, col in top:
+            dr.text((10, y_), l_, fill=col, font=f_)
+            y_ += 26 if f_ is font else 22
         note = ("legs close-up, half speed; walls not drawn" if legs else "chase view; walls see-through, faded in front of the robot")
         tgt = ("waypoint %d / %d: %s%s" % (wi + 1, len(wps), wps[wi]["name"], " (holding)" if z["hold"][k] else "")) if wi < len(wps) else ("route done" if wps else "no route")
         c = z["cmd"][k]
-        dr.text((10, H - 49), "t %.2f s | %s | cmd vx %.2f m/s, yaw %.2f rad/s | magenta pole = target, floating, not a foothold" % (t[k], tgt, c[0], c[2]),
-                fill=(250, 250, 250), font=small)
-        dr.text((10, H - 26), "simulator: foot load L %.0f N, R %.0f N | pelvis %.2f m above ground | outcome: %s | side hits %d, stumble penalty %.2f | %s" % (
-            z["load"][k][0], z["load"][k][1], z["h"][k], res["reason"], res.get("side_hit_count", 0), res.get("stumble_penalty", 0.0), note), fill=(200, 210, 220), font=small)
+        bottom = [(l_, (200, 210, 220)) for l_ in _wrap(dr, CREDIT, small, W - 20)]
+        bottom += [(l_, (250, 250, 250)) for l_ in _wrap(dr, "t %.2f s | %s | cmd vx %.2f m/s, yaw %.2f rad/s | magenta pole = target, floating, not a foothold" % (t[k], tgt, c[0], c[2]), small, W - 20)]
+        bottom += [(l_, (200, 210, 220)) for l_ in _wrap(dr, "simulator: foot load L %.0f N, R %.0f N | pelvis %.2f m above ground | outcome: %s | side hits %d, stumble penalty %.2f | %s" % (
+            z["load"][k][0], z["load"][k][1], z["h"][k], res["reason"], res.get("side_hit_count", 0), res.get("stumble_penalty", 0.0), note), small, W - 20)]
+        dr.rectangle((0, H - 22 * len(bottom) - 6, W, H), fill=(15, 18, 24))
+        for i_, (l_, col) in enumerate(bottom):
+            dr.text((10, H - 22 * (len(bottom) - i_) - 3), l_, fill=col, font=small)
         hits_live = [e for e in live if e["hit"]]
         if hits_live:
-            dr.rectangle((0, 54, W, 54 + 24 * len(hits_live[:4]) + 6), fill=(120, 10, 10))
+            dr.rectangle((0, top_h + 2, W, top_h + 2 + 24 * len(hits_live[:4]) + 6), fill=(120, 10, 10))
             for i, e in enumerate(hits_live[:4]):
-                dr.text((10, 57 + 24 * i), "SIDE HIT (%s ball): %s %s on a %s side at t %.2f s, peak horizontal %.0f N, impulse %.1f N s, pelvis dv %.2f m/s, tilt +%.1f deg, penalty %.2f" % (
+                dr.text((10, top_h + 5 + 24 * i),"SIDE HIT (%s ball): %s %s on a %s side at t %.2f s, peak horizontal %.0f N, impulse %.1f N s, pelvis dv %.2f m/s, tilt +%.1f deg, penalty %.2f" % (
                     HIT_NAME[e["cls"]], e["side"], {"foot_side": "foot"}.get(e["kind"], e["kind"]), e["cls"], e["t"], e["peak_h"], e["impulse"], e["dv"], e["dtilt"], e["penalty"]),
                     fill=(255, 255, 255), font=small)
         wr.append_data(np.asarray(im))

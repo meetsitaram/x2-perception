@@ -1,5 +1,13 @@
 [
  {
+  "id": "w10",
+  "n": 10,
+  "date": "2026-11-12",
+  "area": "Team",
+  "what": "New coordinator session: four agents restarted without stopping any run; checkpoints confirmed on the shared filesystem for all three tracks; data inventory written (sources of every motion set); SSR and Hiking checkpoints exported for the eval",
+  "where": "perception-agents/state/STATUS.md, docs/DATA.md"
+ },
+ {
   "id": "w9",
   "n": 9,
   "date": "2026-11-11",

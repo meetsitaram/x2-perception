@@ -36,13 +36,28 @@ def terrain_dir():
     return pathlib.Path(p) if p else data_dir().parent / "terrains" / "extended_v1"
 
 
+PAD_M = float(os.environ.get("LADDER_PAD_M", "3.0"))   # m of flat floor around every ladder course (0 = the courses before 2026-11-12 ~16:40)
+
+
 class Course(Apparatus):
     """A test course with the attributes the harness, the model builder and the renderer use from an Apparatus."""
 
-    def __init__(self, name, grid, x0, y0, res, boxes, spawn, waypoints, section, extra=None, floor=0.0):
+    def __init__(self, name, grid, x0, y0, res, boxes, spawn, waypoints, section, extra=None, floor=0.0, pad=True):
         self.name, self.dir = name, None
         self.grid = np.asarray(grid, np.float64)
         self.x0, self.y0, self.res = x0, y0, res
+        if pad and PAD_M > 0:
+            # Course-edge fix (eval monitor 2026-11-12, coordinator's decision after the ground-plane TEST): an 8 m course ended in
+            # nothing, which a depth camera reads as a drop ~1 m ahead of the far stations (SSR corridor 0/50 -> 20/20, Hiking street
+            # 37/50 -> 10/10 with a plane). Pad every ladder course with flat floor PAD_M beyond its edge, at the median height of
+            # the border cells, in the physics height field and in the scans / depth (all read this grid).
+            n = int(round(PAD_M / res))
+            border = np.concatenate((self.grid[0], self.grid[-1], self.grid[:, 0], self.grid[:, -1]))
+            self.grid = np.pad(self.grid, n, mode="constant", constant_values=float(np.median(border)))
+            self.x0, self.y0 = x0 - n * res, y0 - n * res
+            self.padded_m = PAD_M
+        else:
+            self.padded_m = 0.0
         self.nx, self.ny = self.grid.shape
         self.floor, self.boxes, self.spawn = floor, boxes, spawn
         self.waypoints = [dict(w, section=section) for w in waypoints]
@@ -230,7 +245,8 @@ def beam_course(name, ttype, tile_id, slanted, before=0.9, after=0.8):
                 extra = dict(c.route, beams=[dict(name=bm["name"], a=bm["a"], b=bm["b"])])
                 extra.pop("name"); extra.pop("sections")
                 return Course("ladder:" + name, c.grid, c.x0, c.y0, c.res, c.boxes, [float(p0[0]), float(p0[1]), yaw],
-                              [wp(float(p1[0]), float(p1[1]), name="%.1f m past the %s log (%.0f cm tall)" % (after, "slanted" if slanted else "level", 100 * bm["top"]))], name, extra)
+                              [wp(float(p1[0]), float(p1[1]), name="%.1f m past the %s log (%.0f cm tall)" % (after, "slanted" if slanted else "level", 100 * bm["top"]))], name, extra,
+                              pad=not getattr(c, "padded_m", 0))
     raise RuntimeError("no %s beam with a clear square crossing on %s" % ("slanted" if slanted else "level", tile_id))
 
 
@@ -383,8 +399,8 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
         results.sort(key=lambda r: r["seed"])
         if part.exists():
             os.remove(part)
-        meta = dict(label=label, ladder_step=step, test=test, on="a ladder course below the apparatus (not an apparatus result)", apparatus=course.name, route=course.name,
-                    tile=course.route.get("tile"), scan=course.route.get("scan", "walk raster only"), simulator="MuJoCo %s (CPU), dt %.4f s" % (mujoco.__version__, X.SIM_DT), adapter=adapter.name,
+        meta = dict(course_padding_m=getattr(course, "padded_m", 0.0), label=label, ladder_step=step, test=test, on="a ladder course below the apparatus (not an apparatus result)", apparatus=course.name, route=course.name,
+                    tile=course.route.get("tile"), scan=course.route.get("scan", "walk raster only"), simulator="MuJoCo %s (CPU), dt %.4f s%s" % (mujoco.__version__, X.SIM_DT, X.model_note()), policy_trained_on=getattr(adapter, "trained_model", None), adapter=adapter.name,
                     checkpoint=str(adapter.checkpoint), observes=adapter.observes, control_dt=adapter.control_dt, protocol=protocol_name,
                     plant=adapter.plant_name or "harness default vendor_20260823 (test fixture)",
                     seeds=[seed0, seed0 + trials - 1], time_limit=TIME_LIMIT_STEP2 if step == 2 else TIME_LIMIT, sections=course.sections,
@@ -395,13 +411,13 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
         json.dump(results, open(d / "results.json", "w"), indent=1)
         json.dump(s, open(d / "summary.json", "w"), indent=1)
         Hn.write_logs(d, results, course.waypoints)
-        row = dict(test=test, trials=s["trials"], success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
+        row = dict(test=test, trials=s["trials"], rule=s.get("stand_rule", "disc"), strict=s.get("strict_successes"), success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
                    side_hits_per_trial=s["side_hits"]["per_trial"], mean_waypoints=s["mean_waypoints"], of=len(course.waypoints), outcomes=s["outcomes"],
                    time_median=(s["time_success"] or {}).get("median"), length_m=round(float(np.linalg.norm(np.diff(course.path(), axis=0), axis=1).sum()), 1),
                    tile=course.route.get("tile"), wall_s=round(time.time() - t0))
         table.append(row)
-        print("%-20s %3d / %d success (%.0f-%.0f %%), clean %3d, penalty %.2f, waypoints %.1f / %d, %s, %d s" % (
-            test, row["success"], row["trials"], 100 * row["ci95"][0], 100 * row["ci95"][1], row["clean"], row["mean_penalty"], row["mean_waypoints"], row["of"],
+        print("%-20s strict %s, %s-rule run %3d / %d success (%.0f-%.0f %%), clean %3d, penalty %.2f, waypoints %.1f / %d, %s, %d s" % (
+            test, row["strict"], row["rule"], row["success"], row["trials"], 100 * row["ci95"][0], 100 * row["ci95"][1], row["clean"], row["mean_penalty"], row["mean_waypoints"], row["of"],
             row["outcomes"], row["wall_s"]), flush=True)
     return table
 
@@ -416,7 +432,7 @@ def collect(out, step):
         s = json.load(open(f))
         head = head or s
         course = STEPS[step][test]()
-        rows.append(dict(test=test, trials=s["trials"], success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
+        rows.append(dict(test=test, trials=s["trials"], rule=s.get("stand_rule", "disc"), strict=s.get("strict_successes"), success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
                          side_hits_per_trial=s["side_hits"]["per_trial"], mean_waypoints=s["mean_waypoints"], of=len(course.waypoints), outcomes=s["outcomes"],
                          time_median=(s["time_success"] or {}).get("median"), length_m=round(float(np.linalg.norm(np.diff(course.path(), axis=0), axis=1).sum()), 1),
                          tile=s.get("tile"), renders=s.get("renders"), defect=STEP2_DEFECT.get(test) if step == 2 and "floor" not in str(s.get("scan")) else None, scan=s.get("scan", "walk raster only")))
@@ -427,20 +443,23 @@ def collect(out, step):
                 label="%s | %s" % (head.get("label") or head["adapter"], head.get("simulator", "MuJoCo (CPU)")))
     json.dump(dict(label=head.get("label"), plant=head.get("plant"), step=step, on="the training map (not an apparatus result)", adapter=head["adapter"], checkpoint=head["checkpoint"],
                    protocol=head["protocol"], rows=rows), open(out / (STEP_DIR[step] + ".json"), "w"), indent=1)
-    lines = ["%s | ladder step %d, BELOW THE APPARATUS: skill courses and training-map tiles (not an apparatus result) | %s | plant %s | protocol %s" % (
+    lines = ["STRICT = strict stand (main number, coordinator 2026-11-12); the next column is the run's own rule: 'strict' runs (stations advance only on a strict 1 s stand) or 'disc' runs (old rule, stations advance on 1 s in the disc; STRICT there is checked on the window that counted, a lower bound)",
+             "%s | ladder step %d, BELOW THE APPARATUS: skill courses and training-map tiles (not an apparatus result) | %s | plant %s | protocol %s" % (
         head.get("label") or head["adapter"], step, head["checkpoint"], head.get("plant"), head["protocol"]),
-             "%-22s %-10s %-9s %-12s %-6s %-8s %-10s %-7s %s" % ("test", "success", "rate", "95 % interval", "clean", "penalty", "waypoints", "time", "outcomes / tile")]
+             "%-22s %-9s %-14s %-9s %-12s %-6s %-8s %-10s %-7s %s" % ("test", "STRICT", "run's own rule", "rate", "95 % interval", "clean", "penalty", "waypoints", "time", "outcomes / tile")]
     for r in rows:
-        lines.append("%-22s %3d / %-4d %5.0f %%   %3.0f - %3.0f %%   %3d    %6.2f   %4.1f / %-3d %5s   %s%s" % (
-            r["test"], r["success"], r["trials"], 100.0 * r["success"] / r["trials"], 100 * r["ci95"][0], 100 * r["ci95"][1], r["clean"], r["mean_penalty"],
+        lines.append("%-22s %-9s %-6s %3d / %-4d %5.0f %%   %3.0f - %3.0f %%   %3d    %6.2f   %4.1f / %-3d %5s   %s%s" % (
+            r["test"], ("%d / %d" % (r["strict"], r["trials"])) if r.get("strict") is not None else "n/s", r.get("rule", "disc"), r["success"], r["trials"], 100.0 * r["success"] / r["trials"], 100 * r["ci95"][0], 100 * r["ci95"][1], r["clean"], r["mean_penalty"],
             r["mean_waypoints"], r["of"], ("%.0f s" % r["time_median"]) if r["time_median"] else "-",
             ", ".join("%s %d" % kv for kv in sorted(r["outcomes"].items(), key=lambda kv: -kv[1])), (" | " + r["tile"]) if r["tile"] else ""))
         if r.get("defect"):
             lines.append("    ^ %s" % r["defect"])
     if step == 1:                                          # the skill profile: highest level passed per skill
         by = {r["test"]: r for r in rows}
-        flat_ok = all(by.get(t, {}).get("success") == by.get(t, {}).get("trials") and by.get(t) for t in FLAT_GATE)
-        lines += ["", "FLAT GATE (50 of 50 on %s): %s" % (", ".join(FLAT_GATE), "PASSED" if flat_ok else "NOT PASSED"), "",
+        main = lambda r: r["strict"] if r.get("strict") is not None else r["success"]   # noqa: E731  (strict stand where scored)
+        rule = "strict stand" if all(r.get("strict") is not None for r in rows) else "disc only where strict was not scored"
+        flat_ok = all(by.get(t) and main(by[t]) == by[t]["trials"] for t in FLAT_GATE)
+        lines += ["", "FLAT GATE (50 of 50 on %s; %s): %s" % (", ".join(FLAT_GATE), rule, "PASSED" if flat_ok else "NOT PASSED"), "",
                   "SKILL PROFILE (a level is passed at %d of 50; highest level passed, with any lower level that failed)" % PASS,
                   "%-12s %-14s %-22s %-22s %-22s" % ("skill", "highest passed", "level 1", "level 2", "level 3 (apparatus size)")]
         prof = {}
@@ -449,8 +468,8 @@ def collect(out, step):
             cells, best, passed, failed = [], 0, [], []
             for lv in (1, 2, 3):
                 r = by.get("%s_L%d" % (sk, lv))
-                cells.append("%d / %d (clean %d)" % (r["success"], r["trials"], r["clean"]) if r else "not run")
-                if r and r["success"] * 50 >= PASS * r["trials"]:
+                cells.append("%d / %d (clean %d)" % (main(r), r["trials"], r["clean"]) if r else "not run")
+                if r and main(r) * 50 >= PASS * r["trials"]:
                     best = lv
                     passed.append(lv)
                 elif r:
@@ -485,6 +504,13 @@ def main():
     import memcap
     memcap.guard(cap_gb=6, need_free_gb=12, low_priority=True)
     if not a.collect:
+        rgf = pathlib.Path(a.out) / ("regression_step%d.json" % a.step)
+        if not rgf.exists():                               # the regression check once per run folder (eval/regression.py)
+            import regression
+            rg = regression.gate()
+            if rg is not None:
+                rgf.parent.mkdir(parents=True, exist_ok=True)
+                json.dump(rg, open(rgf, "w"), indent=1)
         run(a.adapter, a.checkpoint, a.step, a.tests or list(STEPS[a.step]), a.trials, pathlib.Path(a.out), a.protocol, a.label)
     collect(pathlib.Path(a.out), a.step)
     print(open(pathlib.Path(a.out) / (STEP_DIR[a.step] + ".txt")).read())

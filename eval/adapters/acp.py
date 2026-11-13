@@ -217,6 +217,9 @@ class ACPAdapter(Adapter):
             variant.append("goal_r %.2f m (eval variant)" % self.goal_r)
         if self.lookahead > 0:
             variant.append("lookahead %.2f m past non-station waypoints (eval variant)" % self.lookahead)
+        self.turnwalk = os.environ.get("ACP_GOAL", "") == "turnwalk"
+        if self.turnwalk:
+            variant.append("TURNWALK (eval variant): bearing > 1.5 rad within 1.0 m -> 0.3 m goal at the bearing clipped to 1 rad, until under 1 rad")
         self.checkpoint = "%s | contacts from: %s" % (str(z["source"]) if "source" in z else path, self.contacts.name)
         self.variant = ", ".join(variant)
         if variant:
@@ -233,6 +236,7 @@ class ACPAdapter(Adapter):
         return np.concatenate((w_body, -R[2, :], view.q() - self.q0, view.qd(), self.a_prev))
 
     def reset(self, view: View, rng):
+        self.tw_on, self.tw_steps = False, 0
         self.a_prev = np.zeros(self.nj)
         self.hist = History(HIST)
         self.hist.reset(self._proprio(view))
@@ -245,12 +249,29 @@ class ACPAdapter(Adapter):
         self.hist.push(self._proprio(view))
         scan = np.clip(view.height_scan(to_world(SCAN, p[:2], yaw)) - p[2], -2.0, 2.0)
         txy = np.asarray(cmd.target_xy, float)
+        if getattr(self, "turnwalk", False) and not cmd.hold and cmd.total:
+            # ACP_GOAL=turnwalk (eval variant specified by the ACP track, 2026-11-12): a waypoint far off to the side or behind
+            # and close by gets a short goal turned at most 1 rad from the heading, until the bearing is under 1 rad
+            bearing = (math.atan2(txy[1] - p[1], txy[0] - p[0]) - yaw + math.pi) % (2 * math.pi) - math.pi
+            if abs(bearing) > 1.5 and cmd.dist < 1.0:
+                self.tw_on = True
+            elif abs(bearing) < 1.0:
+                self.tw_on = False
+            if self.tw_on:
+                b = float(np.clip(bearing, -1.0, 1.0))
+                goal = np.array([math.cos(b), math.sin(b), b])      # a 0.3 m goal (over goal_r: unit length), dpsi = b (clipped)
+                self.tw_steps += 1
+                return self._finish(view, cmd, p, yaw, scan, goal)
         if getattr(self, "lookahead", 0.0) > 0 and not cmd.station and not cmd.hold and cmd.dist > 1e-6:
             txy = txy + (txy - p[:2]) / cmd.dist * self.lookahead
         want = cmd.target_heading if (cmd.hold and cmd.target_heading is not None) else math.atan2(txy[1] - p[1], txy[0] - p[0])
         dpsi = (want - yaw + math.pi) % (2 * math.pi) - math.pi
         goal = np.concatenate((bounded_goal(txy, p[:2], yaw, self.goal_r), [dpsi if cmd.dist > 0.05 or cmd.hold else 0.0]))
+        return self._finish(view, cmd, p, yaw, scan, goal)
+
+    def _finish(self, view, cmd, p, yaw, scan, goal):
         self.goal_now = goal
+        self.last_command = goal                       # for the harness's stop record: (goal x, goal y, dpsi) in the heading frame
         cs = self.contacts(view, cmd)
         ok = np.asarray(cs["valid"], float)
         tgt = np.asarray(cs["target"], float) * ok[:, None]
@@ -282,7 +303,9 @@ class ACPHandover(ACPAdapter):
 
     def __init__(self):
         d = os.environ["ACP_HANDOVER_DIR"]
-        super().__init__(OnnxPlanner(os.path.join(d, "planner_mlp.onnx")))
+        import glob
+        pf = [f for f in ("planner_mlp.onnx", "planner_attn.onnx") if os.path.exists(os.path.join(d, f))] or [os.path.basename(f) for f in glob.glob(os.path.join(d, "planner_*.onnx"))]
+        super().__init__(OnnxPlanner(os.path.join(d, pf[0])))          # stage 1: planner_mlp.onnx; stage 2: planner_attn.onnx (same inputs and outputs)
         self.load(os.path.join(d, "actor.npz"))
         import json
         card = json.load(open(os.path.join(d, "adapter_card.json")))
@@ -292,6 +315,7 @@ class ACPHandover(ACPAdapter):
                              "with, named in its card with per-joint kp and kd)" % ", ".join(missing))
         assert np.allclose(card["kp"], self.z["kp"]) and np.allclose(card["kd"], self.z["kd"]), "the card's gains differ from actor.npz"
         self.plant_name = str(card["plant"])
+        self.trained_model = card.get("trained_model", "MuJoCo Warp, X2 MJCF sha256 4f6a4f5b (pelvis - hip_roll hull contact ACTIVE)")
         self.checkpoint = "ACP %s, iteration %s (stage %s) + %s" % (os.path.basename(d.rstrip("/\\")), card.get("iteration"), card.get("stage"), self.contacts.name)
         if getattr(self, "variant", ""):
             self.checkpoint += " | " + self.variant

@@ -889,3 +889,1049 @@ flat clips in the SSR training model (MuJoCo; mesh geoms collide with each other
 - Departures in r6b, all listed: staged schedule (t_a, 0-400); flat phase to 550 and obstacle share 25 % -> 80 % over
   550-1,050; style 0 until 1,000, then ramped to the paper's 0.2 over 500; feet-air reward (20 x clamp(air - 0.10, 0, 0.30)
   per touchdown, moving commands, from 1,000); discriminator arms masked (from 1,000); plus the earlier ones.
+
+## Status (2026-11-12 05:00 UTC, resumed SSR agent)
+
+- **r6b healthy, not restarted**: tmux `ssr9`, supervisor pid 110000, 0 restarts since 03:47:13; iteration 1,660 at 05:00
+  (6.5 s per iteration, 30.5k samples/s; GPU 50-94 % by sample, 34 GB). Heartbeat current (04:53:49, log age 30 s).
+- Numbers at 1,600 (mean of 1,560-1,610 in brackets): 63 % of commanded speed (58-66 %), touchdown air 0.110 s (0.105-0.111),
+  share of touchdowns over 0.2 s 13 %, step rate 6.2 touchdowns/s, single support 0.68, terrain level mean 4.3 (flat 8.1,
+  beam 6.2, platform 3.6, stairs 2.7, ramp 1.3), style weight at the paper's 0.2 since 1,500, action std 0.84 (rising).
+- Air-time trend since the 1,000 restart: 0.067 (980), 0.077 (1,070), 0.082 (1,170), 0.091 (1,270), 0.100 (1,370),
+  0.108 (1,470), 0.111 (1,570), 0.110 (1,600): flattening. Projected about 0.12 s at 2,000, so the 0.2 s gate will very
+  likely fail. Step rate 8.4 -> 6.2, also flattening.
+- Checkpoints: `runs/r6b/last.pt` every 50 (written on the shared filesystem, newest 04:53, iteration 1,600 at copy time),
+  `prev.pt`, `ckpt_001000.pt`; numbered every 1,000 (so no 1,500). No separate backup step: runs write to
+  `/mnt/filesystem-g4/tracks/ssr/runs/` directly.
+- **Eval package (item 3), done on the node CPU while training ran**: `scripts/export_eval.py` (new) writes
+  `/mnt/filesystem-g4/tracks/ssr/eval/export/r6b_001600/{policy.onnx, adapter_card.json, obs_check.npz}` from a frozen copy
+  `eval/export/ckpts/r6b_001600.pt` (+ `args.json`). ONNX batch 1, fixed sizes, inputs hist 1x5x72, depth 1x36x36, gru 1x256,
+  outputs action 1x21, gru_out 1x256; torch vs ONNX max difference 1.9e-6 over the 50 recorded steps. obs_check: 50 steps after
+  100 warm-up steps of one robot in the training simulator (train=False, flat, 0.6 m/s, nominal mount/gains/masses, friction
+  1.0), mean vx 0.51 m/s; holds qpos/qvel, command, hist, depth, camera ray origins/directions/hits, camera rays in the camera
+  frame, GRU in/out, velocity estimate, latent, actor input, torch and ONNX actions, the 31 joint targets. Card built from the
+  live training objects (plant mc_20261024 with kp/kd/effort/armature, default_q, action scale, clip, target clamp, held
+  joints, observation terms and noise, depth camera, command behaviour: no waypoint shaping in training).
+  Not done: the eval adapter `eval/adapters/ssr.py` (eval monitor's tree). For it: SSR's depth includes self-occlusion by limb
+  spheres (`x2.OCCLUDERS`), not robot meshes; the eval's View ray cast sees only terrain and walls.
+- Earliest checkpoint the eval monitor can score on ladder step 1 flat tests: `r6b_001600` now (only blocker: the adapter).
+- **Fix**: `scripts/probe_gait.py` built its env with the default `head` camera, not the training `chest_rs`; earlier gait
+  probes (t_a, t_b, d1) ran with the wrong camera (flat floor, so small effect, but not the trained input). Now defaults to
+  `chest_rs` (`PROBE_CAMERA` to override); backup `_bak_20261112/probe_gait.py.pre_camera`.
+- **Extended terrain map (item 4)**: plan above unchanged; date: the categories go in at the next fresh run (item 2 run), or
+  at the r6b 3,000 checkpoint if r6b keeps going, target 2026-11-12 08:00 UTC; the tile loader from `extended_v1`
+  (`index.json`, `load_example.py` present) is written on CPU before then.
+- If the 2,000 gate fails (expected): candidate next experiment, from the port audit: the default pose (knee 0.669 vs the
+  reference 0.32, ankle -0.36 vs -0.06) and dof_dev measured from it pull against style, and pelvis/hip-roll self-contacts
+  are present in 89 % of reference stepping poses. Step 1 (resumable from r6b 2,000, no action-offset change): exclude the
+  pelvis/hip-roll pairs and measure dof_dev from the reference mean leg pose, 500 iterations, watch air time. Step 2 (fresh):
+  default pose = reference mean.
+
+## Step 1 at the 2,000 gate (coordinator decision 2026-11-12 05:00; set up 05:05 UTC)
+
+- Watcher `runs/queue10.sh` (tmux `ssr10`, output `runs/queue10.log`, gate numbers `runs/gate2000.json`): when r6b's log
+  passes 2,005 and `ckpt_002000.pt` exists, takes the mean of logs 1,980-2,000. Air time per touchdown >= 0.2 s: r6b left
+  alone. Under 0.2 s: STOP r6b through its supervisor (one GPU job at a time; waits for the trainer and supervisor to exit),
+  copy `r6b/ckpt_002000.pt` to `runs/r6c/last.pt`, start supervisor `r6c` to iteration 2,500 with r6b's full command plus
+  `--excl_pelvis_hiproll --dof_dev_ref`. r6b's folder is untouched, so plain r6b resumes from `ckpt_002000.pt` at any time.
+- **Two new deviations from the paper (step 1)**, code `scripts/patch_step1.py` (backups `_bak_20261112/*.pre_step1`):
+  1. `--excl_pelvis_hiproll`: MuJoCo body exclusions pelvis / left_hip_roll_link and pelvis / right_hip_roll_link (their hulls
+     overlap in 89 % of reference stepping frames, up to 11 mm). Checked on the CPU: at hip roll +-0.25 and hip pitch -0.6,
+     MuJoCo Warp finds 4 pelvis/hip-roll contacts without it and 0 with it (nexclude 1 -> 3).
+  2. `--dof_dev_ref`: the dof_dev penalty is measured from the reference mean leg pose (amp_v2 flat, moving windows; R/L hip
+     pitch -0.082/-0.080, hip roll 0.032/-0.033, hip yaw -0.208/0.211, knee 0.321/0.318, ankle pitch -0.060/-0.060, ankle roll
+     -0.053/0.052) instead of the default pose; waist and arms still from the default. Action offsets (default pose) unchanged.
+  CPU smoke test (8 robots, resume from r6b 1,600, one iteration with both flags) passed.
+- **Success at +500 (r6c 2,500), against r6b's 2,000 numbers:** air time per touchdown >= 0.15 s or at least +0.04 s over
+  r6b's 2,000 value and still rising; step rate down by at least 0.8 touchdowns/s (toward 5/s or less); speed share no more
+  than 5 points under r6b's 2,000 value. Report at +250 and +500.
+- **Fall back to plain r6b from `ckpt_002000.pt` (stop r6c early)** if at any point after +50: speed share under 40 % for
+  30 iterations, or tilt plus diverged ends over twice r6b's 2,000 share, or terrain level mean down by more than 1.0.
+- **No clear gain at +500** (air time gain under 0.02 s and step rate within 0.3/s): start step 2 (fresh run, default pose =
+  reference mean), being prepared on the CPU now.
+
+## Step 2 prepared on the CPU (2026-11-12 05:10 UTC, not started)
+
+- `--default_from_ref` (`scripts/patch_step2.py`, backups `_bak_20261112/*.pre_step2`; default off, so r6b/r6c behave as
+  before): the 12 leg default positions come from `code/config/default_ref_v1.json` (reference mean, left/right symmetrised:
+  hip pitch -0.081, hip roll +-0.0325, hip yaw -/+0.2095 (toe-out), knee 0.3195, ankle pitch -0.060, ankle roll -/+0.0525).
+  Action offsets, dof_dev, stand_still and the reset pose follow. The motion prior and walking starts (stored as q minus the
+  plant default) are shifted by (old - new default) before mirroring, so they are the same absolute poses (shift printed:
+  hip pitch -0.231, knee +0.350, ankle pitch -0.303, hip yaw +-0.209). `export_eval.py` rebuilds the model from `args.json`.
+- Standing pelvis height above the soles: 0.641 m at the plant default, 0.663 m at the reference-mean default; the
+  base_height target is 0.68 m (unchanged, closer to the new pose).
+- Launch file `code/run_commands/step2_r7.sh` (run r7, from scratch, r6b's final flags from iteration 0 plus
+  `--default_from_ref --excl_pelvis_hiproll`; refuses to start while a trainer runs). CPU smoke test (8 robots, 1 iteration
+  from scratch) passed; step-1 resume smoke test re-run after the patch, passed.
+- Deviation list for r7: as r6b, plus default leg pose from the reference mean and pelvis/hip-roll exclusion; feet-air and
+  arm-masked discriminators from iteration 0 instead of 1,000.
+
+## Slow commands (coordinator question 05:20; eval monitor: r6b_001600 does not start below 0.6 m/s in MuJoCo)
+
+- **Same in the training simulator** (`eval/speed_bins.sh`, `probe_gait.py` on the CPU, 16 robots, 6 s, deterministic, flat,
+  `chest_rs`, start from the default stand; results in `eval/speed_bins/`), r6b_001600:
+
+  | command m/s | 0.0 | 0.2 | 0.35 | 0.5 | 0.6 | 0.8 | 1.0 |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | achieved m/s | 0.006 | 0.008 | 0.010 | 0.379 | 0.494 | 0.710 | 0.886 |
+  | single support | 0.00 | 0.00 | 0.01 | 0.80 | 0.84 | 0.88 | 0.91 |
+  | steps per foot per s | 0 | 0 | 0 | 2.08 | 2.00 | 1.99 | 2.08 |
+  | air time median s | - | - | - | 0.18 | 0.20 | 0.22 | 0.22 |
+
+  A zero command stands (good); 0.2-0.35 m/s stands too (bad); from 0.5 m/s it walks, at about 2 steps per foot per second
+  with 0.18-0.22 s swings. **The training log's 0.11 s air time and 6.2 touchdowns/s are the noisy training rollouts
+  (action std 0.84, obstacle tiles), not the deterministic gait**: the deterministic flat gait already has about 0.2 s swings.
+  The log has no per-command-bin speed; the per-bin table above stands in for it.
+- **Why (recipe)**: the velocity kernel exp(-err^2 / 0.25) pays a stander 0.70 of the walking reward at 0.3 m/s and 0.37 at
+  0.5 m/s, less than the effort, smoothness and posture costs of stepping. Walking starts only above 0.3 m/s
+  (`--rsi_min_speed 0.3`), so a slow-command episode almost always starts from a stand. The prior has only moving windows
+  (`--prior_min_speed 0.2`, p10 0.29 m/s), so slow walking is rare in it.
+- **Folded into step 1 (r6c), cheap existing flags**: `--sig_v0 0.1 --cmd_cur_iters 20000` (kernel width 0.1 instead of the
+  paper's 0.25 for the whole run; a stander now gets 0.41 at 0.3 m/s and 0.08 at 0.5). Listed deviation. This mixes two
+  effects in r6c; the per-bin probe at +250 and +500 separates the slow-command result from the air-time result.
+- **Next, if slow commands still stand at +500**: walking starts from 0.15 m/s (`--rsi_min_speed 0.15`), slow clips (0.1-0.3 m/s)
+  added to the prior and a per-bin speed reward (relative error |v - c| / max(c, 0.2)); and the eval's stop near a waypoint
+  needs station holding, which training has none of (stands only at zero commands).
+
+## Gate at 2,000 (2026-11-12 05:38 UTC): failed; r6c (step 1) running
+
+- r6b logs 1,980-2,000 (`runs/gate2000.json`): air per touchdown **0.124 s** (gate 0.2), share over 0.2 s 21 %, speed 59 %
+  of command, 5.5 touchdowns/s, single support 0.67, level mean 5.45 (flat 9.5, beam 8.8, platform 4.6, stairs 3.3, ramp 1.4);
+  ends: time limit 33 %, reached end 26 %, side obstacle 21 %, tilt 6.4 %, link force 5.8 %, diverged 1.8 %.
+- Check before acting (brief rule, my own data): the training-log air time is measured on noisy rollouts (std 0.84, 80 %
+  obstacle tiles). The deterministic flat gait at 1,600 already swings 0.18-0.22 s at 2 steps per foot per second from 0.5 m/s
+  up; the real defect is **slow commands (0.2-0.35 m/s) stand** (table in "Slow commands"), which the apparatus needs.
+  So step 1 goes ahead with the slow-command kernel folded in (decision mine, 05:24).
+- r6b stopped by its supervisor at 2,010 (05:38:53); **r6c** started 05:39:02 from a copy of `r6b/ckpt_002000.pt`
+  (supervisor r6c, to 2,500; flags = r6b + `--excl_pelvis_hiproll --dof_dev_ref --sig_v0 0.1 --cmd_cur_iters 20000`, confirmed
+  in the log). r6b's folder is unchanged apart from its log to 2,010.
+- **Watcher `runs/queue11.sh`** (tmux `ssr11`, log `runs/queue11.log`), acting by itself:
+  - harm (from 2,050, last 3 logs): best speed share under 40 %, or tilt + diverged ends over 16.6 % (twice r6b's 8.3 %), or
+    level mean under 4.45 -> stop r6c, copy `r6b/ckpt_002000.pt` to `r6b/last.pt`, resume plain r6b to 20,000;
+  - at 2,250: per-bin probe on the CPU (`eval/speed_bins/r6c_002250.json`);
+  - at 2,500 (r6c ends): per-bin probe, then **continue r6c to 20,000** if (air >= 0.15 s or +0.04 over 0.124, with speed share
+    >= 54 %) or (speed at a 0.35 m/s command >= 0.20 m/s, with speed share >= 54 %); **otherwise start step 2 (r7)**.
+  - The step-rate criterion written at 05:05 is dropped from the automatic decision (the deterministic gait already steps at
+    about 2 per foot per second; the training number is mostly noise), it is still reported.
+- r7 (`code/run_commands/step2_r7.sh`) now also has `--sig_v0 0.1 --cmd_cur_iters 20000 --rsi_min_speed 0.15` (slow-command
+  fixes; walking starts from 0.15 m/s).
+- Baseline per-bin probe of r6b 2,000 running on the CPU (`eval/speed_bins/r6b_002000.json`).
+
+## r6c stopped at 2,050 by its tripwire; cause found; r6d set up (2026-11-12 05:58 UTC)
+
+- r6c (from r6b 2,000 with three changes at once) at its very first log (2,010): speed 49 % of command, tilt 56 % of ends,
+  orientation term 0.10 (r6b 0.41), impact/slip/stumble 3-4x. Plain r6b resumed from the same checkpoint at 05:45 had at its
+  first log: 76 %, tilt 2.9 %, orientation 0.43. A collapse within 10 iterations is physics, not learning.
+- **A/B on the CPU, the same r6b_002000 weights, deterministic, flat, no learning**: with `X2_EXCL_PELVIS_HIPROLL=1` the
+  robot falls (survival 0 % at 0.6 m/s, 6 % at 0.8; single support 0.48); without it, 100 % and 0.57 / 0.74 m/s. **The
+  policy depends on the pelvis/hip-roll hull contacts** (an artefact of the convex hulls; it probably leans on them). That
+  change was the harm; the +50 tripwire was right for it. The other two (dof_dev reference, kernel 0.1) are untested.
+  Whether the eval's X2 model has these contacts too decides whether the exclusion belongs in training at all: question
+  for the eval monitor (via the coordinator). Until then, exclusion is out of r7 too.
+- **Decision (mine): r6d = r6b + one change, the velocity kernel narrowed for slow commands, ramped 0.25 -> 0.1 over
+  2,100-2,400** (`--sig_v_to 0.1 --sig_v_from 2100 --sig_v_ramp 300`, backup `_bak_20261112/train.py.pre_sigramp`; deviation
+  from the paper). Reason: the nearer apparatus blocker is that 0.2-0.35 m/s commands stand (eval monitor and my per-bin
+  table; r6b_002000: 0.0/0.2/0.35 -> 0.01 m/s, 0.5 -> 0.44, 0.6 -> 0.57, 0.8 -> 0.74, 1.0 -> 0.90).
+  Watcher `runs/queue12.sh` (tmux `ssr12`, log `runs/queue12.log`): stops r6b after 2,105, starts r6d from r6b's last.pt
+  (2,100) to 2,600. Tripwires: catastrophic at +50 to +150 (tilt + diverged over 50 % of ends); from +150 a trend on the
+  last 15 logs (speed share under 45 % or tilt + diverged over 16.6 %) -> stop and start r7. Probes at +250 and +500.
+  At 2,600: continue r6d to 20,000 if speed at a 0.35 m/s command >= 0.20 m/s and share >= 54 %, else start r7.
+  The dof_dev-reference change, if tried on r6d's line, gets its own ramp (from default to reference mean over 300) later.
+- r7 (fresh, `run_commands/step2_r7.sh`): `--default_from_ref`, kernel 0.1, walking starts from 0.15 m/s; no exclusion.
+- **Gates that match the apparatus** (replacing the 0.2 s training-log air time, which is mostly exploration noise):
+  (1) per-bin deterministic speed: commands 0.2 / 0.35 / 0.5 m/s achieve >= 70 % of command, zero command stands
+  (< 0.05 m/s, 1 s and longer); (2) flat-probe swing clearance median >= 0.10 m (9 cm log plus margin); (3) beam (4x4
+  analogue) and stairs levels; (4) the eval's flat tests. The probe already reports clearance and step length.
+- **Laggards ramp 1.9, stairs 3.9** (flat 10, beam 9.3, platform 5.2): ramp tiles draw speed U(-1, 1), half the slope
+  episodes are backward walks, and the prior is about 10 % backward; stairs need swing clearance over the riser, which the
+  short noisy swings lack. Not yet measured per type (the log has no per-type ends or speed): add per-type speed share and
+  ends to the log at the next restart, then decide (backward commands on ramps held to the forward-only share until the
+  forward gait is clean, stair clips weighted up).
+- Eval export of `r6b_002000` started on the CPU by queue12 (`eval/export/r6b_002000/`).
+
+## Port audit read; r6d stopped; audit test (a)1 running (2026-11-12 06:27 UTC)
+
+- Read `state/ssr_port_audit.md`. Accepted: r6b and r6d hold hip roll on a hull stop (hip-roll action at the +-8 bound, joint
+  at 0.057 rad); the eval uses the same MJCF; the coordinator's shared-model decision is pelvis/hip-roll pairs excluded for
+  all runs from now on. Every checkpoint so far (r6b, r6d, t_a) was trained on that wrong body.
+- **Decision (mine): r6d stopped at 2,350** (06:26; 2,320-2,340: 58-61 % of command, air 0.12 s, kernel at 0.13 on its ramp;
+  `runs/r6d/last.pt` kept). Its 2,600 answer would have been about the wrong body.
+  Stop note: killing `queue12.sh` also killed the r6d supervisor it had started with `&`, but not the trainer; the trainer
+  (pid 135580) kept running alone until I sent it SIGTERM right after its 2,350 save. **Lesson: stop runs only through
+  STOP + the supervisor; never kill a queue script that owns a supervisor.**
+- **Audit test (a)1 now** (`runs/queue13.sh`, tmux `ssr13`, log `runs/queue13.log`), from scratch, 300 iterations each:
+  - **e1** (started 06:27:12) = d4's exact arguments (flat, all Table 6 terms, no staged schedule, no air-time reward,
+    style 0, head camera, amp.npz) plus `--excl_pelvis_hiproll`: a clean A/B against d4, which stood (2 % of command at 90,
+    10 % at 190, 21 % at 290; double support 0.69 at 290).
+  - **e2** (after e1) = e1 with the paper's style weight 0.2, the chest_rs camera, the amp_v2 prior: the paper's plain table
+    with style, exclusion on.
+  - After each: eval export with obs_check (CPU) and a hip-roll check (action mean, share at |a| > 7.5, joint mean), then
+    the per-bin speed probe (exclusion on, the run's camera). Results go into queue13.log.
+- What counts: e1/e2 walk if speed share passes d4's at equal iterations by a clear margin (>= 40 % by 290) with single
+  support above 0.5, and hip-roll actions are off the bound (|a| > 7.5 in under 10 % of steps). Then r7 becomes: exclusion +
+  the paper's table + slow-experience fixes (promotion at half the tile, walking starts from 0.1 m/s, command resampling
+  within an episode, prior windows from 0.1 m/s) + default pose from the reference, with as few other deviations as possible.
+  If they stand like d4: the hull stop was not the main cause of standing; r7 then keeps the staged recipe that made t_a walk,
+  with the exclusion.
+- r7 launch file to be rewritten after e1/e2 (the slow-experience fixes need code: promotion distance, command
+  resampling). The GPU is idle after e2 (about 07:35 UTC) until I decide r7.
+
+## e1 result and the plan to r7 (2026-11-12 07:10 UTC)
+
+- **e1 (d4 + pelvis/hip-roll exclusion, flat, from scratch) against d4**, share of commanded speed:
+  90: 3.2 % vs 2 %; 190: 5.4 % vs 10 %; 290: 14.5 % vs 21 %. At 290: single support 0.19 vs 0.31, double 0.81 vs 0.69,
+  air per touchdown 0.034 s. Deterministic per-command speed (exclusion on, head camera): 0.00 / 0.01 / 0.03 / 0.05 / 0.05 /
+  0.04 / 0.02 m/s at 0 / 0.2 / 0.35 / 0.5 / 0.6 / 0.8 / 1.0. **It stands like d4.**
+- **Hip roll in e1 is off the bound** (obs_check, 50 deterministic steps; rerun with the venv python after the system-python
+  failure in queue13): action mean -0.79 / +0.64 (R / L), 0 % of steps at |a| > 7.5, joint -0.009..0.013 / -0.022..0.007 rad.
+  So the exclusion removes the lock, but **the hull stop was not the main cause of standing**.
+- **Gait cost, per step, from the training logs** (all negative terms; e1 and d4 are standers, t_a a walker):
+  e1 290: 0.436 = action_rate 0.087 + smoothness 0.109 + dof_dev 0.139 + dof_torque 0.025 + dof_vel 0.027 + impact 0.024 +
+  slip 0.019 + limits 0.006. t_a 540 (walker): 0.544 (dof_dev 0.148, action_rate 0.104, smoothness 0.117, impact 0.058,
+  slip 0.051). r6b 2,000: 0.728 (noise std 0.84).
+  - action_rate + smoothness (0.196 in e1) are almost exactly the exploration noise: 0.12 x 2 sigma^2 + 0.06 x 6 sigma^2 at
+    sigma 0.57 = 0.195. Every robot pays them, stander or walker; they do not depend on the gait. In action units they do not
+    depend on the action scale either, but the same noise moves the 0.485-scale joints (ankle roll, shoulder yaw, elbow)
+    about twice as far in radians, which feeds impact, slip and falls.
+  - dof_dev (0.14) and dof_torque depend on the pose: measured from the G1 default (knee 0.669), and a crouch needs knee torque.
+  - Walking minus standing, measured: costs +0.11 (0.544 vs 0.436), pays +0.58 (t_a 2.51 vs e1 1.93). **Walking already
+    wins per step under our table**; the standers are a local optimum of learning from a stand, not a stand that the reward
+    prefers. t_a's staged start (tracking and posture first) is what got out of it.
+- **Queued, automatic (`runs/queue14.sh`, tmux `ssr14`, log `runs/queue14.log`)**: after queue13 (e2 and its checks), the
+  e1 / e2 hip-roll checks with the venv; then **e3 = e1 + `--default_from_ref`** (one variable, 300 iterations); then
+  **r7 starts by itself** (no idle GPU): base = the paper's plain table if e2 walked at 270-290 (share >= 0.40 and single
+  >= 0.5), otherwise t_a's staged recipe (r6b's flags without the feet-air reward); plus the exclusion, walking starts from
+  0.15 m/s, kernel 0.25 -> 0.1 over 600-900; plus `--default_from_ref` if e3 beat e1 by >= 0.10 share. The chosen flags go to
+  `runs/r7_flags.txt` and the log.
+- **Paper action scales ready, not run** (needs the user's agreement under the plant rule): `--action_scale_paper`
+  (0.25 legs and waist, 0.2 arms; backups `_bak_20261112/*.pre_ascale`; export_eval follows the flag).
+- Still to write (next restart of r7): promotion at half the tile, command resampling within an episode, prior windows from
+  0.1 m/s, per-type speed and ends in the log.
+
+## e2, e3 and r7 restarted without the reference pose (2026-11-12 08:15 UTC)
+
+- **e2** (paper table with style 0.2, chest_rs, amp_v2, exclusion, flat, from scratch): 20 % of command at 290, single
+  support 0.27, air 0.040 s; hip roll off the bound (actions -0.58 / +0.44, joint 0.017 / -0.028 rad). Deterministic:
+  0.00 / 0.07 / 0.10 / 0.11 / 0.11 / 0.11 / 0.09 m/s at 0 / 0.2 / 0.35 / 0.5 / 0.6 / 0.8 / 1.0. Stands (slight creep).
+- **e3** (e1 + `--default_from_ref`): training share 0.311, single 0.469 at 270-290, **but deterministically it falls**:
+  survival 0 % at 0.6 m/s, tilt 0.41, -0.52 to -0.57 m/s at every command including zero (it topples backward along x);
+  hip-roll joints -0.554 (R) / -0.232 (L) rad, actions -3.29 / -1.53: the whole body rolls to one side. Its first 160+
+  iterations had 0.5 s episodes. **The training share is signed world-x pelvis velocity over command (env.py line 617), so a
+  robot toppling or lunging along x scores as "speed"**; it fooled the queue14 rule.
+- Checks (CPU, coordinator's list):
+  1. Passive 5 s stand under the plant PD (mc_20261024, exclusion on, plain MuJoCo, plane floor): **neither pose stands
+     passively**: plant default (COM 4 mm behind the sole centres) pitches +15 deg at 1 s and is down at 2 s, falling 0.8 m
+     forward; reference-mean pose (COM 21 mm ahead) +20 deg at 1 s, down at 2 s. So passive stability does not separate them;
+     the reference pose starts with the COM further forward and the straighter knees (0.32) leave less room to catch.
+  2. `q mean` in the hip-roll check is the absolute joint angle (qpos). `config/default_ref_v1.json` is symmetric
+     (hip roll +0.0325 R / -0.0325 L, hip yaw -0.2095 / +0.2095, ankle roll -0.0525 / +0.0525) and inside the limits
+     (right hip roll [-2.906, 0.235], left [-0.235, 2.906]). e3's -0.554 (R) is legal for the right joint (outward), the left at
+     -0.232 is at its limit: a body roll, not a pose defect.
+  3. e3's deterministic speed is negative (backward along world x) with tilt 0.41 and no survivors: a fall, not a gait.
+- **Decision (mine): r7 stopped through its supervisor at iteration 60 (08:13:30) and restarted from scratch at 08:13:55
+  without `--default_from_ref`** (`runs/queue15.sh`, tmux `ssr15`). The 60-iteration first attempt is kept as `runs/r7_dfr`.
+  r7 flags (`runs/r7_flags_v2.txt`): t_a's staged recipe (tracking and posture first, other terms ramped 150-400), flat until
+  550 then obstacle share 25 % -> 80 % over 500, style 0.2 by schedule from 1,000, prior balanced and from 0.2 m/s,
+  discriminator arms masked, plant mc_20261024, chest_rs, amp_v2, **pelvis/hip-roll exclusion**, walking starts from
+  **0.15 m/s**, kernel 0.25 -> 0.1 over 600-900. No feet-air reward, no reference pose. Confirmed in `runs/r7/args.json`.
+  queue15 runs the deterministic per-command probe on the CPU every 250 iterations from 250 to 2,000
+  (`eval/speed_bins/r7_NNNNNN.json`, lines in `runs/queue15.log`).
+- **Watcher rule fixed (for every later decision)**: "walking" is decided only from the deterministic probe: survival
+  >= 90 %, signed speed along the command >= 50 % of command at 0.5 m/s, and single support >= 0.5; never from the training
+  share.
+- **Gates for r7** (deterministic probe on the CPU, exclusion on; the eval's flat tests when exported):
+  - by 550 (end of the flat phase): walks at 0.5 / 0.6 m/s (>= 70 % of command, survival >= 90 %), zero command stands;
+  - by 1,500: 0.2 / 0.35 / 0.5 m/s commands reach >= 70 % of command; zero command holds a stand (< 0.05 m/s) for 1 s and more;
+  - by 2,000: flat-probe swing clearance median >= 0.10 m; stairs and ramp levels >= 4 (r6b at 2,000: 3.3 / 1.4), beam >= 6;
+  - every 1,000: eval export for the eval monitor.
+  A gate missed by more than half means a diagnosis before anything else, not a new flag.
+
+## r7 550 gate (2026-11-12 09:20 UTC): passed on speed; the gait is a shuffle
+
+- Deterministic probe (CPU, 16 robots, 6 s, flat, chest_rs, exclusion on), command -> speed m/s (survival, single support,
+  median air s):
+  - 250: 0 -> 0.00, 0.2 -> 0.01, 0.35 -> 0.01, 0.5 -> 0.22 (1.00, 0.24, 0.02), 0.6 -> 0.31, 0.8 -> 0.34, 1.0 -> 0.34;
+    survival 100 % everywhere.
+  - 500: 0 -> 0.00 (1.00, 0.00), 0.2 -> 0.09 (1.00, 0.27, 0.04), 0.35 -> 0.29 (1.00, 0.46, 0.06), 0.5 -> 0.48 (1.00, 0.63, 0.08),
+    0.6 -> 0.57 (1.00, 0.65, 0.08), 0.8 -> 0.70 (1.00, 0.66, 0.08), 1.0 -> 0.53 (1.00, 0.69, 0.08).
+- Gate "by 550: >= 70 % at 0.5 / 0.6 with >= 90 % survival, zero command stands": **passed** (96 % / 95 %, 100 %, 0.00 m/s).
+  0.35 m/s already at 83 %, 0.2 m/s at 45 %, before the kernel narrows (600-900).
+- **Defect to watch**: median swing (air) 0.08 s and the probe's step counter (steps longer than its length threshold)
+  near 0: it moves by quick short shuffles. A 9 cm log needs real swings; the 2,000 clearance gate (>= 0.10 m) is the test.
+  Decision: no change now (the obstacle phase from 550 and style from 1,000 are what lengthened r6b's swings); if the
+  1,000 probe still shows air under 0.12 s, the next restart adds the feet-air reward (r6b's form) from 1,000.
+- **Export for the eval**: `eval/export/r7_000500/` (policy.onnx, adapter_card.json, obs_check.npz; ONNX vs torch 1.4e-6,
+  mean vx 0.61 m/s at 0.6 in the record). The card now has `trained_model`: MJCF path, excluded body pairs (pelvis/left and
+  right hip roll, head_pitch/torso), flags for the exclusion, reference pose and paper action scale.
+- Training at 600: 77 % of command, single 0.55, obstacle phase on, episode 13.6 s, std 0.57.
+- Gravity-compensated default targets (coordinator idea): not run; queued as a 300-iteration flat test for a free slot,
+  with a 5 s passive-stand check first. The paper's setup (Isaac Gym PD, paper's own default pose and gains) has no
+  gravity compensation in the text (paper silent on a passive stand).
+
+## r7 at 750 / 1,000; turning and slow starts; command mix added (2026-11-12 10:20 UTC)
+
+- Deterministic probe (`probe_gait.py`): start = default stand on the open flat tile (heading 0), command fixed for 6 s,
+  numbers averaged over **all 300 steps of the 6 s** (start transient included); 16 robots. The eval starts from a stand and
+  averages the last 4 s of 8 s, so my speed under-reads a slow starter and over-reads nothing. New probe `scripts/probe_turn.py`
+  matches the eval: default stand, 8 s, mean of the last 4 s, 8 robots, omnidirectional command held fixed.
+- Per command (speed m/s, survival, single support, median air s, swing clearance median of real steps m, step length m):
+  - 750: 0 -> 0.00; 0.2 -> 0.00 (1.0, 0.00); 0.35 -> 0.34 (1.0, 0.63, 0.08, -, 0.09); 0.5 -> 0.54 (1.0, 0.73, 0.10, 0.019, 0.15);
+    0.6 -> 0.64 (0.74, 0.10, 0.021, 0.18); 0.8 -> 0.81 (0.80, 0.10, 0.029, 0.23); 1.0 -> 0.95 (0.81, 0.10, 0.038, 0.27).
+  - 1,000: 0 -> 0.00; 0.2 -> 0.01 (1.0, 0.00); 0.35 -> 0.37 (1.0, 0.63, 0.08, 0.024, 0.10); 0.5 -> 0.53 (1.0, 0.71, 0.10, 0.024, 0.16);
+    0.6 -> 0.61 (0.72, 0.10, 0.029, 0.19); 0.8 -> 0.76 (0.77, 0.12, 0.036, 0.24); 1.0 -> 0.89 (0.79, 0.12, 0.043, 0.28).
+  - Survival 100 % at every command. Slow commands through the kernel ramp (600-900): 0.35 m/s improved (83 % at 500 ->
+    106 % at 1,000); 0.2 m/s went back to a stand (0.09 at 500 -> 0.00-0.01). Dead zone between 0.2 and 0.35.
+  - **Swing clearance 0.02-0.04 m**: far below the 9 cm log. This is the apparatus blocker on the gait side.
+- Terrain levels at 1,100: flat 7.8, beam 4.5, platform 3.0, stairs 1.95, ramp 1.33. Training share 82 %, style weight 0.04
+  (ramping to 0.2 by 1,500).
+- Turn / start-from-stand probe (`eval/turn/`), yaw rate rad/s at commanded wz with vx = 0 (and vx from a stand):
+  - r7_001000: wz +-0.4 -> 0.008 / -0.007; +-0.8 -> 0.44 / -0.34; forward 0.2 -> 0.00; 0.35 -> 0.39. All survive.
+  - r6b_002000 (old body): +-0.4 -> 0.02; +-0.8 -> 0.85 / -0.83; forward 0.2 -> 0.00; 0.35 -> 0.00.
+  So both have a dead zone for small yaw commands; r6b turned at 0.8 (why it passed the eval's turn test), r7 half. Cause
+  (recipe): only 10 % of robots are omnidirectional and their vx is U(-1, 1), so a turn with no forward speed is rare; tile
+  robots' yaw is a heading correction that starts aligned; one command per episode, so no robot ever starts from a stand into
+  a small command; the kernels pay a stander 0.42 of the yaw reward at 0.4 rad/s and 0.67 of the linear reward at 0.2 m/s.
+- **Decision (mine): r7 resumed with a command mix (10:17:53, from 1,150, same body; commands only, no physics change)**:
+  `--omni_frac 0.2 --omni_turn 0.3 --omni_slow 0.3 --resample_s 8` (20 % omnidirectional robots, of them 30 % turn in place
+  with |wz| 0.3-1.2 and no forward speed, 30 % slow forward 0.1-0.4 m/s; every robot gets a new command every 8 s, tile robots
+  a new speed with the same heading, so stand -> slow start happens). Deviations from the paper (paper: commands per episode,
+  omnidirectional stage separate). Code `env.py`/`train.py` (backups `*.pre_cmdmix`); CPU smoke test passed. Flags in
+  `runs/r7_flags_v3.txt`, confirmed in `r7/args.json`. First logs: 91-93 % of command, tilt 2-3 %.
+  Watcher `runs/queue16.sh` (tmux `ssr16`): speed and turn probes every 250 iterations up to 4,000.
+- **Short swings, decision**: style reaches 0.2 at 1,500; if the 1,500 probe still shows clearance under 0.06 m, add a
+  swing-height term (foot apex height over the ground during swing, positive only, moving commands) rather than r6b's air-time
+  term (r6b's longer airs did not show clearance; clearance is what the log needs). Prepared on the CPU before 1,500.
+- Gates (unchanged, plus): by 1,500 from a stand: wz +-0.4 -> >= 0.3 rad/s, +-0.8 -> >= 0.6; forward 0.2 -> >= 0.14 m/s,
+  0.35 -> >= 0.25; zero stands.
+
+## r7 1,250 / 1,500 gates; swing-height reward first (2026-11-12 11:30 UTC)
+
+- From a stand (probe_turn: 8 s, mean of the last 4 s), all 100 % survival:
+  - 1,250: yaw +-0.4 -> 0.03 / -0.025; +-0.8 -> 0.69 / -0.69; forward 0.2 -> 0.13; 0.35 -> 0.36.
+  - 1,500: yaw +-0.4 -> 0.07 / -0.17; +-0.8 -> 0.49 / -0.66; forward 0.2 -> 0.00; 0.35 -> 0.36.
+  - probe_gait (6 s incl. start), 1,500: 0 / 0.2 / 0.35 / 0.5 / 0.6 / 0.8 / 1.0 -> 0.00 / 0.01 / 0.34 / 0.52 / 0.62 / 0.78 / 0.91.
+  - Clearance (median, real steps) / step length: 1,250: 0.020 / 0.09 m at 0.35, 0.021 / 0.15 at 0.5, 0.040 / 0.26 at 0.8;
+    1,500: 0.00 / 0.10, 0.022 / 0.16, 0.038 / 0.27. Air 0.08-0.14 s.
+  - Gates by 1,500: forward 0.2 FAIL (0.00; 0.13 at 1,250), forward 0.35 pass, yaw 0.4 FAIL, yaw 0.8 pass one side (0.66) and
+    0.49 on the other, zero stands pass. Clearance 0.02-0.04 m (mark 0.06): FAIL.
+- Terrain levels: 1,500 flat 11.3, beam 9.0, platform 6.3, stairs 3.75, ramp 2.0; 1,770 flat 12.8, beam 10.7, platform 7.5,
+  stairs 4.0, ramp 2.2. The 1,150 resume kept the levels (1,150: 4.21 mean, 1,160: 4.25), and so did 11:25 (1,770 -> 1,760 after
+  resume: ramp 2.24, stairs 4.03, beam 11.0): checkpoints carry the levels; no loss like Hiking's.
+- **Order (mine): clearance first, slow commands second.** Reason: no adapter or command shaping can lift a foot over a 9 cm
+  log, and stairs (4.0) and ramp (2.2) lag; the slow dead zone has a partial work-around (eval adapter command floor at the
+  policy's trained minimum, SHARED_LESSONS "Slow commands" item 5) and 0.8 rad/s turns work. The slow-command change waits
+  for the swing verdict at +250 (about 12:00 UTC).
+- **Change 1, swing-height reward** (deviation; `env._swing_height`, flags `--swing_h_w 0.5 --swing_h_target 0.10`, backups
+  `*.pre_swingh`): per step, sum over feet not in contact of min(foot sole height over the ground / 0.10, 1) x min(|foot
+  velocity xy|, 1 m/s), only under moving commands; a stander earns 0. Tested first on the CPU with r7_001500 (w = 1): 0.159
+  per step at 0.6 m/s with today's 2-4 cm swings, 0 at a zero command; at 10 cm it would pay about 0.6, so at w 0.5 the gain
+  for a clean swing is about +0.2 per step (like full style).
+  Resumed 11:25:55 from r7 at 1,750 (last.pt), flags `runs/r7_flags_v4.txt`; snapshot before the change
+  `eval/export/ckpts/r7_pre_swing.pt`. First log after the resume: 88 % of command, swing_h 0.061, tilt 0, levels kept.
+  Watcher `runs/queue17.sh` (tmux `ssr17`): tripwire from +50 to +250 (last 5 logs: share < 0.60 or tilt + diverged > 0.15)
+  and a +250 probe (fail if clearance at 0.5 m/s < 0.035 m, speed at 0.5 < 0.45, or any survival < 0.9) -> fall back:
+  resume from the snapshot with `r7_flags_v3.txt`. Probes every 250 iterations continue.
+- **Change 2 (next, after the swing verdict), slow commands**: the reward is the cause. A stander keeps 0.67 of the linear
+  reward at 0.2 m/s (kernel 0.1) and 0.42 of the yaw reward at 0.4 rad/s, and 350 iterations of more slow / turn commands did
+  not move it (0.2 m/s went 0.13 -> 0.00). Smaller change than more command share: a relative-error kernel for small
+  commands, exp(-|v - c|^2 / (sigma^2 max(|c|, c0)^2 / c_ref^2)) (same at 0.6 m/s, about 3x narrower at 0.2), for linear and
+  yaw; alternative a wait penalty scaled to small commands (Hiking's `dont_wait`). Code and a CPU test of what a stander
+  and a slow walker are paid, before any GPU time.
+
+## Swing +250 (r7 2,000); turning lost; turn-heavy command mix (2026-11-12 12:10 UTC)
+
+- probe_gait, speed / clearance (median real steps) / step length / survival:
+  - 1,500: 0.35 -> 0.34 / 0.000 / 0.10; 0.5 -> 0.52 / 0.022 / 0.16; 0.6 -> 0.62 / 0.028 / 0.20; 0.8 -> 0.78 / 0.038 / 0.27;
+    1.0 -> 0.91 / 0.046 / 0.33; all 100 %.
+  - 2,000: 0.35 -> 0.38 / 0.025 / 0.14; 0.5 -> 0.52 / 0.039 / 0.20; 0.6 -> 0.60 / 0.047 / 0.24; 0.8 -> 0.74 / 0.060 / 0.30;
+    1.0 -> 0.88 / 0.071 / 0.35; all 100 %. 0 and 0.2 m/s: stand.
+  Swing reward works: clearance +70-80 % and steps +25-40 % longer in 250 iterations.
+- Levels at 2,000: flat 13.8, beam 12.8, platform 9.0, stairs 5.05, ramp 2.82 (2,120: stairs 5.17, ramp 2.89).
+- 2,000 gates: clearance >= 0.10 m FAIL (0.039 at 0.5, 0.071 at 1.0); stairs >= 4 PASS (5.05); ramp >= 4 FAIL (2.8); beam >= 6 PASS.
+- Turning from a stand at 2,000: +-0.4 -> 0.02 / -0.018; +-0.8 -> 0.022 / -0.021 rad/s (1,500: 0.49 / -0.66; 1,250: 0.69).
+  The fall-back test had no turning check, so it did not fire. Mine to fix: turning is now in every fall-back test.
+- **Why turning vanished (CPU, deterministic, 8 robots, mean of the last 4 s of 8 s, swing weight 0.5, the 2,000 discriminators)**:
+  - Task reward per step under (0, 0, 0.8): r7_001250 (turns at 0.69) earns **2.90**, r7_002000 (stands) earns **2.05**;
+    the difference is the yaw term (0.73 vs 0.07). The swing term pays the turner about 0 (feet hardly move horizontally),
+    the stander 0. So the reward strongly prefers turning at 0.8; the swing term is not what removed it.
+  - Under (0, 0, 0.4): stander 2.48 vs 2.47 for the 1,250 policy that does not turn either: the yaw kernel pays a stander
+    0.45 of 0.8 at 0.4 rad/s, no gain from turning: that is the 0.4 dead zone (kernel, change 2).
+  - Style (flat discriminator, arms masked, x 0.2): stander 0.172, turner 0.146, walker at 0.6 m/s 0.122, slow 0.2 0.157.
+    The discriminator scores a stand above walking and turning (r_s 0.86 vs 0.61 / 0.73), a small stand bias (0.03-0.05 per
+    step); the flat prior has no turn-in-place windows (prior windows only at >= 0.2 m/s planar speed).
+  - So the 0.8 loss is forgetting of a rare command (6 % of robots, 0.2 x 0.3) while the swing term reshaped the gait of the
+    other 94 %, helped by the style's stand bias.
+- **Decision (mine): one change, the command mix: `--omni_frac 0.3 --omni_turn 0.5`** (pure turns 15 % of robots, slow
+  forward 9 %), resumed 12:08:28 from 2,130 (last.pt), flags `runs/r7_flags_v5.txt`, snapshot `eval/export/ckpts/r7_pre_turn.pt`.
+  Not the swing-term fix (it does not pay or charge turners, so changing it would not bring turning back) and not change 2
+  first (at 0.8 the kernel already pays a turner 0.73 vs 0.07; the kernel only explains 0.4).
+  Watcher `runs/queue18.sh` (tmux `ssr18`): tripwire +50..+250 (share < 0.60 or tilt + diverged > 0.15); +250 probe (about
+  12:40 UTC) fails if yaw at +-0.8 from a stand < 0.4 rad/s on either side, clearance at 0.5 < 0.035, speed at 0.5 < 0.45, or
+  survival < 0.9 -> resume from the snapshot with `r7_flags_v4.txt`.
+- Next: change 2 (relative-error kernel for small linear and yaw commands; CPU pay test for stander, slow walker, turner first),
+  after the turn verdict. Prior turn / slow windows (prior_min_speed covers planar speed only) are a candidate for the style bias.
+- Eval export: `eval/export/r7_002000/` (ONNX vs torch 2.1e-6, mean vx 0.63 at 0.6).
+
+## Turn +250 (r7 2,250) passed; change 2 (relative-error kernels) running (2026-11-12 12:55 UTC)
+
+- r7_002250 from a stand (100 % survival): yaw +-0.4 -> 0.14 / -0.25; +-0.8 -> 0.70 / -0.67 rad/s; forward 0.2 -> 0.18;
+  0.35 -> 0.40 m/s. probe_gait speed / clearance / step / survival: 0 -> 0.00; 0.2 -> 0.13 / - / 0.04; 0.35 -> 0.38 / 0.046 /
+  0.17; 0.5 -> 0.52 / 0.062 / 0.23; 0.6 -> 0.59 / 0.067 / 0.26; 0.8 -> 0.73 / 0.076 / 0.32; 1.0 -> 0.87 / 0.084 / 0.37; all 1.00.
+  queue18 kept the turn mix (12:46:40, clearance 0.061). Turning at 0.8 is back; clearance kept rising.
+- Levels at 2,410: flat 13.6, beam 14.4, platform 8.8, stairs 5.3, ramp 3.4 (2,460: ramp 3.7).
+- Training share 0.59-0.77: the log's share already excludes omnidirectional robots (walkers told >= 0.3 m/s); the drop
+  since 10:17 comes with the 8 s command resampling (speed steps mid-episode, acceleration lag), not with the gait (the
+  deterministic probe is unchanged). Read the probe, not the share.
+- Export: `eval/export/r7_002250/` (ONNX vs torch 2.4e-6).
+- **Change 2, relative-error kernels** (`--rel_kernel`, `env._rel_scale`, backups `*.pre_relk`): kernel width x
+  (max(|c|, floor) / c_ref)^2, capped at 1; linear c_ref 0.6 m/s floor 0.3, yaw c_ref 0.8 rad/s floor 0.4. CPU pay test first
+  (r7_002250 rollouts, deterministic, lin + 0.8 yaw kernel terms, policy vs a perfect stander):
+
+  | command | old: policy / stander / gain | relative: policy / stander / gain |
+  | --- | --- | --- |
+  | 0 | 1.80 / 1.80 / 0 | 1.80 / 1.80 / 0 |
+  | 0.2 m/s | 1.74 / 1.47 / +0.27 | 1.59 / 1.00 / +0.58 |
+  | 0.35 m/s | 1.72 / 1.09 / +0.62 | 1.55 / 0.83 / +0.72 |
+  | 0.6 m/s | 1.73 / 0.83 / +0.90 | 1.67 / 0.83 / +0.84 |
+  | yaw 0.4 | 1.59 / 1.42 / +0.17 | 1.32 / 1.06 / +0.26 (a full 0.4 turner: about +0.74 in the yaw term, old +0.38) |
+  | yaw 0.8 | 1.71 / 1.06 / +0.65 | 1.63 / 1.06 / +0.57 |
+
+  A first try with floors 0.15 / 0.2 made the zero components (yaw while walking, drift while turning) so tight that the
+  walker's gain fell to +0.71 and the turner's to +0.31; floors 0.3 / 0.4 keep those within 10 % and double the slow gain.
+- Resumed 12:49:00 from 2,460 (`runs/r7_flags_v6.txt`; snapshot `eval/export/ckpts/r7_pre_relk.pt`); levels kept.
+  Watcher `runs/queue19.sh` (tmux `ssr19`): tripwire +50..+250; +250 probe (about 13:20 UTC) falls back to the snapshot
+  with `r7_flags_v5.txt` if yaw at +-0.8 < 0.4 on either side, clearance at 0.5 < 0.05, speed at 0.5 < 0.45, or survival < 0.9.
+  Success (reported): forward 0.2 from a stand >= 0.14 (now 0.18 start test / 0.13 probe_gait), yaw 0.4 >= 0.3 both sides.
+- Next, one at a time after this: (a) motion prior: let the discriminator see slow and turning windows (amp_v2 flat: 8.6 % of
+  frames are turns under 0.2 m/s with |wz| > 0.3, 18 % at 0.05-0.2 m/s; all cut by `--prior_min_speed 0.2`): keep windows with
+  speed >= 0.05 or |wz| >= 0.3; (b) stands next to a drop (below).
+- **Stands next to a drop**: not trained on purpose. Episodes start 0.35-0.9 m into a tile; zero / slow commands come only
+  from the per-episode draw and the 8 s resample (about 1 in 8 under 0.15 m/s), so a robot stops near a platform or stair
+  edge only by chance. Plan (ACP's fix): on platform and stair tiles, when a robot is within 0.2-0.5 m of a downward edge
+  ahead, set its command to zero for 2 s in a share of episodes (and log edge-stand survival). Needs the edge positions from
+  `ssr/terrain.py`; to be written after (a).
+
+## Relative kernel: misfired fall-back, 1.0 m/s drop, second try (2026-11-12 13:30 UTC)
+
+- 13:07:01 queue19 fell back at 2,610 on "share 0.595 tilt+div 0.033": the training speed share 0.005 under its 0.60 mark,
+  the number I had already said not to read with 8 s resampling. **A misfire, my mistake**; about 35 GPU minutes lost.
+  The deterministic probe of that run at 2,500 (40 iterations in) had hit most marks: from a stand forward 0.2 -> 0.19,
+  0.35 -> 0.40; yaw +-0.4 -> 0.30 / -0.26, +-0.8 -> 0.79 / -0.80; clearance at 0.5 0.069 m, step 0.248 m; 100 % survival;
+  but at 1.0 m/s 0.36 (before 0.87), single support 0.41, |yaw| 0.07, tilt 0.025.
+- **Rule from now on: no fall-back reads the training speed share.** Fall-backs use the deterministic probes and the
+  tilt + diverged share only.
+- **1.0 m/s drop, cause**: the kernel cap made the linear kernel unchanged at >= 0.6 m/s, but the yaw kernel at a zero yaw
+  command sat at its floor (width x 0.25) whatever the walking speed, so the yaw wobble of a fast gait was charged 4x harder;
+  the policy slowed and stepped less (single support 0.41) at 1.0. The same held for the linear kernel while turning fast.
+  **Fix**: each kernel's floor rises with the other command component: yaw floor = max(0.4, 0.8 |v| / 0.6), linear floor =
+  max(0.3, 0.6 |wz| / 0.8). CPU check of the scales: (v, wz) = (0, 0) -> 0.25 / 0.25; (0.2, 0) -> 0.25 / 0.25; (0.6, 0) and
+  (1.0, 0) -> 1.0 / 1.0 (exactly the old kernels at walking speed); (0, 0.4) -> 0.25 / 0.25; (0, 0.8) -> 1.0 / 1.0. So the
+  pay test at 0.2 m/s and 0.4 rad/s is unchanged (+0.58, +0.26), and walking >= 0.6 m/s and turning >= 0.8 rad/s are paid as
+  before the change (+0.90 at 0.6, +0.65 at 0.8). Backup `_bak_20261112/env.py.pre_relk2`.
+- **Re-applied 13:24:55 from 2,600** (the newest good checkpoint, flags v5 + `--rel_kernel`; snapshot
+  `eval/export/ckpts/r7_pre_relk2.pt`). Levels at 2,610: flat 13.6, beam 14.7, platform 8.2, stairs 5.4, **ramp 4.1** (ramp gate
+  passes). Watcher `runs/queue20.sh` (tmux `ssr20`): tripwire tilt + diverged > 0.15 only; +100 probe (about 13:45 UTC):
+  fall back on regressions (speed at 0.5 < 0.45, at 1.0 < 0.75, yaw at +-0.8 < 0.4, survival < 0.9); +250 probe (about
+  14:05 UTC): all marks (plus forward 0.2 from a stand >= 0.14, yaw at +-0.4 >= 0.3 both sides, clearance at 0.5 >= 0.05).
+  The verdict code was dry-run on r7_002500 (it would have failed there on 1.0 m/s 0.36 and yaw 0.4 at 0.26).
+- Eval (state/eval.md): r7_002000 corrected, strict + retry: flat walk 50/50, stop-stand 14/50 standard / 50/50 keep-0.6,
+  speed 0.2/0.35/0.5/0.6/0.8 -> 0.00/0.31/0.51/0.61/0.82, no turn in place, stop 0.11 m in 0.4-0.6 s. r7_002250 tables:
+  speed 0.03/0.36/0.54/0.62/0.77, turn +0.4/+0.8/-0.4/-0.8 -> 0.03/0.72/-0.24/-0.69 rad/s (agrees with my probe), stop 0.16 m
+  in 0.7 s; flat standard and keep runs, L1 / street / apparatus queued if walk and turn-and-return pass.
+
+## Relative kernel dropped; edge stops running (2026-11-12 14:20 UTC)
+
+- Second relative-kernel try fell back correctly at 13:44:11 (+100 probe at 2,770): 1.0 m/s -> 0.00 (the robot stood:
+  single support 0.003, double 0.994), yaw +-0.4 -> 0.013, while 0.2 -> 0.18-0.19, 0.35 -> 0.35, 0.5 -> 0.51, 0.8 -> 0.78,
+  yaw +-0.8 -> 0.69, clearance at 0.5 0.088 m, all survive.
+- Why: with the rising floors the kernels at 1.0 m/s are exactly the old ones (scale 1.0, checked on the CPU), so a walker
+  at 1.0 is paid as before (about 1.7 per step in lin + yaw) and a stander about 0.8 (lin exp(-1/0.1) = 0): the reward did
+  not ask for standing at 1.0. The policy still lost 1.0 m/s and slow turning within 170 iterations of a reward change
+  elsewhere in the command range. Twice now a kernel change has taken away commands the policy already handled; the
+  command mix alone moved 0.2 m/s from 0.00 to 0.13-0.19 and yaw 0.4 from 0.02 to 0.14-0.30 without losing anything.
+  **Decision: the relative kernel is dropped.** Slow commands are pursued with command share (and later the prior), not
+  kernel shape.
+- **Decision: next single change = stops at down edges** (`--edge_stop 0.3`, `env._edge_stop`, `scripts/patch_edge.py`,
+  backups `*.pre_edge`): in 30 % of tile episodes, the first time the ground 0.45 m ahead along the robot's heading is
+  >= 0.15 m below the ground under it, the command goes to zero for 2 s, then the episode's speed returns; counts in the log
+  (`edge_stop: start / done`). Reason: the apparatus' last station is a stand 0.3 m from a 1.1 m drop, ACP held 0 of 30 there
+  before training edge stands and 114 of 117 after; slow commands have a work-around in the adapter and partial skill, a
+  fall at the last station fails the whole trial. Our tiles' drops are at most 0.40 m (platform 0.05-0.40 m, stairs
+  0.05-0.20 m per step), not 1.1 m: a deeper drop would need taller platforms (terrain change, later if the apparatus result
+  shows falls there).
+  CPU test (32 robots, platform level 7, r7 at 2,850, edge_stop 1.0, 14 s): 12 edge stops started, 11 completed, 0
+  terminations during a stop, mean |vx| while stopped 0.15 m/s (the untrained policy decelerates within the 2 s).
+- Restart incidents (mine, 14:14-14:17): the first queue21 had a quoting error; bash stopped at it after it had already
+  resumed r7. When I replaced the session with `tmux kill-session`, the SIGHUP killed the supervisor and left the trainer
+  running alone for about a minute (no second GPU job); I stopped it with SIGTERM before it saved. **Lessons: run `bash -n`
+  and stop on failure before any `tmux new-session` (no `;` after a failed check); never kill a tmux session that holds a
+  supervisor.**
+- r7 resumed 14:16:59 from 2,850 (last.pt) with `runs/r7_flags_v7.txt` (= v5 + `--edge_stop 0.3`; no relative kernel);
+  snapshot `eval/export/ckpts/r7_pre_edge.pt`. First log: edge stops 2 started, 1 done; levels kept (ramp 4.7, stairs 5.2,
+  beam 14.2, platform 6.9, flat 13.5). Watcher `runs/queue21.sh` (tmux `ssr21`): tripwire tilt + diverged > 0.15; +100
+  (about 14:40 UTC) and +250 (about 15:00) probes fall back to the snapshot with v5 if speed at 0.5 < 0.45, at 1.0 < 0.75,
+  yaw at +-0.8 < 0.4, forward 0.2 from a stand < 0.10, clearance at 0.5 < 0.05, or survival < 0.9. Probes every 250 after.
+- Export of the newest good checkpoint (v5 run, 2,850): `eval/export/r7_snap2/`.
+- Clearance trend: 0.022 (1,500) -> 0.039 (2,000) -> 0.062 (2,250) at 0.5 m/s; 0.069 at 2,500 and 0.088 at 2,770 were
+  measured in the kernel runs (thrown away). The next v5-line number is the +100 edge probe. Gate 0.10 m.
+- Levels at 2,800: flat 13.6, beam 14.1, platform 7.0, stairs 4.9, ramp 4.2 (ramp gate passed since 2,610).
+
+## Eval corridor 0/50 (r7_002250, level 1): the station approach command (2026-11-12 14:35 UTC)
+
+- Eval monitor: r7_002250 level 1 strict: log, wedge, stairs up, stairs down 50/50 each; corridor 0/50, every trial stopping
+  0.27 m short of the final station.
+- Checked `eval/adapters/ssr.py`: the default `SSR_CMD=standard` passes the harness command unchanged: forward speed
+  min(distance, vmax) x cos(error) with a 0.15 m/s floor. Inside 0.35 m of a waypoint it asks for under 0.35 m/s; r7_002250
+  walks from a stand only from about 0.35 m/s (0.2 m/s -> 0.13-0.18 in my probes, 0.03 in the eval's table) and a moving
+  robot settles to a stand at 0.27 m/s. So the robot stops at about 0.27 m, outside the 0.20 m disc. My earlier "adapter
+  work-around" exists only as the `keep` variant (constant vmax 0.6 until the disc), which the corridor run did not use.
+  My statement was wrong for the standard runs.
+- **What the adapter should send for SSR near a waypoint (declared in every result file, not hidden)**: forward speed
+  max(min(distance, vmax), 0.40 m/s) x cos(error) while the pelvis is outside the arrival disc and the error is under 60 deg;
+  zero speed (and the harness's turn to the station heading) once inside the disc, as Hiking's card does. Why 0.40: the
+  policy's trained minimum where it reliably starts and keeps walking (0.35 m/s from a stand -> 0.36-0.40 in probe and eval).
+  Its stop from walking is 0.11-0.16 m in 0.4-0.7 s at 0.6 m/s (eval), shorter from 0.4, so it ends inside the 0.20 m disc.
+  For turns in place keep the harness yaw command, but at least 0.6 rad/s in magnitude while the error is over 60 deg
+  (0.4 rad/s is still a dead zone: 0.03-0.25 rad/s).
+- Passed to the eval monitor via the coordinator (eval code is theirs). This ranks with the edge stops for the apparatus
+  score; the training side continues on slow commands (command share, then slow / turn windows in the prior).
+- Taller platforms: decided at the first apparatus result for r7_002250; if it falls or steps off at the last station
+  (0.3 m from a 1.1 m drop), platform heights up to about 1.1 m come forward as the next terrain change after edge stops.
+
+## Edge stops +100 fell back on 1.0 m/s; the base line fails that test too (2026-11-12 14:45 UTC)
+
+- queue21 +100 probe of edge stops (3,030): 0.2 -> 0.10 (probe_gait) / 0.14 (from a stand, 8 s); 0.35 -> 0.33; 0.5 -> 0.50;
+  0.6 -> 0.60; 0.8 -> 0.70; **1.0 -> 0.00**; yaw +-0.4 -> 0.16 / -0.17; +-0.8 -> 0.76 / -0.74; clearance at 0.5 0.074 m;
+  100 % survival; edge stops 8 started / 10 done per log interval, tilt 4 %. Fell back at 14:38:19 on the 1.0 m/s test.
+- **Check of the base line at 1.0 m/s from a stand (probe_gait, CPU, 16 robots)**: r7_pre_relk (2,450, v5 flags):
+  0.00 m/s, single support 0.002; r7_pre_relk2 (2,600, v5): 0.00; r7_pre_edge (2,850, v5): 0.67. So **the base line itself
+  stands at a 1.0 m/s command from a stand at 2,450 and 2,600**: it is a flaky property of the line, not caused by the change.
+  The relk2 fall-back (base 2,600: 0.00) and the edge fall-back were both judged on it. relk1 at 2,500 reached 0.36 at 1.0,
+  better than its base. **My fall-back test was wrong**: 1.0 m/s from a stand is above the eval's vmax 0.6 and flaky on the base.
+  Corrected test: speed at 0.8 >= 0.6 (and 0.5 >= 0.45); 1.0 is reported, not a fall-back.
+- Consequence for the relative kernel: its two "losses" at 1.0 m/s are not evidence against it (base also 0.00); its real
+  costs were yaw 0.4 at 0.013 at 2,770 (base about 0.14-0.17) and its gains fwd 0.2 0.19, clearance 0.069-0.088. It stays
+  dropped for now (one change at a time; edge stops first), but it is not ruled out; a third try would compare against a
+  base snapshot probed at the same time.
+- **Edge stops re-applied 14:42:21** (queue22, tmux `ssr22`, snapshot `eval/export/ckpts/r7_pre_edge2.pt`, flags
+  `runs/r7_flags_v7.txt`), fall-backs: speed at 0.5 >= 0.45, at 0.8 >= 0.6, yaw at +-0.8 >= 0.4, forward 0.2 from a stand >= 0.10,
+  clearance at 0.5 >= 0.05, survival >= 0.9, tilt + diverged <= 0.15. +100 about 15:05, +250 about 15:25 UTC.
+
+## Starts from a stand, relative marks, prior windows brought forward (2026-11-12 15:10 UTC)
+
+- **Start probe** (`scripts/probe_start.py`, CPU, deterministic, flat, 64 robots, start yaw U(-15, 15) deg, 1 s at zero
+  command then speed v along heading 0; started = mean forward speed over the last 4 s of 8 s >= 0.5 v; seeded, so every
+  checkpoint sees the same starts; results `eval/start/*.json`):
+
+  | checkpoint (v5 line) | 0.35 | 0.5 | 0.6 | 0.8 | 1.0 |
+  | --- | --- | --- | --- | --- | --- |
+  | 2,450 | 100 % (0.37) | 100 % (0.53) | 100 % (0.64) | 98 % (0.81) | 0 % (0.00) |
+  | 2,600 | 100 % (0.37) | 100 % (0.50) | 100 % (0.60) | 19 % (0.15) | 0 % (0.00) |
+
+  (share started, mean speed m/s). **0.35 / 0.5 / 0.6 never fail; 0.8 is intermittent (98 % -> 19 %), 1.0 fails at both.** The
+  eval's vmax is 0.6, so station exits at 0.6 are safe on this line; 0.8 / 1.0 starts are a defect to fix later (the 8 s
+  resample makes 0 -> 1.0 steps rare; a speed ramp after a stand in training is the candidate). 2,850 / 2,870 still running.
+- **Probe size**: a deterministic policy from identical starts gives the same answer on every robot, so 16 robots did not
+  sample anything: the 0.00 vs 0.67 at 1.0 m/s was the policy, not chance. The start probe varies the start (yaw +-15 deg)
+  and uses 64 robots: a share's 95 % interval is then at most +-0.12, so 0 of 64 against 43 of 64 cannot be chance.
+- **Edge stops, second try**: +100 (15:04:42) yaw 0.4 0.30, forward 0.2 from a stand 0.21, clearance at 0.5 0.082 m, 0.5 m/s
+  0.48, 0.8 m/s 0.53, all survive; fell back on 0.8 < 0.6, a mark the base (2,600) also fails (19 % start). Third mis-judged
+  run. Both edge +100 probes showed no regression on a property the base holds, so **edge stops are kept** (decision mine).
+- **New fall-back rule (coordinator, adopted)**: every mark is relative to the base checkpoint probed in the same job with
+  the same seeds and robot counts, and used only on properties the base passes (at its last two probes where available):
+  start share at 0.35 / 0.5 / 0.6 (64 robots) >= base - 0.15; yaw from a stand at +-0.8 >= 0.4 if the base has it; clearance at
+  0.5 >= base - 0.015; survival >= base - 0.1; tilt + diverged <= 0.15. Not used: training speed share, 0.8 / 1.0 starts.
+- **Slow commands brought forward (before the edge +250, as asked)**: r7 resumed 15:07:02 from the edge run's checkpoint
+  (`eval/export/ckpts/r7_edge2_p100.pt`, about 2,950; also the base for the marks) with `runs/r7_flags_v8.txt` = v7 (edge stops)
+  + `--prior_min_speed 0.05 --prior_turn_min 0.3` (`scripts/patch_prior_turn.py`, backup `train.py.pre_priorturn`): the
+  discriminators now also see slow walking (0.05-0.2 m/s) and turning windows (mean |yaw rate| >= 0.3), stands still excluded.
+  Flat prior: 656 s -> 853 s, speed p10 0.28 -> 0.11, p25 0.39 -> 0.22. Watcher `runs/queue23.sh` (tmux `ssr23`): base probes
+  now, +100 (about 15:25) and +250 (about 15:45) with the relative marks; fall-back = the base with v7.
+- **Eval r7_002250 standard strict**: home 44/50 (6 stalls at one waypoint), street 0/50 (45 stalls short of two waypoints,
+  5 falls), corridor 0/50. The stall is the slow approach command; `floor40` (my spec) is queued by the eval monitor. This is
+  the largest loss today; the policy fix is the prior / command step now running, and the 0.2 m/s / 0.4 rad/s probes are its
+  measure.
+
+## First apparatus result and the slow turn (2026-11-12 15:30 UTC)
+
+- Eval r7_002250, our apparatus, standard command: strict 0/50 (49 stalls, 1 fall), disc 0/50 (47 stalls, 3 falls). Button 1
+  counted in 42/50 (over the front 4x4, station held). 40 stalls heading to "door side" after "back over the front 4x4",
+  8 at button 1. Eval's hypothesis: the turn on the spot stalls under 0.4 rad/s.
+- **Slow-yaw probe** (`scripts/probe_turn2.py`, from a stand, 8 robots, 8 s, mean of the last 4 s; drift = pelvis travel over
+  those 4 s), base r7_edge2_p100 (about 2,950, edge stops):
+
+  | command | yaw rate reached | drift |
+  | --- | --- | --- |
+  | wz +0.2 / -0.2 | 0.033 / -0.015 | 0.04 / 0.03 m |
+  | wz +0.3 / -0.3 | 0.164 / -0.001 | 0.05 / 0.01 m |
+  | wz +0.4 / -0.4 | 0.299 / -0.380 | 0.05 / 0.06 m |
+  | wz +1.0 / -1.0 | 0.970 / -0.958 | 0.04 / 0.06 m |
+  | (0.3 m/s, +-1.0) | 1.04 / -1.02 at 0.31 / 0.32 m/s | |
+  | (0.4 m/s, 0.5) | 0.53 at 0.41 m/s | |
+
+- **What rate the harness needs for a 180 deg turn** (`eval/harness.py` command(), moving waypoints): wz = clip(1.5 x err,
+  +-wmax) with wmax 1.0 for SSR, and zero forward speed while |err| > 60 deg. So from 180 deg down to 38 deg (1.5 x err >= 1.0)
+  the command is the cap 1.0 rad/s, and the forward command starts at 60 deg, where wz is still 1.0. **The in-place part of a
+  180 deg (or 90 deg) turn only ever asks for 1.0 rad/s**, which the policy tracks (0.96-0.97). The slow rates appear only
+  below 15 deg of error (1.5 x err < 0.4), by then the robot is walking (forward speed min(dist, 0.6) x cos(err) >= 0.3) and the
+  combined commands are tracked (0.3 m/s + 1.0 rad/s: 1.04 rad/s at 0.31 m/s). At a station (holding) the heading command is
+  1.5 x err with a 0.15 rad dead band, but the hold needs only the disc, not the heading.
+  So the "turn stalls under 0.4 rad/s" mechanism does not fit "back over the front 4x4" -> "door side" (a 90 deg left turn,
+  0.91 m away: in-place turn at 1.0 rad/s, then walking from 60 deg). Something else stalls there: candidates are the place
+  (after re-crossing the 4x4 the robot stands near the door wall / the 4x4, and the path to door side runs beside them;
+  training ends episodes on side-obstacle contact, so the policy may refuse to walk towards a wall it sees in depth), or the
+  forward command at 60 deg (0.6 x cos 60 = 0.30 m/s with 1.0 rad/s, at the edge of what it starts from). Asked the eval
+  monitor (via the coordinator) for the stall traces: commanded (vx, wz), heading error, distance, pose and a depth frame /
+  render at the stall. The 8 stalls at button 1 are in the disc's heading turn or the station exit (to be seen in the traces).
+- The slow-yaw dead zone (0.2 and 0.3 rad/s, one side) is still real and is what the prior step aims at; the +100 / +250
+  probes of the prior run add probe_turn2 (0.2 / 0.3 / 0.4 / 1.0 and combined) against this base.
+- **Prior +100 (3,050, 15:28): kept, no fall-back.** Against base 2,950 (edge stops): starts at 0.35 / 0.5 / 0.6 100 % / 100 % /
+  100 % (same), mean 0.36 / 0.52 / 0.61; yaw from a stand +-0.8 0.76 / -0.76 (base 0.78 / -0.77); clearance at 0.5 **0.095 m**
+  (base 0.082); survival 100 %. Slow yaw (probe_turn2): +-0.2 0.004 / 0.001 (base 0.033 / -0.015), +-0.3 0.13 / -0.17 (base
+  0.16 / -0.00: now both sides), +-0.4 0.28 / -0.30 (base 0.30 / -0.38), +-1.0 0.97 / -0.96, combined 0.3 m/s + 1.0 rad/s tracked.
+  Mixed at 100 iterations; the +250 probe (about 15:50 UTC) decides. Levels at 3,160: flat 13.2, beam 13.7, platform 6.2,
+  stairs 4.7, ramp 5.1; edge stops 10 started / 14 done per interval.
+
+## Refusal near walls and posts (2026-11-12 15:45 UTC)
+
+- Eval traces (coordinator): five stalls, none a failed turn. Door side (seeds 1000-1002): turned, 0.25-0.37 m from the
+  waypoint, commanded 0.25-0.37 m/s, speed 0.00-0.03, door-frame posts 0.40 m ahead-left; under floor40 seed 1000 still
+  stands. Button 1 seed 1007: 1 cm outside the disc at 0.21 m/s (slow floor). Seed 1005: beside posts at the ramp edge,
+  commanded 0.57 m/s, does not move. Depth at the stall: near surfaces fill the left of the view at 0.1-0.6 m.
+- **CPU measurement** (`scripts/probe_post.py`; flat floor, obstacles only in the vision raster, so seen in depth but never
+  touched: a stall is the policy's choice; 8 robots, start 1 s standing, then (0.37, 0, 0) for 8 s; robots spread +-0.14 m
+  across the path; r7_002250):
+
+  | scene | distance in 8 s | speed last 4 s | stalled |
+  | --- | --- | --- | --- |
+  | open floor | 3.20 m | 0.41 | 0 % |
+  | post 0.12 m, 0.4 m ahead, 0.35 m left | 3.18 | 0.41 | 0 % |
+  | door 0.9 m wide, 0.6 m ahead | 3.17 | 0.41 | 0 % |
+  | posts both sides 0.45 m, every 1.2 m | 3.19 | 0.41 | 0 % |
+  | wall along the left at 0.35 m | 2.28 | 0.31 | 25 % |
+  | post 0.25 m ahead, 0.20-0.32 m left | 2.37 | 0.31 | 25 % |
+  | wall stub 0.3 m ahead from 0.25 m left | 2.37 | 0.31 | 25 % |
+  | wall along the left at 0.25 m | 1.23 | 0.18 | 50 % |
+
+  (at 0.6 m/s: open / post 0.4 / door / posts both: no stalls; wall 0.35: 25 %). So the policy walks past posts and through
+  a door on its line, but **stops when a surface is within about 0.25 m of its path** (the robots nearest the wall stall),
+  from vision alone. The apparatus stalls are this: after turning, the path to "door side" passes the door-frame posts
+  close on the left.
+- **Why (training)**: (1) side-obstacle contact ends the episode, and "contact" is any of 12 limb centres within 0.06 m of an
+  obstacle cell (`_touches_obstacle(radius=0.06)`); side_obstacle was 17-21 % of all episode ends in r6b, so near a wall the
+  learned value is "about to die"; standing still under a slow command costs little. (2) The terrain set has walls, posts
+  and door frames, but always symmetric around a lane the robot walks down the middle of (lane half width 0.48-1.6 m,
+  start spread lane - 0.32 m), on its heading; passing a surface at 0.2-0.3 m, at an angle, after a turn, never happens.
+  (3) The omnidirectional / slow / turn commands are given only on the open flat tile (level 0 has no side obstacles), so
+  slow commands near walls are never trained. Not in the paper as such (its tiles have no side walls as far as I read).
+- **Change (decision mine), next after the prior step's +250**: `--side_soft 2.0` (`scripts/patch_side_soft.py`, backups
+  `*.pre_sidesoft`): only a limb centre inside an obstacle cell ends the episode; the 0.06 m band costs 2.0 per step
+  (`side_graze` term). CPU check (32 robots, flat level 15, lane half width 0.56, r7_prior_p100, 8 s): side_obstacle ends 3 ->
+  2, graze penalty paid on 17 robot-steps. Walls exist only in the vision raster (no physics), so the overlap termination
+  stays: without it a robot could walk through a wall. queue24 (tmux `ssr24`) starts it when queue23 gives its +250 verdict,
+  from r7's last.pt, with the relative marks plus the obstacle probe on base and candidate (stall share near walls is the
+  success measure).
+- **Then (larger, CPU work now)**: the extended terrain map (`/mnt/filesystem-g4/data/terrains/extended_v1/`: tight_spots,
+  homes, street_front, log_corridors, with routes) and slow / turn commands on obstacle tiles. SSR uses none of the user's
+  extended map yet (loader not written) and none of the apparatus parts directly (its tiles are the paper-style generator;
+  beams 3-12 cm stand in for the 4x4s). Plan: route-following commands (the harness law) on those tiles for a share of
+  robots; loader and a CPU test before any GPU time.
+- **Termination -> penalty near narrow passages**: yes for the margin (the change above); full removal no, because the walls
+  are vision-only in training. The physical fix would be walls as MuJoCo boxes (as the eval has), then contact can be a
+  penalty everywhere; that comes with the extended map (its boxes json).
+- Order: prior step (+250 now) -> soft side margin -> extended map / slow commands near walls. The door is waypoint 8 of 22,
+  so this outranks edge stops (kept) and the 0.8 / 1.0 m/s starts.
+
+## Command step-downs; prior kept; side margin running (2026-11-12 15:52 UTC)
+
+- **Prior step kept**: queue23 +250 (15:45:39) passed the relative marks: starts at 0.35 / 0.5 / 0.6 100 %, yaw +-0.8 0.69,
+  clearance at 0.5 0.089 m, survival 100 %. Flags v8 are now the line.
+- **Side margin running**: queue24 resumed r7 at 3,250 (15:47:47) with v8 + `--side_soft 2.0`; base snapshot
+  `eval/export/ckpts/r7_pre_side.pt`; +100 about 16:10, +250 about 16:30 UTC (relative marks + obstacle probe).
+- **Step-down probe** (`scripts/probe_step.py`, CPU, open flat floor, 16 robots, 1 s stand, 0.6 m/s for 3 s, then v2 for 8 s;
+  walking = mean vx over the last 4 s >= 0.5 v2):
+
+  | step 0.6 -> | r7_002250: walking / vx last 4 s / distance after step | r7 3,250 (prior kept) |
+  | --- | --- | --- |
+  | 0.45 | 100 % / 0.49 / 3.93 m | 100 % / 0.47 / 3.76 m |
+  | 0.40 | 100 % / 0.44 / 3.57 m | 100 % / 0.42 / 3.36 m |
+  | 0.35 | 100 % / 0.40 / 3.20 m | 100 % / 0.37 / 3.00 m |
+  | 0.30 | 100 % / 0.35 / 2.82 m | 100 % / 0.33 / 2.65 m |
+
+  On open floor a falling command does not make it stop: it keeps walking at about the new command after every step down
+  to 0.30. So the floor40 corridor stop (0.40 m/s, standing 0.215 m from the final station for 45 s) is not a step-down
+  defect. A corridor has walls on both sides (and the final station sits near its end): it matches the measured refusal
+  near surfaces (a wall at 0.25-0.35 m stops 25-50 % of robots), not the command.
+- **Adapter rule**: floor40 is right for open floor (keeps walking at 0.40, its stop from 0.40 is short); `keep` (0.6 until the
+  disc) would only overshoot more (flat stop-stand 41/50). No adapter rule fixes a refusal next to walls; that is the
+  training change now running (side margin) and next (extended map with slow commands near walls). Suggest the eval logs
+  wall distance at every stall so refusal and command stops can be told apart.
+- **Resample share**: tile speeds are U(0, 1.2) (slopes U(-1, 1)) every 8 s, so about 58 % of resamples start from >= 0.5 m/s
+  and 12.5 % land in 0.3-0.45: about 7 % of tile resamples are a fast -> 0.3-0.45 step (plus the omni robots' slow commands
+  0.1-0.4), all on tiles, but slow commands next to walls stay rare (omni robots are on the open tile).
+- Eval note: the front-left object at the door-side stalls is the apparatus's leaning board, modelled as a solid wedge up
+  to 0.48 m (199 of 1,296 depth rays); a TEST with it as a tilted box is queued by the eval monitor.
+
+## Extended terrain map in training (user decision 2026-11-12; CPU work 15:55-16:10 UTC)
+
+- **Written** (`scripts/patch_ext.py`, backups `*.pre_ext`; default off):
+  - `ssr/terrain.py add_extended()`: extended_v1 tiles (8 x 8 m, 2 cm) resampled to 2.5 cm and placed to the right of the
+    paper-style grid (column = type x variant, row = level; 10 rows = the existing 80 m). Physics floor = the export's floor
+    raster plus low lifted pieces (top within 0.30 m of the floor and not tall, e.g. a slanted 4x4 becomes solid); vision =
+    floor + 1.3 m on `obstacle_mask` (walls, rails, posts; door headers are not in the mask, so doors stay open in depth).
+  - `ssr/env.py` route robots: a share `--ext_frac` of the non-omni tile robots (after the obstacle ramp) get a checked route
+    of a tile of their type at their level; start pose = route start (+-5 cm, +-10 deg); command = the eval harness's law
+    (yaw 1.5 x error capped 1.0, no forward speed over 60 deg, forward clip(distance, 0.15, vmax) x cos(error), vmax U(0.4, 1.0)),
+    next waypoint inside 0.25 m; at the target zero command, success after 1 s inside 0.20 m (so slow approaches, stops,
+    turns in place and starts next to walls are all trained). Ends: own failures, touching a tall obstacle (overlap; with
+    `--side_soft` the 0.06 m band is a penalty), leaving the tile, time limit. Curriculum per robot over the 10 levels (up on
+    success, down under half the route). Discriminator: stairs tiles -> stairs, others -> flat. Log field `ext` (robots and
+    level per type, successes / failures per type).
+  - `ssr/train.py`: `--ext_frac F --ext_types ... --ext_variants K`.
+- **Walls as MuJoCo boxes: not in this step.** 100 tiles hold about 3,000 obstacle boxes not in the floor raster; as static
+  MuJoCo geoms they would be checked against every robot's collision geoms in every one of 8,192 worlds (MuJoCo Warp has one
+  model for all worlds). Tall things are handled as on the existing tiles (vision raster, overlap ends the episode, margin
+  penalty). The physical alternative (per-world box slots set at reset, about 60 per robot's tile) is the follow-up if
+  contact matters in the results.
+- **Start set**: tight_spots, log_corridors, homes, street_front, stairs; 2 variants per level, all 10 levels: 100 tiles,
+  267 routes (only tiles with at least one checked route). Not yet: single_beams, beam_fields, blocks, wedges (the paper-style
+  beam / ramp / platform tiles cover those categories for now). No apparatus layout or route is in the set (held-out rule).
+- **Share**: `--ext_frac 0.3` of non-omni tile robots: with 30 % omni robots that is 21 % of all robots on extended routes,
+  49 % on the current paper-style tiles, 30 % omni on the open tile.
+- **CPU test** (`/tmp/ext_test.py`, 20 robots, level 0, r7 3,250 policy deterministic, 10 s, side_soft 2.0): raster
+  5,041 x 3,361 (was 1,761 x 3,361), build 5.5 s, env 8 s; 18 robots on routes; commands as expected (turn in place 1.0 at the
+  turn-around starts, 0.98 m/s forward on a straight). Mixed types: successes log_corridors 4, homes 1, stairs 2; failures
+  tight_spots 5, homes 6, street_front 6, stairs 13; ends: side_obstacle 15, diverged 9, link force 4, time limit 6.
+  Stairs only (18 robots): 13 successes, 20 failures, diverged 6. The divergences (simulator blow-ups, reset safely) are
+  more than on the paper-style tiles (1.8 % of ends in r6b); watched in the run, stairs drop to levels 0-4 if they persist.
+- **GPU start**: queue25 (tmux `ssr25`) starts it automatically when queue24 gives the side margin's +250 verdict (about
+  16:30 UTC), from r7's last.pt, flags = the line + `--ext_frac 0.3` (`runs/r7_flags_v10.txt`); relative marks, obstacle probe,
+  ext stats at +100 / +250, and a fall-back if samples/s drop under 60 % of the base run's.
+- Side-margin base (r7 3,250) obstacle probe: wall at 0.25 m left 100 % stalled (r7_002250: 50 %), stub close 12 %, post close
+  25 %: the refusal grew with the prior / edge steps; the side margin and the extended map are the answers.
+- Eval note (coordinator): the corridor stop was not walls: the ladder course's edge 1.1 m ahead reads as a void in depth
+  (119 of 1,296 pixels 'far'); a test with ground beyond the edge is queued.
+- Non-stairs extended types only (tight_spots, log_corridors, homes, street_front; 20 robots, 10 s): ends side_obstacle 10,
+  diverged 2, tilt 1, time limit 6, reached the end 5. So the divergences are mostly on the extended stairs (6 of 9 in the mixed
+  test); the side-obstacle ends (robots touching walls on the narrow routes) are the main failure, as expected for a policy
+  that has never walked them.
+
+## 16:25-17:25 UTC (node clock): side margin kept, extended map run 1 discarded (placement bug), run 2 started
+
+- **Side margin kept** (queue24 +250 at 16:25:38: starts 100 %, yaw +-0.8 0.78, clearance 0.096 m, survival 100 %). Flags v9 =
+  v8 + `--side_soft 2.0`.
+- **Extended map run 1**: queue25 resumed r7 at 3,550 (16:28:25) with v10 = v9 + `--ext_frac 0.3`; +100 (16:49) and +250 (17:06)
+  passed the relative marks (+250: starts 100 %, yaw 0.80, clearance 0.133 m, samples/s about 31k, same as before). ext stats
+  at +250: log_corridors 10 successes / 0 failures (level 1.96), stairs 9 / 5 (0.65), tight_spots 0 / 13, homes 0 / 12,
+  street_front 0 / 20 (levels 0.0-0.2). Levels at 3,910: flat 10.5, beam 12.4, platform 6.1, stairs 7.5, **ramp 5.5**.
+- **What failed (found 17:15-17:20 by replaying route ends on the CPU)**: tight-spot and street-front robots ended at t = 0 on
+  side_obstacle and diverged. Cause: a bug of mine in `terrain.add_extended`: the tile centre in world coordinates was set to
+  cx - BORDER, but the raster index _i(BORDER + cx) is world x = cx, so **every route was 2 m off its tile** (in -x and -y).
+  Robots were spawned and driven into walls and kerbs; the open log corridors (and partly stairs) still worked, which is why
+  only those had successes. Fixed (`gcx, gcy = cx, cy`; backup `terrain.py.pre_extcentre`). Also added (`patch_extfilter.py`):
+  route starts need 0.35 m obstacle clearance (the X2's arms are 0.28 m from its centre line) and level ground (floor range
+  <= 3 cm within 0.27 m): 170 of 267 routes kept, all 5 types x 10 levels still present. Geometric check after the fix: 1 of 170
+  starts has an obstacle cell within 0.30 m (mask grown by one cell), median clearance > 0.6 m.
+- **Decision (mine): run 1 discarded, restart from 3,550** (r7_pre_ext, before any extended training), because 460 iterations
+  had taught "routes run into walls" and the wall refusal got worse (below). queue26 (tmux `ssr26`): r7 stopped at 4,010
+  (17:21:00), resumed at 3,550 (17:21:37) with **the same flags as v10** (`runs/r7_flags_v10.txt`; the fix is in the code, not
+  in the flags); relative marks against r7_pre_ext. +100 about 17:45, +250 about 18:05 UTC.
+- **Wall probe, 64 robots** (`scripts/probe_wall.py`: one wall, vision only, along the left at distance d from the path; start
+  on the line +-3 cm, yaw +-10 deg; 0.37 m/s for 8 s; stalled = mean speed of the last 4 s < 0.1 m/s), share stalled:
+
+  | d (m) | 0.20 | 0.25 | 0.30 | 0.35 | 0.45 | no wall |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | 3,550 (side margin, before ext) | 78 % | 66 % | 55 % | 55 % | 39 % | 0 % |
+  | 3,800 (ext run 1, misplaced routes) | 97 % | 86 % | 75 % | 44 % | 33 % | - |
+
+  The refusal reaches out to 0.45 m and grew in ext run 1 under 0.35 m (consistent with the bug). This probe is now the
+  measure for ext run 2.
+- **Route robots and surfaces under 0.3 m (question 2)**: in run 1 they did not pass any: they were placed 2 m off their tiles.
+  Replay of run 2's geometry with the 3,800 policy is running on the CPU (tight_spots, street_front, homes ends).
+- **Exports**: `eval/export/r7_003550/` (side margin, before any extended-map training) and `eval/export/r7_003800/` (ext run 1:
+  passed its marks, but trained 250 iterations on misplaced routes; wall refusal worse). **Score r7_003550** with
+  `floor40` (in its card, field `eval_command`; standard as the headline). 3,800 should not be scored. The next export is
+  ext run 2's +250 (about 18:05) if it passes.
+- **Leg rule (user)**: noted: full apparatus routes only after five station legs pass 45/50 each.
+- **Sole spheres in height-field cells (eval's artefact)**: SSR's sole spheres are 2 cm radius (`SSR_SOLE_R`, default 0.02) on a
+  2.5 cm height field, the same class as the eval's 2 cm spheres in 2 cm cells. The diverged ends on the extended stairs and
+  the flat-floor force spikes (foot_force_max 600-760 N in the logs) may be that. CPU check planned: a standing and a walking
+  robot on flat and stair rasters, per-sphere contact count, penetration depth and force, with 2 cm and 3 cm sole spheres.
+- **Route-end replay with the fixed placement** (`/tmp/ext_ends.py`; r7 3,800 policy, deterministic, train-mode env, 24 robots
+  of one type, level 0, 15 s, side_soft 2.0):
+  - tight_spots: 28 ends, none at t = 0 (was 16 with the bug); 24 side_obstacle, 1 reached the target; mean route
+    progress at the end 0.52.
+  - street_front: 22 ends, none at t = 0; 13 side_obstacle, 4 diverged, 1 link force, 4 reached the target; progress 0.48.
+  - homes: 17 ends, 3 at t = 0; 15 side_obstacle, 2 diverged; progress 0.25.
+
+  So with the routes on their tiles the robots get about half-way, then touch a wall (they do pass surfaces under 0.3 m and
+  touch them), which is what run 2 has to learn. The 3 homes ends at t = 0 are to be looked at (a start next to a low
+  obstacle that is not in the mask, or a door leaf).
+
+## 18:22-18:45 UTC (node clock): wall-refusal diagnosis, ext run 2 stopped, run 3 with X2-passable routes; drop test (fresh agent)
+
+**What went wrong.** (1) The queue's wall probe (`wall_left_0.25`) measures an impassable wall: X2 limb centres (`side_ids`)
+reach 0.343 m left of the base standing and 0.29-0.39 m walking, so a wall face 0.25 m from the centre line is 9 cm *inside*
+the arms (and the probe's 8 robots start up to 0.14 m nearer); overlap share at 0.25 m was 0.67-1.0. Refusing it is correct
+under the training rule (overlap ends the episode). Not a measure of the door. (2) The real defect: refusal at *passable*
+distances grew during ext run 2. (3) Cause: the extended routes of tight_spots and homes cannot be passed by the X2: least
+clearance along the route (`min_clearance_along_route_m`, README of extended_v1) is under 0.34 m on 80 % of their routes and
+under 0.40 m on all (homes level 0: 0.20-0.38 m; tight_spots 0.36 at L0 down to 0.22 at L9). The 0.35 m start filter only
+checked starts. Every such route ends in a limb overlap (tile stats at 3,800: tight 3/7, homes 2/11), so the run learned
+"moving near walls ends the episode". Street_front (0.40-0.46) and log_corridors (0.44-0.68) fit; stairs 97 % >= 0.40.
+
+**Wall probe v2** (`code/scripts/probe_wall2.py` = `eval/diag_1812/wall_diag.py`; 32 robots, start +-3 cm / +-10 deg, 0.37 m/s,
+stalled = mean vx last 4 s < 0.1; results `eval/diag_1812/wall_*.json`). Stalled share by wall distance (centre line to face):
+
+| d (m) | 0.25 | 0.30 | 0.35 | 0.40 | 0.45 | 0.60 | none |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| clearance to limb centre (standing 0.343) | -9 cm | -4 cm | +1 cm | +6 cm | +11 cm | +26 cm | |
+| 3,550 r7_pre_ext | 0.63 | 0.56 | 0.31 | 0.38 | 0.25 | 0.06 | 0 |
+| 3,800 ext2 +250 | 0.94 | 0.91 | 0.66 | 0.56 | 0.28 | 0.19 | 0 |
+| 4,100 ext2 | 1.00 | 1.00 | 0.84 | 0.84 | 0.56 | 0.00 | 0 |
+
+At 0.45 m neither the graze band nor overlap is touched (band share 0.00-0.03), yet 4,100 stalls 56 %: learned refusal, not
+the penalty. The apparatus doorway is 0.87 m clear (0.435 m half width; EVAL.md), so 0.40-0.45 is the door regime.
+Other candidates checked: side_soft band: standing robots at 0.40 m sit in the band too (band share 0.73 for stalled robots),
+so the band does not pay for standing; walls vision-only: still true, not the cause measured here; share/level of map tiles:
+moot while 2 of 5 types are infeasible.
+
+**Decision (mine, 18:36): ext run 2 stopped at 4,220 (snapshot `eval/export/ckpts/r7_ext2_last.pt`), restart from r7_pre_ext
+(3,550)** with `runs/r7_flags_v11.txt` = v10 + `--ext_types log_corridors,street_front,stairs --ext_min_clear 0.39`
+(`scripts/patch_extclear.py`, backups `*.pre_extclear`; 60 tiles, 118 routes). CPU smoke (3,550 policy, 18 robots, level 0,
+10 s): log_corridors 9 succ / 3 fail, street_front 5 / 3, ends: reached 14, side_obstacle 4. queue27 (tmux `ssr27`, log
+`runs/queue27.log`) restarted r7 at 18:38:56; same relative marks and fall-backs as queue26, plus wall probe v2 at 0.40 / 0.45 at
++100 and +250 (tags r7_ext3_p100/p250, `eval/post/<tag>_wall.json`); **at +250 it falls back to v9 (no ext) if the mean stalled
+share at 0.40/0.45 exceeds base 0.31 + 0.15**. tight_spots / homes stay out until walls are physical or the X2 can be shown to
+pass them (they were designed narrower than the X2).
+
+**Drop test, SSR's simulator** (MuJoCo Warp CPU, `eval/diag_1812/drop_test.py`, `drop_*.json`): 10 kg foot with the X2's 18
+terrain spheres (12 sole r 0.02, 6 guards r 0.022), 2.5 cm height field, training options (dt 0.005, implicitfast, default
+solref), dropped at vz 1-4.5 m/s with 1 m/s sideways, 150 N sideways pull 0.10-0.30 s, two cell offsets:
+
+| vz (m/s) | 1 | 2 | 3 | 4 | 4.5 |
+| --- | --- | --- | --- | --- | --- |
+| deepest (mm), default contact | 6.3 | 14.0 | 21.8 | 29.3-29.6 | 33.2 |
+| time deeper than 1 cm (s) | 0 | 0.03 | 0.05-0.055 | 0.06 | 0.065-0.07 |
+| horizontal-normal contacts (max) | 0-2 | 11 | 11 | 11 | 11 |
+| moved by the pull in 0.2 s (m) | 0.10 | 0.09-0.10 | 0.09-0.11 | 0.09-0.10 | 0.11 |
+
+No trap: release within 0.07 s at every speed and the pull moves the foot as on free ground (eval's caged foot: 0.00 m, never
+released). Sink is deep at high speed (soft default solref 0.02); terrain solref 0.01 with priority (0.005 clamps to 2 dt =
+0.01) halves it (20.7 mm at 4.5 m/s, 0.015 s over 1 cm). No change to training physics.
+
+**Export to score**: keep `r7_003550` (lowest refusal at 0.40/0.45 of all measured; 3,800 and later ext2 must not replace it).
+Next candidate: r7_ext3_p250 if its wall probe beats 3,550.
+
+## 18:50-19:20 UTC: physical walls graded by body part (user rule), my own regression, run 3 resumed
+
+**User rule (coordinator 18:50)**: shoulders / hips / feet on walls bad, forearm brushes OK to some extent; sidestep in tight spots.
+**Built (`code/scripts/patch_extphys.py` + `patch_extphys_fix2.py`, backups `*.pre_extphys`, flag `--ext_phys K`)**:
+- K = 24 static wall boxes per world (batched geom_pos/quat/size/aabb/rbound; world-body geoms are not re-posed by kinematics, so
+  the pose is also written into `dd.geom_xpos/xmat` at reset). Per route: the 24 tall boxes (role 2, headers > 1.6 m dropped) and
+  tall meshes (as their AABB) nearest the route polyline; 803 far boxes dropped over 170 routes. Tiles have 19.5 boxes on average, 50 at most.
+- Contact by body: forearm / hand (elbow, wrist bodies): free up to 40 N and 0.5 s continuous, beyond that -0.5 per step, never an
+  episode end. Any other body (shoulders, torso, pelvis, hips, legs, feet): -2 x (1 + F/100 N, capped at 5) per step; episode end
+  only above 400 N (cause `wall_hit`) or by the usual falls. Route robots with walls: no limb-overlap end, no graze band; base inside
+  an obstacle cell still ends it. Wall contacts are excluded from foot load and the 80 N link-force end.
+- Sidestep law: on route segments with clearance < 0.39 m (148 segments), turn 90 deg to the path (within 30 deg), then vx/vy toward
+  the waypoint capped 0.3 m/s. Route law had no lateral before; omni robots already train vy +-0.4.
+- Prior: the user's sideways Pico takes are in `tp_t4x4u_y20.pkl` (10 clips with lateral share > 0.5, about 35 s) and so in the
+  *beam* discriminator only; the flat set has none. tight_spots / homes route robots now use the beam discriminator.
+- CPU smoke (3,550 policy, 20 robots, 10 s, all 5 types, no clearance filter): tight_spots L0 9 succ / 0 fail (vision-only: 0/13),
+  homes L0 3/8, L4 tight 4/4, homes 2/8; log_corridors 6/2, street_front 2/3, stairs 0/8; wall contacts graded (L0: body 41
+  robot-steps, arm 73 of which 58 free; max body 387 N), wall_hit 4 at L4. CPU sim time about +25 %; GPU cost unknown (fall-back
+  on samples/s < 60 %).
+
+**What went wrong (mine)**: patch_extphys (18:56) cut `SSREnv`'s `nconmax` default from 150 to 15 (anchor text truncated in my
+read). Probes then overflowed the contact pool (robots fell), queue27's +100 verdict failed at 19:00 and it fell back to v9 at 3,550;
+that v9 run (19:01-19:11) also had nconmax 15: discarded. Fixed 19:11; run 3 resumed from r7_ext3_p100 (3,650, trained with the
+correct code) by queue27b at 19:12. The first two physical-wall smoke tests were invalid for the same reason.
+
+**Door-like probes** (stalled share, 0.37 m/s): wall at 0.40 / 0.45 m (32 robots): 3,550 0.38 / 0.25; run 3 +100 (3,650) **0.13 /
+0.00**. 0.9 m door (probe_post door_0.9, 8 robots): 3,550 0/8, 3,650 0/8.
+
+## 2026-11-12 20:30-21:00 UTC: station legs of r7_003550 diagnosed, v13 restart prepared (fresh SSR agent)
+
+**Legs (eval, ours, solid floor, strict, 50 per leg): 28 / 5 / 23 / 34 / 0.** Read from
+`eval/out/ssr/r7_3550/legs_ours_solid/leg*/` (trajectories `traj/<seed>.npz`, events.csv); script
+`<scratchpad>/vel.py` bins body-frame speed by command.
+- **Leg 5 "left the course" (34/50) is not the stairs.** All 34 end in the first section ("ramps, front side"), 3.5-16 s in. The leg
+  starts at button 4 (4.11, 0.36), facing the wall (-90 deg), on the side-sloped wedge (cross slope about 16 deg: floor 0.02 m at
+  y 0.1 to 0.16 m at y 0.6). Command: turn in place (yaw 1.0) toward "ramps, front side" (5.44, 0.61). In all 34 the arm or trunk
+  hits the button wall at 0.6-2.1 s while turning (trunk 885 N in seed 1000); the turn stalls 25-45 deg short (yaw rate with
+  |cmd| >= 0.9 on the ramps legs: 0.13-0.19 rad/s; leg 1 on flat: 1.07); then, commanded forward 0.4 m/s with yaw 1.0, the robot
+  walks **backward** at 0.6-0.9 m/s (body frame) for 1 m and leaves the 1.0 m route band behind its start. Never seen on flat
+  (leg 1: no backward samples); leg 3 (also ramps) has 19 % of saturated-turn samples backward.
+- **Leg 1 "time limit" (19/50): wall approach at button 1, not a slow walk.** All 19 cross the front 4x4 by about 26 s (as the 28
+  successes, median 28.6 s) and then stand 0.200-0.202 m from button 1 for 35 s: pelvis 0.375-0.385 m from the button-wall box,
+  harness command flipping between stand (inside 0.20) and 0.2 m/s forward, the robot not moving. The button is 0.185 m from the
+  wall face, so the reach radius needs the pelvis within about 0.385 m of the wall; the policy stops at 0.375-0.385. Same refusal
+  the wall probe measures (3,550: stalled 0.375 at 0.40 m).
+- **Leg 2** (5/50; 25 stalls, 19 falls) is the turn-around at the front 4x4: saturated-turn yaw rate 0.82-0.87 but forward speed
+  0.02 m/s with vx >= 0.3 and yaw < 0.4, i.e. it refuses to step back over the 4x4 after turning.
+- **Training gap behind all three**: no training situation has a stop target near a wall (ext routes keep >= 0.35-0.40 m clear, the
+  stop is 0.20 m short of the target), no turn in place next to a wall, no turning on side slopes (ext map had no wedges), and the
+  only 4x4 crossings on the map were in tight_spots/homes.
+- **Ramp height map question**: SSR uses neither `tp_ramp_hmap_x30.npz` nor `props/ramp.json`. SSR's prior is motion only (the
+  discriminator sees 63-D proprio frames); its ramps are procedural slope tiles plus (from v13) the extended map's wedge tiles.
+- **Newer export to score now?** No. r7_phys_p250 (4,050) wall probe: 0.40 m stalled 0.438 (3,550: 0.375), 0.45 m 0.094 (0.25); nothing
+  in v12 targets the leg-5 or leg-1 cause. Next candidate for legs 1, 2, 5: r7_v13_p250. Useful baseline for v13 if eval CPU is free:
+  r7_v12_last (saved by queue29 at the restart) on legs 1 and 5.
+
+**v13 (one restart; my decision 2026-11-12 20:50, reasons above).**
+1. Prior `data/amp_v4.npz` (`scripts/build_amp_v4.py`, CPU, done): amp_v2 with ramp, stairs, beam rebuilt. stairs 1,241 -> 1,834 s
+   (+ tp_stairs_all_v1_1 302 s, + its mirror 302 s); beam 605 -> 858 s (2x2 now v1_1, 44 s, without `pico_20261029_211326_0_2x2`
+   (asserted), + 2x2 v1_1 mirror 44 s, + tp_t4x4u_y20_mir 212 s); ramp 564 -> 703 s (+ tp_ramp_base_x30_mir 140 s). flat and
+   platform unchanged. Mirrored props (`_mir_props.json`) do not apply: SSR does not replay clips on geometry.
+2. Extended map (`scripts/patch_v13.py`, backups `ssr/*.pre_v13`; flags `--ext_stairs_inset --ext_prop_routes --ext_stations 1`,
+   `--ext_types` + wedges, single_beams, beam_fields, blocks; `--ext_frac 0.4` from 0.3 because 9 types share it): stair tiles from
+   `extended_v1_2_stairs_inset` (404 routes kept after the start checks), `extended_v1_1_prop_routes` merged (wedges 184, single
+   beams 164, blocks 135, beam fields 128, log corridors 59 routes). Wedges use the ramp discriminator, single beams and beam fields
+   the beam one, blocks the platform one. 180 tiles, 1,276 routes (v12: 5 types, about 250 routes).
+3. **Wall stations** (new, deviation from the paper: a route-shape choice, no new reward): per tile one route whose target is
+   0.35-1.5 m from a tall wall box gets (a) an approach copy with a last segment straight at the wall to a point 0.15-0.22 m from
+   the face (hold radius 0.20 -> pelvis stops 0.35-0.42 m from the wall, as at buttons 1-5) and (b) a departure route starting
+   there facing the wall, back along the route (turn in place next to a wall, leave along it: leg 5). Other boxes >= 0.30 m from
+   the new segment, level floor. Those segments are exempt from the sidestep law. 75 pairs (tight_spots 20, homes 19, log
+   corridors 11, stairs 4).
+4. Smoke (CPU, `scripts/smoke_v13.py`, r7 last.pt at 4,3xx, 36 robots, 9 types, level 1, station routes forced on 8 robots):
+   see `runs/smoke_v13.log`; queue29 restarts only on DONE with station lines.
+- **Watcher** `runs/queue29.sh` (tmux `ssr29`, log `runs/queue29.log`, prefix QUEUE29): after the smoke, stops r7, saves
+  `eval/export/ckpts/r7_v12_last.pt`, resumes r7 with `runs/r7_flags_v13.txt`; +100 / +250 probes (start, turn, gait, wall)
+  tagged r7_v13_p*; falls back to v12 from r7_v12_last on failed marks, tilt+div > 0.15, samples/s < 18,000, +250 wall stall > base
+  + 0.15; says "v13 kept".
+
+**What went wrong**: leg 5 was read as a stairs failure in the brief; it is the departure from button 4 (wall + side slope). My
+predecessor's v11/v12 wall work measured walls along the path only; the apparatus asks for stops facing a wall 0.38 m away, which
+no probe measured and no training route asked for.
+
+## 2026-11-12 21:30-21:52 UTC (node clock): v13 fall-back diagnosed, stop-and-stand cause, v14 restart (fresh SSR agent)
+
+**What went wrong 1: v13 fell back at 4,390 ("tilt+div 0.156").** The gate is the mean of tilt + diverged done shares over the last 5
+log lines, threshold 0.15. Evidence (`runs/r7/log.jsonl`, lines 651-669): every resume starts all episodes together, so the first
+time-limit wave (+40 iterations, 4,350) spikes falls: v13 4,350 = 0.266 (diverged 0.238), and the v12 resume of the same base also
+spiked (0.146 at 4,350, 0.177 at 4,390). v12's own window before the switch: 0.10 (4,250-4,300). v13 without the 4,350 line: 0.129.
+CPU replay (`code/scripts/replay_div.py`, 90 robots, 10 s, base 4,300, `runs/rdiv/*.log`): diverged (|qvel| > 60) happens on the four
+new prop types (wedges 2, single_beams 1-2, beam_fields 1-2, blocks 1-4 per ~90 robot-s) and on stairs (v12 too); zero on tight_spots,
+homes, street_front, log_corridors. Switching off stairs inset, prop routes or stations one at a time changes nothing (diverged 5-8
+vs 7). So no v13 change is broken: the fall-back = the resume-wave spike + the expected falls of an untrained policy on four new
+terrain types, measured against an absolute 0.15 that v12 itself crosses. Fix: gate from +80 iterations, mean of 10 lines, relative
+to the v12 base (mean of its last 20 lines) + 0.08.
+
+**What went wrong 2: stop-and-stand 50/50 (2,250) -> 2/50 (3,550 eval, standard command, strict).** Not the stand-command share
+(unchanged), not the style prior (stand windows were never in it), not the reward (stand terms unchanged). Evidence: (a) eval trials
+(`eval/out/ssr/r7_3550/ladder_solid/step1/flat_stop_stand/trials.csv`): the 39 stalled trials end at x 1.80 = exactly on the 0.20 m
+disc edge, command 0; (b) my eval-law replay in the training sim (`scripts/probe_approach.py`): final distance to the waypoint 2,250
+0.128 m, 3,550 0.147, 4,300 0.127 (all hold there); stop distance after a 0.5 -> 0 step (`scripts/probe_stop.py`) 0.13-0.17 m for every
+checkpoint 2,250-4,300 (so stopping itself did not get worse); (c) `probe_step` at 0.15 / 0.2 m/s: 2,250 0.00 / 0.18, 3,550 0.04 /
+0.16, 4,300 **0.00 / 0.00** m/s. Cause: the policy treats commands under ~0.2 m/s (4,300: under 0.25) as "stand"; the harness law
+slows to 0.15-0.2 m/s near the disc, so it stops at the disc edge, and each sway out of the disc gives a 0.15 m/s command it does
+not follow (stalled 45 s, "1979 corrections"). 2,250 arrived ~2 cm deeper and passed; the slow-walk floor has been rising since.
+Training fix in v14: `--creep_w 0.5` (pays the share of the command made good for 0.10-0.35 m/s commands; standing earns 0.8 of
+lin_vel there, which is why it stands) and `--ext_hold_r 0.10` (route robots must get within 0.10 m before the zero command).
+
+**v14 (my decision, 21:49 node clock)**: flags `runs/r7_flags_v14.txt` = v13 + `--ext_slope_turns 2 --back_scale 0.5 --drift_w 0.5
+--creep_w 0.5 --ext_hold_r 0.10`. Code (backups `ssr/{terrain,env,train}.py.pre_v14`; all new flags default off):
+- `terrain._slope_turns`: per tile, up to 2 routes out along an existing route to the first point >= 1 m along on a 0.5 m plane sloped
+  8-22 deg, then back to the start; the route law turns the robot in place there. Built: wedges 37, street_front 22 (of 1,339 routes).
+  Beside walls: v13's wall stations (approach to 0.15-0.22 m of a face, departure = turn in place at the wall) carried unchanged.
+- `env`: `back_scale` x lin_vel while base vx < -0.05 m/s and no backward commands on slope tiles (user rule 2026-11-12);
+  `drift_w` x planar speed under a command with |v_xy| <= 0.15 (stand and turn in place); `creep_w`; `ext_hold_r`.
+- Smoke (`runs/smoke_v14.log`, 4,300 policy): slope-turn robots 4/4 turned, 0 ended before turning; drift term -0.016, creep 0.075.
+- Started 21:49:59 from **4,800** (v12 last, saved `eval/export/ckpts/r7_v12b_last.pt`), 31,200 samples/s, creep and drift logged.
+- Also: exported `eval/export/r7_v12_last/` (4,300; ONNX vs torch 2.1e-6) which the eval's solidq2.sh was waiting for.
+
+### 2026-11-12 22:45 UTC: v14 +250 checks and export (agent replaced at 191k; fresh agent)
+- queue30 verdict: "v14 kept" (22:28:39). +250 (5,050): start ok at 0.35/0.5/0.6, survive 1.0; wall probe stalled 0.125 (base 0.078,
+  gate base+0.15 passed); approach held 1.0, **final distance 0.154 m** (base 0.139, +100 0.111, 4,300 0.127): misses the < 0.12 wish.
+- `probe_step` (eval/post/r7_v14_p250_step.json): 0.15 -> walking 0.88, vx 0.103; 0.2 -> 1.0, 0.178; 0.25 -> 1.0, 0.221 m/s.
+  4,300 was 0.00 / 0.00: the slow-walk floor that stalled the harness near the disc is gone (wanted >= 0.1 / 0.15: passed).
+- Speed made good fell +100 -> +250 (0.327 -> 0.282, 0.474 -> 0.410, 0.579 -> 0.502 m/s; 82-84 % of command). Not the creep / drift
+  terms: in runs/r7.log creep (~0.10), drift (~-0.019) and lin_vel tracking (~0.73) are flat through v14. It coincides with the
+  obstacle ramp (ext levels roughly doubled: tight_spots 0.77 -> 1.69, stairs 0.52 -> 1.02): a more cautious gait on flat ground.
+  Problem only if it keeps falling: watch +500; if flat-start speed < 0.8 x command, note it for the post-6,800 idea list.
+- Decision (agent, 22:45): export despite the approach distance, because the cause of the 4,300 approach failure (no slow walk) is
+  fixed and the eval decides. Exported `eval/export/r7_v14_p250/` (export_eval.py, chest_rs; ONNX vs torch max err 3.5e-6, mean_vx 0.49).
+
+### 2026-11-12 23:10 UTC: diverged episodes are the MuJoCo Warp large-height-field bug (ACP finding), confirmed on CPU
+- v14 builds ONE height field of 7,601 x 3,361 vertices (RES 0.025; ssr/x2.py), 3.4x ACP's failing 2,260 x 1,819 field.
+- `scripts/diag_hf.py` (r7_v14_p250, 72 robots, 9 ext types, level 12, 1,500 steps, CPU): single field 29 diverged / 150 dones;
+  X2_HF_CHUNK=400 (fields <= 400 x 400, shared edges) **1 / 144**. Depth logging is weak (contacts read after the reset): 8 of 29 had a
+  contact > 5 cm in the step before; speed before blow-up 0.2-1.0 m/s (no fall). Out: eval/post/diag_hf_{0,400}.json.
+- Training impact: in runs/r7.log diverged = 10.8 % of dones at 5,450 (20,981 so far); `self.bad` is in `term`, so the policy is
+  terminated for sim blow-ups on blocks / beams / wedges, likely teaching caution on edges (and maybe the flat-speed drop).
+- Code: opt-in split added to ssr/x2.py (env X2_HF_CHUNK, default 0 = old single field, so the running job and any crash restart
+  are unchanged; backup eval/post/x2.py.bak_20261112). Sim cost +9 % on CPU (513 vs 472 s). Restart is the coordinator's decision.
+
+### 2026-11-12 23:30 UTC: resumed v14 with the split height field (coordinator approved 23:12; freeze counts from 21:49)
+- queue31 (`runs/queue31.sh`, tmux `ssr31`, prefix QUEUE31). Hiccup: killing queue30 closed tmux ssr30 and took its supervisor with
+  it, so STOP did not stop the orphaned trainer and the first queue31 run exited ("trainer alive"). I SIGTERMed the trainer
+  (as the supervisor does) and re-ran queue31. Resumed from 5,550 (saved eval/export/ckpts/r7_v14_prehf.pt) at 23:16:24.
+- +100 (23:28): samples/s 30,870 (base 29,704); diverged **0.12 %** of dones (base 10.6 %); tilt 0.039 (0.039); link_force 0.050
+  (0.067); levels [13.18, 11.75, 13.28, 11.66, 13.24] vs [12.91, 8.98, 13.49, 8.79, 13.90]: two type levels jumped about 2.8.
+- Default: ssr/x2.py X2_HF_CHUNK now defaults to 400 (0 = old single field); export_eval.py writes hfield_chunk into adapter_card.
+
+### 2026-11-13 01:55 UTC: v15 prepared and armed (run r8; fresh agent; user rule "SSR back to the paper")
+- **Resume, not scratch** (user 2026-11-13 "continue from where we left off"; also my choice): every v15 change keeps the actor,
+  encoder, critic and foothold input / output shapes (the 18 x 10 map, the only shape change, is deferred by the user), so
+  `--init_from` loads enc / aux / actor / critics / foot from v14's last save; discriminators (new groups, new inputs) and all
+  optimisers start fresh; robots of type 4 (was flat, now discrete) start at level 0. **Critic warm-up**: 50 iterations of value fit
+  and discriminator training with the policy frozen (`--critic_warmup 50`: loss = value loss only, the actor gets no gradient,
+  step size held at v14's 1.7e-4), so the style critic and the fresh discriminators settle before the policy moves.
+- **Code** `tracks/ssr/code_v15/` (copy of code/ + simcheck patch + v15 edits; v14 keeps `code/`): terrain.py (types ramp, stairs,
+  beam, platform, discrete; FREE column 5 = open area for graduates; `_discrete` blocks 0.05-0.2 m), env.py (omni_top, promote_half
+  with spawn_xrel, vy_clamp off, slope backward allowed, heading table 80/30/15/15/30, q_noise, foot_base_frame in
+  support_imagined, home_type for route robots), train.py (init_from, critic_warmup, disc_part_w after normalisation, base-frame
+  foothold targets, per-part discriminator gradient share `disc.<g>.grad_share`, `style_by_group`, `omni_share` in the log),
+  networks.py (part_w), x2.py (X2_TERRAIN_SOLREF / X2_TERRAIN_MIX; waist 0.2 in --action_scale_paper), supervise_node.py
+  (heartbeat r_l, r_f, r_s, style_by_group, omni_share, critic_warmup, sim_fault_share). New: scripts/build_amp_v5.py,
+  scripts/smoke_v15_env.py, tests/test_equivariance.py. Flags with a comment each: `runs/r7_flags_v15.txt`.
+- **Prior amp_v5** (Table 11; flat forward 35 % + turn 15 % + traversal 50 %, slope 30/5/15/50; no BONES-SEED). Code build from
+  the v1 reference (`data/amp_v5_smoke.npz`, NOT for training; the real one waits for paper_ref_x2_v2.pkl and must match these
+  per-source sizes within 1.5 s): ramp 261.3 = fwd 78.4 + back 0 + turn 52.3 + ramp (Pico style 27.3, acp_tp_ramp 51.7,
+  tp_ramp_base_mir 51.7); stairs 295.7 = fwd 103.4 + turn 44.4 + paper stairs up 23.2 + down 15.9 + Pico style stairs 60.7 +
+  tp_stairs_all_v1_1 48.1; discrete 136.0 = fwd 47.6 + turn 20.4 + Pico 2x2 44.3 + Pico style logs 23.7; beam 174.5 = fwd 61.1 +
+  turn 26.2 + Pico style logs 34.7 + tp_t4x4u 52.6; platform 181.6 = fwd 63.6 + turn 27.2 + paper step onto 7.9 + step off 7.7 +
+  tp_stairs_x10 43.8 + tp_stairs_all_v1_1 31.3. Flat forward / turn pools: paper 104.2 / 89.2 s + Pico 21.6 / 12.3 s (reused
+  across groups as the paper's clips are). **Gaps**: no backward walking in any source (slope's 5 % went to turning); no side
+  walk (Table 11 composition; Pico side_walk 43.9 s unused); open-floor turning in Pico thin (12.3 s); paper block clips lose 4
+  frames each to the velocity stencil (7.7 / 7.9 of 9.4 / 9.3 s).
+- **Checks** (`runs/v15_checks/`): equivariance on r7 6,850: encoder z 3.8e-7, h 9.7e-7 relative (exact); actor mirror error
+  0.085 of the mean action (tolerance 0.10, mine); involutions 0; mirror tests 4/4; env smoke 17/17 (`env_smoke.log`); 2-iteration
+  CPU train with init_from + warm-up ran. **Preflight** (reports `ssr_v15_*.json`): v14 drop 4 fails / 396 mm, rollouts 8 tile fails /
+  180 mm; v15 without contact fix 8 / 132 / 10 / 180; v15 solmix (terrain solref 0.005 or 0.008, both clamped by MuJoCo to 2 x
+  timestep = 0.01, identical) 4 / 127 / 3 / 120: not a pass, no worse than v14 on all four (interim rule). Remaining: one ext-map
+  edge site (103.45, 16.0) holds the foot 0.8 s (v14's worst 0.36 s at other sites, not comparable: the ext map moved 8 m), elbow /
+  hand guards 66-120 mm at chunk borders: owners FINDINGS B11 (boxes for edges, smaller chunks). Priority 1 not used: MuJoCo would
+  take the terrain's friction (0.2) for every contact and break the per-world friction randomisation; solmix 1e4 gives the
+  terrain's solref with max-combined friction.
+- **Armed**: queue32 (tmux `ssr32`, `runs/queue32.log`): gate 1 passed 01:53; gate 2 waits for paper_ref_x2_v2.pkl, builds amp_v5,
+  checks sizes; gate 3 = next r7 save at or after 6,800 (r7 was at 6,970 at 01:54, saves every 50). Then stops r7 (queue31 left
+  alone: it exits when r7 stops), saves `eval/export/ckpts/r7_v14_final.pt`, starts r8 from code_v15 with X2_HF_CHUNK=400
+  X2_TERRAIN_SOLREF=0.005. Fallback to v14 (resume r7, code/, v14 flags): crash, +60 samples/s < 0.8 x v14 or tilt > v14 + 0.05,
+  +150 ep_len < 0.7 x or vx_ratio < 0.75 x v14. Trial exports `eval/export/r8_v15_p100` (50 policy iterations after the warm-up,
+  more than one 20 s episode) and `_p300`.
+
+### What went wrong this turn (2026-11-13)
+- First prior build: discrete got no logs windows (beam was built first and took them all) and stairs / platform paper clips were
+  classed from `paper_ref_terrain_clips.json` (1 stairs-down clip) instead of the categories table (9): fixed (explicit group order,
+  categories by time range); flat-forward rule was too strict (75 s pool): now the reference labeler's walking rule minus turns.
+- The simcheck adapter hard-codes `tracks/ssr/code`: preflight runs from a private copy `tracks/ssr/simcheck_v15` with SSR_CODE
+  (shared tool untouched; owner of the adapter could add SSR_CODE upstream).
+- No `tests/test_equivariance.py` existed; written (checkpoint-based encoder / actor / involution checks).
+
+## HOW TO RESUME (current at 01:55 UTC 2026-11-13, node clock)
+
+- **Running**: r7 **v14** (tmux `ssr31`, queue31) until queue32 switches. **queue32** (tmux `ssr32`, `runs/queue32.log`, prefix
+  QUEUE32) arms v15 = run **r8** (`code_v15/`, `runs/r7_flags_v15.txt`, used flags in `runs/r8_flags_used.txt`). Never close tmux
+  ssr32 after the switch: the r8 supervisor is its child (SIGHUP orphaned a trainer on 2026-11-12). Stop training: touch runs/STOP.
+- **Waiting on**: `/mnt/filesystem-g4/data/motions/hiking_release_x2/paper_ref_x2_v2.pkl` (coordinator's fix of the 3.6 cm sole
+  float). queue32 polls 12 h, then logs HOLD and v14 keeps running. A HOLD line anywhere = nothing changed, read the reason.
+- **Next check** (after the switch, about 40 min for +60 / +150): QUEUE32 lines +60 / +150 / exports; r8 log `runs/r8/log.jsonl`
+  fields `critic_warmup`, `style_by_group`, `disc.<g>.grad_share` (arms should read about 0.3^2 of legs per feature), `omni_share`
+  (small until robots clear level 19), levels per type (discrete from 0). Eval: `eval/export/r8_v15_p100` for the autoscorer.
+- **Open**: preflight not a pass (one ext edge trap site, guard depth at chunk borders; B11 owners); actor mirror error 0.085 is near
+  my 0.10 tolerance; backward / sidestep / open-floor turning missing from the prior (gap list).
+- **Helper**: ssh `~/bin/ssr_ssh.sh <timeout_s> '<cmd>'`; CPU work from `code_v15/`: `env CUDA_VISIBLE_DEVICES= X2_PLANT=mc_20261024
+  X2_EXCL_PELVIS_HIPROLL=1 nice -n 10 ../env/venv/bin/python ...`. v15 checks: `runs/v15_cpu_checks.sh`; preflight pick: `runs/v15_pick.py`.

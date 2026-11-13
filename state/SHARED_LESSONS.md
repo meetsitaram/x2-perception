@@ -133,3 +133,100 @@ MuJoCo observation code: take the root's body-frame angular velocity from the fr
 | 2026-11-12 | ACP | **Live evaluation beside training on the same GPU (recipe and measurement)** | MuJoCo Warp trainer at 36,000 robots (51.6 GB, GPU 96-100 % busy) plus a separate paper-eval process right after a checkpoint | Recipe: `tracks/acp/code/tools/eval_live.sh RUN IT PER PLANT` (flock so never two evals; waits until the checkpoint is 15 s old; refuses to start if used + estimate > 80 GB; `nice -n 10`, `taskset` 4 cores, `timeout`; the eval aborts itself under 10 GB free; logs training speed before / during from metrics.jsonl), with `code/ops/live_test.sh` for "after". Measured at 2,750: 900 robots took 146 s and training lost **37 %** while it ran; 3,006 robots (the full 8,016-episode paper eval) took 190 s and training lost **44 %** (single iterations down to 50 %). Peak total memory 54-57 GB, no OOM, training back to 69,600-69,700/s within one iteration after. **Not accepted under the 20 % rule:** the GPU time-slices between the two processes, so `nice` does nothing on the GPU, and a smaller eval barely reduces the loss. Per eval it costs about 85 s of training (about 7 iterations), less than a stop-and-restart eval (3-5 min). Whether to allow that is the coordinator's / user's call. A GPU share cap (CUDA MPS) would need a system change, not tried. Also: evaluate with the same `njmax` as training (our paper eval used 300 and printed nefc overflows) |
 | 2026-11-12 | SSR | The style reference asks for an arm pose the X2 cannot reach: shoulder roll past its hard limit in 62-66% of moving reference frames, wrists inside the hip/pelvis links in 46% (up to 59-101 mm) | BONES-SEED arm retargets: arms hang closer to the body than the X2's shoulder-roll limit (+-0.061 rad) and links allow | discriminator input arms masked (`--disc_mask_arms`: arm q, qd and wrist positions zeroed for both sides; resumable). Same reference also: knee 0.32 vs default 0.669, hip yaw toe-out 0.21, waist pitch 12 deg; and the X2 pelvis/hip-roll hulls overlap up to 11 mm in 80% of reference poses (MuJoCo too, not only PhysX). Numbers: `tracks/ssr/eval/port_audit.json` |
 | 2026-11-12 | Hiking | A G1-to-X2 port kept G1 numbers where the X2 reference differs: default pose (knee 0.669 vs reference mean 0.38, waist 0 vs reference lean +0.23), action scale (hip 0.26 vs G1 0.55), head and arm joints in the discriminator, soft-limit band 0.9 catching reference poses at hard limits, convex hulls overlapping at stance (pelvis/hip_roll in 50-57% of reference frames, wrist/hip 6-38%) | independent port audit (`state/hiking_port_audit.md`) plus a MuJoCo hull census over 3,000 reference frames (`perception-agents-work/hiking_run4/census.py`) | run 4: default legs = reference mean (symmetrised), waist 0; G1 action scale per joint type; discriminator on the 12 leg joints only; 20 more filtered pairs; soft-limit factor 1.0; implicit PD (the G1 actually ran implicit, not delayed). Check your default pose against your reference mean and your discriminator joint list against what the policy can move |
+| 2026-11-12 | SSR | The SSR gait probe (`scripts/probe_gait.py`) built its environment with the default `head` camera, while the policy trains with `chest_rs`; every SSR gait probe until 05:00 UTC (t_a, t_b, d1) fed the policy depth from the wrong camera | the probe called `SSREnv(...)` without `camera=`, and the constructor's default is `head` | fixed (default `chest_rs`, `PROBE_CAMERA` to override). **Every track: check that probes, renders and exports build the observation with the run's own camera, plant and flags (read them from the run's args/env.yaml, do not rely on defaults)**; SSR's `export_eval.py` now asserts plant and camera against `args.json` |
+| 2026-11-12 | SSR + Hiking | Does setting the default pose to the reference mean fix the shuffle? Not shown yet. Hiking run 4 (default leg pose from the reference mean, legs-only discriminator, Isaac Lab) at 545-554: speed 32 % of command, air per touchdown about 0.03 s (estimate), falls 62 %. SSR r6b (default pose 0.669 knee, arms masked from the discriminator, feet-air reward from 1,000, MuJoCo Warp) at 1,600: speed 63 %, air per touchdown 0.11 s, 6.2 touchdowns/s, air still flat at about 0.11 s | different simulators, rewards and iteration counts (Hiking 550, SSR 1,600), so this is not a controlled test; but the reference-mean pose alone has not produced longer swings in Hiking | SSR tests the resumable part first (r6c from r6b 2,000: pelvis/hip-roll contacts excluded, joint-deviation penalty from the reference mean leg pose, 500 iterations) before a fresh run with the reference-mean default pose. Compare again at Hiking 1,000 / SSR 2,500 |
+
+## Slow commands and the shape of the speed reward (coordinator, 2026-11-12; revisit in later stages)
+
+Kept here at the user's request ("keep this in the notes so the agents can revisit and explore in latest stages of the
+training if required"). Applies to every track whose policy follows a speed command, and to the eval's adapters.
+
+**The fact.** SSR and Hiking both pay speed tracking with a bell curve, exp(-error^2 / 0.25) (m/s). It is flat near zero
+error, so a robot that stands still under a slow command keeps most of the reward:
+
+| Command (m/s) | 0.2 | 0.3 | 0.45 | 0.5 | 0.8 | 1.0 |
+|---|---|---|---|---|---|---|
+| Share of the speed reward a stander keeps | 85% | 70% | 44% | 37% | 8% | 2% |
+
+**What was measured.** SSR r6b (iterations 1,600 and 2,000), deterministic, flat, in its training simulator and in the eval's
+MuJoCo: commands 0.2 and 0.35 m/s give 0.01 m/s; 0.5 gives 0.38-0.44; 0.6 gives 0.49-0.57; 0.8 gives 0.71-0.74; 1.0 gives
+0.89-0.90. Once it walks, swings are 0.18-0.22 s; the 0.11-0.12 s air time in the training log was noisy rollouts, not the gait.
+
+**Why it matters for the goal.** The apparatus needs slow, exact walking to a 0.20 m disc and a 1 s stand. The eval slows its
+command near each waypoint (to about 0.36 m/s), so a policy that stands under slow commands stops short and never arrives.
+
+**How each method deals with it.**
+- SSR (paper): commands 0-1.2 m/s uniformly, no penalty for waiting; a quarter of the commands lie where standing pays. Our
+  recipe made it worse: walking starts only above 0.3 m/s, motion prior filtered to moving frames (10th percentile 0.29 m/s).
+- Hiking (released config `parkour_env_cfg.py`): walking commands only 0.45-0.8 (1.0 on rough ground) m/s, forward only, or an
+  exact zero; `dont_wait` penalty (-0.5) when the command is above 0.3 m/s and the robot moves under 0.15 m/s; air-time reward
+  gated on the command. So it is never trained at 0.2-0.4 m/s. Its hardware post-training narrows walking to 0.45-0.55 m/s.
+- ACP: tracks reference clips, no speed command; its version of the problem is slow clips lagging behind the reference and
+  the goal fading inside 0.3 m of a waypoint.
+
+**Tried so far.** SSR r6d (from 2,100): the kernel narrowed from 0.25 to 0.1 over 300 iterations (a stander at 0.3 m/s then
+keeps 41%); checks at 2,350 and 2,600; result to be added here by the SSR agent.
+
+**Options to explore later, by track (each is a deviation from the paper unless noted; list it as one).**
+1. Narrower or relative speed kernel (error divided by max(command, 0.2)), or a per-command-bin speed reward.
+2. A wait penalty as in Hiking (`dont_wait`), with the thresholds lowered to cover 0.15-0.3 m/s commands.
+3. Walking starts and motion-prior data for slow walking (0.1-0.3 m/s clips; the flat BONES-SEED set and the Pico captures
+   have slow stretches that the moving-frames filters removed).
+4. A command curriculum that includes slow commands, stop-and-go, and a stand at zero held for 1 s or more (station holding).
+5. On the eval side: per-policy command handling in the adapter (keep the command at or above the policy's trained minimum
+   until the disc, then command a stand), reported beside the standard command so the two are not confused.
+6. For Hiking's extended task: add 0.2-0.45 m/s commands and backward and sideways walking (clips still on the list).
+
+**Check to run on any checkpoint before it meets a route.** Deterministic per-command table on flat ground: commanded 0, 0.2,
+0.35, 0.5, 0.6, 0.8 m/s against achieved speed, and whether a zero command holds a 1 s stand. SSR's script:
+`tracks/ssr/code/eval/speed_bins.sh`; the eval monitor adds the same table to its ladder output for every track.
+
+## The pelvis / hip-roll collision is an artefact; policies lock hip roll against it (audit, 2026-11-12)
+
+Applies to every track and the eval. Full report: `state/ssr_port_audit.md`.
+
+- In the shared X2 MJCF the convex hulls of the pelvis and each hip-roll link overlap by up to 10.9 mm; the real meshes keep
+  about 5 mm clearance over the whole hip-roll range (4.4 mm minimum). The real stop is the joint limit (0.235 rad); the hull
+  stops the joint at about 0.057 rad inward.
+- Policies learn to push hip roll into this stop. SSR `r6b_002000`: hip-roll action at the +-8 bound on every step. Load on
+  the pair while walking: ACP 3,500 pair 753-799 N per side, SSR 2,000 about 755 N (the robot weighs about 425 N). With the
+  pair excluded the same weights fall (ACP 3,500 3 of 3; SSR 1,600 3 of 3; SSR 2,000 2-3 of 3). Hiking 500: 153 N on one side.
+- **Decision (coordinator, shared model): the correct model excludes pelvis/left_hip_roll_link and pelvis/right_hip_roll_link
+  and keeps every other pair.** All tracks and the eval move to it; a corrected MJCF goes into `data/robots/x2/mjcf/` as a new
+  versioned file. A plain resume on the corrected model falls (SSR r6c), so existing checkpoints need a guided fine-tune or a
+  fresh run; each track decides how and records it.
+- Leg-on-leg contacts are physical (only when the legs cross). Torso-pelvis and thigh-thigh never touch. Wrist-on-thigh
+  contacts are not yet checked against the real meshes.
+- How to check your own model: for each self-collision pair, compare hull distance with mesh distance over the joint ranges,
+  and log contact share and force per pair in a walking rollout (`eval/tools/selfcontact.py`). Convex hulls of these meshes are
+  2-6 times the mesh volume (Hiking port audit).
+- Corrected model file (placed 2026-11-12 06:40 UTC): `/mnt/filesystem-g4/data/robots/x2/mjcf/x2_ultra_hipexclude.xml`, sha256
+  55dcb6699489fafd6f715863480bbe0361e9a296bc9c44975abdcfa588617f11 (the old `x2_ultra.xml`, 4f6a4f5b..., is unchanged). Every
+  adapter card states `trained_model` (which of the two the policy was trained on); the eval reports that model as the main
+  number and the other beside it.
+
+## "Share of commanded speed" in training logs can be a fall, not a gait (SSR, 2026-11-12)
+
+SSR's training metric is signed world-x pelvis velocity divided by the command, so a lunge or a fall along x counts as speed.
+Test e3 logged 31% of commanded speed and 47% single support while its deterministic policy toppled backward at 0.55 m/s at
+every command with no survivors, and an automatic rule picked a setting on that number. Rule for every track: "walks" is
+decided only by a deterministic probe (no exploration noise): survival, signed speed along the command at several commanded
+speeds, single support, and a stand at zero command. Check what your own speed metric counts (Hiking's "speed ratio", ACP's
+finish rate) before an automatic rule acts on it.
+
+Also from SSR (CPU, plain MuJoCo, corrected model, plant gains `mc_20261024`): neither the plant default pose nor the
+reference-mean pose holds a passive stand; both are down within about 2 s with zero action (the audit measured 1.41 s). A
+from-scratch policy therefore has to balance actively from the first step.
+
+## Launch rules (from the SSR incident, 2026-11-12)
+Check a script and launch it with `bash -n script && tmux new-session ...`, never `;`. Never kill a tmux session that holds a supervisor. Stop runs only through the STOP file.
+Confirmed on the real robot by the user on 2026-11-12: a playing card slides freely between the pelvis and the hip-roll shell with the leg at its inward stop.
+
+## Ending episodes near obstacles teaches refusal (SSR, 2026-11-12)
+SSR ended an episode when any limb came within 6 cm of an obstacle. On the apparatus the policy then stood still whenever a wall or post was within about 0.25 m of its path (0/50; reproduced on CPU with see-only obstacles). Use a penalty in the margin and end the episode only on real overlap or contact; train slow and turning commands next to walls, not only on open ground; pass obstacles at an angle after a turn, not only down a straight lane. Each track: check your own termination margin.
+- 2026-11-12 (user's rule): grade wall and prop contact by body part instead of ending the episode: shoulders, torso, hips and feet against a wall are penalised strongly; forearm or hand brushes are tolerated to a limit; sidestepping through really tight spots is allowed and should be trained (the user's sideways Pico takes exist in `tp_t4x4u_y20.pkl`). Full text: `docs/USER_RULES.md`, "Wall and prop contact in training".
+- 2026-11-12 (user's rule): no walking backward - the camera cannot see behind the robot. Reverse by turning in place, then walk forward. Train turn-in-place explicitly, also beside walls and on side slopes (the apparatus needs it at the 4x4 turn-around and at button 4 on the 16-degree side-sloped wedge). Penalise backward travel against the commanded direction.
+  Refinement (user, same day): a short backward step as a rare recovery after touching a wall is acceptable; the rule is against backward travel, not against every backward step. Keep any penalty small enough for that.
+  How (user): give less reward for moving backward than for moving forward or turning in place (a reward scale below 1 on backward progress), not a ban or a large penalty.
+- 2026-11-12 (coordinator, after the user's worry about restarts): batch changes. Hiking restarted about 11 times in a day and its terrain level stayed flat (5.5-5.9) for 3,000 iterations. After a restart that carries the pending changes, no planned restart for at least 2,000 iterations except to recover from a crash or a failed trial. Collect new ideas in the state file and apply them together at the next planned restart.
+- 2026-11-12: checkpoints are written straight to `/mnt/filesystem-g4` by every track; prune scripts must never delete a champion checkpoint or one exported for the eval (copy it to a named file first, as SSR does in `eval/export/ckpts/`).

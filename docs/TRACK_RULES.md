@@ -29,3 +29,18 @@ After a track removed two of its own intermediate clip files with `rm` and the s
 delete files under `/mnt/filesystem-g4`. A file that is no longer wanted is moved to `tracks/<track>/_trash/<date>/` with a
 one-line note of what it was; clearing a trash folder is the user's. Checkpoint retention (newest two plus one per 1,000
 iterations) is also done by moving, not deleting, until the user says otherwise. Scratch under `/tmp` on a node is the agent's.
+
+## Simulator checks (user goal 2026-11-12: "simulator faults must be caught by code, not discovered by agents")
+After two faults punished policies for hours (FINDINGS B8 feet trapped in height-field cells, B10 MuJoCo Warp on one large
+height field). Package: `/mnt/filesystem-g4/tools/simcheck/` (README there; mirror `tools/simcheck/`).
+1. **Preflight before every launch or restart.** `tools/simcheck/run_preflight.sh <track> <tag> [--hf-fix 1 --cfg ...]` with the
+   exact terrain build and flags of the launch; it must exit 0 (report in `tools/simcheck/reports/<track>_<tag>.json`; CPU,
+   4 cores, about 1-3 minutes). Checks: no height field over 400 x 400 vertices; foot drop at 1-4.5 m/s on flat, slope and edge
+   cells (no contact deeper than 1 cm for over 0.07 s, foot freed by a 150 N pull); random-action rollouts on every tile type
+   (no contact deeper than 5 cm, no body speed jump over 20 m/s, no NaN, diverged share at most 1 %). A failing launch needs
+   the coordinator's written exception. Hiking (Isaac, GPU only) runs its preflight during a training pause.
+2. **Simulator faults are truncations, never terminations.** NaN, the track's |qvel| bound, a contact deeper than 5 cm or a
+   body speed jump over 20 m/s ends the episode time-out style: value bootstrapped, step reward 0, no termination penalty, no
+   curriculum move (`simcheck.episode_end`; each track's patch in `tools/simcheck/patches/`).
+3. **`sim_fault_share` in every heartbeat** (`simcheck.alarm`): share of episode ends that were simulator faults; over 1 %
+   the heartbeat carries `sim_fault_warn` and the track stops trusting new checkpoints until the cause is found.

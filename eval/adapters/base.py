@@ -22,6 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import mujoco
+import os
+
 import numpy as np
 
 
@@ -84,7 +86,13 @@ class View:
         if self.app is None:
             return np.zeros(len(xy))
         if not with_walls:      # a course with obstacles outside the walk raster carries a scan raster that has them (ladder step 2)
-            return getattr(self.app, "scan_height", self.app.height)(xy[:, 0], xy[:, 1])
+            h = getattr(self.app, "scan_height", self.app.height)(xy[:, 0], xy[:, 1])
+            clamp = os.environ.get("DIAG_SCAN_DROP_CLAMP")   # DIAGNOSTIC ONLY (eval monitor 2026-11-12): hide drops deeper than this
+            if clamp:                                       # below the ground under the pelvis (button-5 test); never a result
+                g0 = float(self.app.height(self.d.qpos[0], self.d.qpos[1]))
+                if g0 >= 1.0:                               # only on the landing (1.12 m), so the rest of the route is untouched
+                    h = np.maximum(h, g0 - float(clamp))
+            return h
         top = 3.0
         o = np.c_[xy, np.full(len(xy), top)]
         return top - self.rays(o, np.tile([0.0, 0.0, -1.0], (len(xy), 1)), far=top + 1.0)
@@ -123,6 +131,7 @@ class Adapter:
     vmax = 0.6                     # m/s: forward speed limit of the standard velocity command
     wmax = 1.0                     # rad/s: yaw rate limit of the standard velocity command
     observes = "nothing"           # one line: what the policy observes (goes into the result files)
+    trained_model = None           # the robot model the policy was trained on (collision model matters: 2026-11-12 hip-hull finding)
     plant_name = None              # the X2 plant (gains) the policy was TRAINED with; a real policy's adapter must set it from
     #                                its card and return that plant's kp / kd in plant(): the harness default is never used
     #                                for a trained policy (user rule, 2026-11-11). None = a test fixture on the default.

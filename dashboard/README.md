@@ -72,3 +72,10 @@ HTML and scripts only fill elements marked `data-draw`; every figure carries `da
 - MuJoCo frames are labelled as MuJoCo, not the training simulator. Terrain pictures are labelled as previews, not simulator output.
 - No street address, house number or home photos. No made-up numbers: leave a dataset empty and let the page say what will appear.
 - Videos are not embedded; use stills.
+
+## One run per chart (2026-11-12)
+
+The Training tab draws every `progress.json` row of a `run` on one line, so rows from different runs of the same track (each
+with its own reward scale) make the line jump. Keep only the current run's rows for `ssr` and `hiking`; when a track starts a
+new run, move the old run's rows to `progress_archive_<track>_<runs>.json` in this folder (not a dataset, not shown). ACP's
+stages share one iteration counter and stay together.

@@ -25,7 +25,8 @@ Local G1 run (`C:\Users\PC\projects\hiking-in-the-wild`) stays paused at `model_
 
 ## Open questions for the user
 - Eval gate details (per-skill profile, level passes at 45/50) not yet confirmed.
-- Whether the stair and chain clip sets from `loco-manip-apparatus` are BONES-SEED-derived (decides the data rule for them).
+- (Settled 2026-11-12 from the shared filesystem: the `loco-manip-apparatus` stair and chain sets are BONES-SEED-derived; see `docs/DATA.md`.)
+- No commits or pushes to GitHub until the user says so (user, 2026-11-12); do not run `sync_track_code.sh --commit`.
 - Whether the user's own Pico captures may go into a repo (separate private one suggested; `terrain-park` is public).
 - Usage: on 2026-11-12 the weekly all-models allowance was 76% at 04:30 UTC (resets Nov 12, 3:59 pm Pacific). Suggested savings
   (not yet confirmed): hourly dashboard refresh, agents report only at gates, routine watching on Sonnet.
@@ -35,3 +36,6 @@ No addresses or logins in the repo; no BONES-SEED or Hiking-release data in the 
 only for evaluation (live eval at most once per 1,000 iterations); never delete under `/mnt/filesystem-g4` (move to `_trash`);
 renders from the simulator, MuJoCo labelled "not the training simulator", looked at before sending; secret-free script copies to
 the nodes need no approval; camera = chest RealSense (`docs/camera/`), gains = `mc_20261024`.
+
+## Token efficiency
+Read `docs/TOKEN_EFFICIENCY.md` before anything else. Start fresh agents from their state files; do not resume the large ones from the previous session.

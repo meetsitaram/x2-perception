@@ -25,3 +25,11 @@ Read `docs/USER_RULES.md` first; it binds you. You own `docs/EVAL.md` and `/mnt/
   planner feeding a tracker, run on our apparatus; its code, planner weights and eval scripts are in
   `C:\Users\PC\projects\gwbc-v6\scripts\acp\` (read-only). ACP is always scored as planner plus tracker; never report a track as
   "cannot be scored" without first checking what the user's earlier work did and what the shortest way to a score is.
+
+**Report what goes wrong (user, 2026-11-12).** Every report to the coordinator says what went wrong since the last one, the evidence, and how you are addressing it, as well as what is running; the coordinator logs findings in `docs/FINDINGS.md`. Write the same into your state file, since only one hand-back per turn reaches the coordinator.
+
+## Token efficiency: read `docs/TOKEN_EFFICIENCY.md` first (user, 2026-11-12)
+Before anything else in a session, read `docs/TOKEN_EFFICIENCY.md` (about 50 lines) and follow it. In one line: cost is your
+context size times your number of turns, so read narrowly, keep command output out of your context, never wait in a loop of
+turns, report in ten lines, and keep a "HOW TO RESUME" block at the end of your state file because the coordinator replaces any
+agent past about 200,000 tokens with a fresh one.

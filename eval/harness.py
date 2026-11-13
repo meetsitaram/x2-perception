@@ -32,6 +32,23 @@ from apparatus import Apparatus  # noqa: E402
 RADIUS = 0.20            # m: a waypoint is reached when the pelvis is this close in the horizontal plane ...
 Z_TOL = 0.30             # m: ... and within this of standing height above the waypoint's ground
 END_STAND = 1.0          # s: after the last waypoint the robot must stay up this long
+# Strict stand (coordinator's decision 2026-11-12, implementing the user's "a station is a 1 s stand"; to be confirmed by the
+# user; docs/EVAL.md "Strict stand"). For the whole 1 s of a station's hold and of the end stand: the pelvis inside the disc,
+# the two feet together carrying at least STRICT_LOAD of the robot's weight (so never both at 0 N) and the pelvis' horizontal
+# speed under STRICT_SPEED; and the robot still upright STRICT_POST_END s after the end stand. Checked on the same trajectory
+# as the disc-only rule (waypoints advance by the disc-only rule, so the disc-only count is unchanged and comparable; a station
+# held loosely is not retried). The end stand is checked this way only when the last waypoint is itself a station.
+STRICT_LOAD = 0.5        # share of the robot's weight on the feet (sum of both feet's vertical loads)
+STRICT_SPEED = 0.15      # m/s: horizontal pelvis speed
+STRICT_POST_END = 2.0    # s after the end stand: still upright (the trial runs on this long with a stand command)
+STAND_RULE = os.environ.get("STAND_RULE", "strict")   # "strict": a station's 1 s counts only while standing (main, from
+#                          2026-11-12); "disc": the old rule (1 s in the disc), run beside it for comparison with earlier results;
+#                          in a "disc" run the strict conditions are still checked on the window that counted (strict_success)
+END_RETRY = os.environ.get("END_RETRY", "1") == "1"   # coordinator 2026-11-12 11:50: in a strict run the end stand, like a
+#                          station, counts once a continuous 1 s strict stand is reached at the last station (a correction
+#                          restarts the 1 s; limit: the time limit, or 45 s after the last waypoint), then 2 s upright.
+#                          Default on since 2026-11-12 12:06 UTC (END_RETRY=0 gives the earlier end stand).
+TRAVEL_AFTER = 1.0       # s: "travel after a station": the pelvis path length in this time after the station counted
 TIME_LIMIT = 180.0       # s per trial (recommended value; the user has not confirmed it)
 STALL = 45.0             # s without reaching a new waypoint (and not holding at a station): the trial ends as "stalled"
 FALL_H = 0.35            # m: fall when the pelvis is lower than this above the lowest ground under the pelvis and feet
@@ -48,6 +65,11 @@ HIT_D_W, HIT_DV_REF, HIT_TILT_REF = 0.5, 0.30, 10.0  # ... + D_W * min(1, max(pe
 HIT_WINDOW = 0.3         # s after the contact starts: the impact. Peak force, impulse and pelvis disturbance are taken in it
 BEAM_NEAR = 0.12         # m: a face this close to a 4x4's centre line is the 4x4's
 CLASSES = ("4x4", "wedge", "stair")
+TRAP_DEPTH, TRAP_MIN = 0.01, 0.1      # m, s: a foot "trapped" = a contact deeper than this held at least this long (audit class a/b)
+CLAMP_DEPTH = 0.005                    # m: a head / trunk / limb contact deeper than this in a wall box, held TRAP_MIN, is a clamp
+JLIM_EXCESS = 0.15                     # rad: a joint this far past its limit (MuJoCo's limits are soft); 0.05 until 2026-11-12 21:10 UTC (fired in ~every trial)
+ANKLE_ROLL_EXCESS = 0.05               # rad: ankle roll (+-0.262 rad range) past its limit, reported as its own time (coordinator 2026-11-12)
+MEASURE = "v2 (2026-11-12): loads, peaks and impulses from the summed force vector per foot / per contact episode; wall boxes count in the load"
 EVENT_GAP = 0.2          # s: contacts of the same kind on the same side closer than this are one event
 STANCE_ON, STANCE_OFF = 40.0, 10.0   # N: a foot lands when its vertical load rises above ON after being below OFF
 EDGE_RANGE = 0.03        # m: an edge landing: the ground under the sole departs this much from a plane (peak to peak)
@@ -150,6 +172,9 @@ class Trial:
         self.h0 = float(d.qpos[2] - self.ground(d.qpos[0], d.qpos[1]))
         self.wp, self.hold_t, self.reach_t, self.last_progress = 0, 0.0, [], 0.0
         self.done_t = None
+        self.disc_reason, self.strict_fail, self.stations, self.win, self.end_win = None, None, [], [], []
+        self.end_breaks, self.end_ok_t = 0, None
+        self.weight = float(m.body_mass.sum() * 9.81)
         self.push_done = []
         self.beam_cross = {b["name"]: [] for b in self.beams}      # times the pelvis path crossed each beam's centre line
         self.prev_xy = d.qpos[:2].copy()
@@ -158,6 +183,12 @@ class Trial:
         self.stance = {b: True for b in x.foot_ids}
         self.load = {b: 0.0 for b in x.foot_ids}
         self.contact_steps = 0
+        self.flag_runs = {}                                  # (kind, part) -> start time of the current deep-contact run
+        self.flag_eps = []                                   # [kind, part, t0, t1, x, y]
+        self.jlim_t, self.jlim_max, self.ankroll_t = [], 0.0, []
+        lim = [j for j in range(m.njnt) if m.jnt_limited[j] and m.jnt_type[j] == mujoco.mjtJoint.mjJNT_HINGE]
+        self._jl = (np.array([m.jnt_qposadr[j] for j in lim], int), m.jnt_range[lim, 0].copy(), m.jnt_range[lim, 1].copy())
+        self._ar = np.array([k for k, j in enumerate(lim) if "ankle_roll" in (mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_JOINT, j) or "")], int)
         self.rec = {k: [] for k in ("t", "qpos", "wp", "cmd", "load", "h", "hold")}
         self.adapter.reset(self.view, rng)
         return r
@@ -197,8 +228,18 @@ class Trial:
     def command(self) -> Command:
         d, a = self.d, self.adapter
         pos, yaw = d.qpos[:3], X.yaw_of(d.qpos[3:7])
-        if not self.wps or self.wp >= len(self.wps):        # no route, or finished: stand
+        if not self.wps:                                    # no route: stand where you are
             return Command(pos[:2].copy(), self.ground(pos[0], pos[1]), None, True, np.zeros(3), 0.0, 0.0, self.wp, len(self.wps), np.zeros((0, 2)))
+        if self.wp >= len(self.wps):                        # finished: keep standing AT the last waypoint, facing its heading
+            # (fixed 2026-11-12 09:30: before, the target followed the pelvis with no heading, so a goal-driven adapter got a
+            # zero goal and dpsi = -yaw (towards world heading 0) during the end stand; every result before this time has that)
+            w = self.wps[-1]
+            tgt = np.array([w["x"], w["y"]])
+            th = math.radians(w["heading_deg"]) if w["hold_s"] > 0 and w["heading_deg"] is not None else None
+            err = X.wrap(th - yaw) if th is not None else 0.0
+            vel = np.array([0.0, 0.0, float(np.clip(1.5 * err, -a.wmax, a.wmax)) if abs(err) > 0.15 else 0.0])
+            return Command(tgt, self.ground(*tgt), th, True, vel, float(np.linalg.norm(tgt - pos[:2])), float(err), self.wp, len(self.wps),
+                           np.zeros((0, 2)), bool(w["hold_s"] > 0))
         w = self.wps[self.wp]
         tgt = np.array([w["x"], w["y"]])
         vec = tgt - pos[:2]
@@ -240,13 +281,54 @@ class Trial:
                   and abs(d.qpos[2] - self.ground(w["x"], w["y"]) - self.h0) < Z_TOL)
         if inside and w.get("heading_tol_deg") is not None:      # a turn test: the station counts only when faced
             inside = abs(X.wrap(math.radians(w["heading_deg"]) - X.yaw_of(d.qpos[3:7]))) < math.radians(w["heading_tol_deg"])
+        smp = self._stand_sample()
+        if inside and STAND_RULE == "strict" and w["hold_s"] > 0 and (smp[0] < STRICT_LOAD or smp[1] >= STRICT_SPEED):
+            inside = False                                     # strict rule: the 1 s counts only while standing
         self.hold_t = self.hold_t + dt if inside else 0.0
+        self.win = self.win + [smp] if inside else []
         if inside and self.hold_t >= w["hold_s"]:
             self.reach_t.append(round(float(d.time), 2))
+            if w["hold_s"] > 0:                                # strict stand over the hold window that made the station count
+                k = max(1, int(round(w["hold_s"] / dt)))
+                bad = self._stand_bad(self.win[-k:])
+                if bad and self.strict_fail is None:
+                    self.strict_fail = "station %s: %s" % (w["name"], bad)
+                self.stations.append(dict(name=w["name"], t=round(float(d.time), 2), strict=not bad, why=bad, xy=d.qpos[:2].copy(), travel=0.0, end=False))
             self.wp += 1
-            self.hold_t, self.last_progress = 0.0, float(d.time)
+            self.hold_t, self.last_progress, self.win = 0.0, float(d.time), []
             if self.wp == len(self.wps):
                 self.done_t = float(d.time)
+                if self.wps[-1]["hold_s"] <= 0:
+                    self.stations.append(dict(name=w["name"] + " (end)", t=round(float(d.time), 2), strict=True, why=None, xy=d.qpos[:2].copy(), travel=0.0, end=True))
+
+    def _stand_sample(self):
+        """(load share of body weight, horizontal pelvis speed, pelvis inside the last waypoint's disc) at this control step."""
+        d = self.d
+        w = self.wps[min(self.wp, len(self.wps) - 1)]
+        inside = math.hypot(w["x"] - d.qpos[0], w["y"] - d.qpos[1]) < RADIUS
+        return (sum(self.load[b] for b in self.x.foot_ids) / self.weight, math.hypot(d.qvel[0], d.qvel[1]), inside)
+
+    @staticmethod
+    def _stand_bad(win):
+        """Why a stand window is not a stand under the strict rule (None if it is)."""
+        why = []
+        lo = min(s[0] for s in win)
+        if lo < STRICT_LOAD:
+            why.append("feet carried %.0f %% of the weight at the least" % (100 * lo))
+        hi = max(s[1] for s in win)
+        if hi >= STRICT_SPEED:
+            why.append("pelvis moved at up to %.2f m/s" % hi)
+        if not all(s[2] for s in win):
+            why.append("left the disc")
+        return "; ".join(why) or None
+
+    def _travel(self):
+        """Path length of the pelvis after each station (the "does not stop" measure)."""
+        d = self.d
+        for s in self.stations:
+            if d.time - s["t"] <= TRAVEL_AFTER + 1e-9:
+                s["travel"] += float(np.linalg.norm(d.qpos[:2] - s["xy"]))
+                s["xy"] = d.qpos[:2].copy()
 
     # ---- contacts, every physics step -------------------------------------------------------------------------------
     def _event(self, kind, side, t, force, pos, extra=None, fh=0.0):
@@ -285,9 +367,52 @@ class Trial:
                 if any(e["t"] - 0.02 <= pt <= e["t"] + HIT_WINDOW for pt in self.push_done):
                     e["pushed"] = True
 
+    def _agg(self, agg, kind, side, fw, fn, pos, extra):
+        key = (kind, side, extra.get("cls"), extra.get("on"))
+        a = agg.get(key)
+        if a is None:
+            agg[key] = [fw.copy(), fn, pos.copy(), extra]
+        else:
+            a[0] += fw
+            a[1] = max(a[1], fn)
+
+    def _jlim(self):
+        qa, lo, hi = self._jl
+        if len(qa):
+            q = self.d.qpos[qa]
+            exv = np.maximum(q - hi, lo - q)
+            ex = float(max(0.0, np.max(exv)))
+            self.jlim_max = max(self.jlim_max, ex)
+            if ex > JLIM_EXCESS:
+                self.jlim_t.append(float(self.d.time))
+            if len(self._ar) and float(np.max(exv[self._ar])) > ANKLE_ROLL_EXCESS:
+                self.ankroll_t.append(float(self.d.time))
+
+    def _flags(self, reason):
+        """Auto-flags (audit 2026-11-12): seconds with a trapped foot, a head / trunk / limb clamped in a wall box, a joint past its
+        limit; for a fall, the last second before it is left out (impact)."""
+        now = float(self.d.time)
+        eps = list(self.flag_eps) + [[k[0], k[1], round(t0, 3), round(now, 3), None, None] for k, t0 in self.flag_runs.items() if now - t0 >= TRAP_MIN]
+        cut = now - 1.0 if str(reason).startswith("fall") else now + 1.0
+        dt_c = self.sub * X.SIM_DT
+
+        def secs(kind):
+            return round(sum(max(0.0, min(e[3], cut) - e[2]) for e in eps if e[0] == kind), 2)
+
+        def longest(kind):
+            return round(max([e[3] - e[2] for e in eps if e[0] == kind], default=0.0), 2)
+        return dict(trapped_foot_s=secs("trapped_foot"), trapped_foot_longest_s=longest("trapped_foot"),
+                    limb_clamp_s=secs("limb_clamp"), limb_clamp_parts=sorted({e[1] for e in eps if e[0] == "limb_clamp"}),
+                    joint_limit_s=round(sum(dt_c for t_ in self.jlim_t if t_ < cut), 2), joint_limit_max_rad=round(self.jlim_max, 3),
+                    ankle_roll_past_s=round(sum(dt_c for t_ in self.ankroll_t if t_ < cut), 2), joint_limit_threshold_rad=JLIM_EXCESS,
+                    last_1s_of_fall_excluded=bool(str(reason).startswith("fall")), episodes=eps[:200])
+
     def _contacts(self):
         m, d, x = self.m, self.d, self.x
         load = {b: 0.0 for b in x.foot_ids}
+        fsum = {b: np.zeros(3) for b in x.foot_ids}
+        agg = {}                                            # event key -> [summed world force on the robot, max normal, pos, extra]
+        deep = set()
         trunk_on_ground = False
         for k in range(d.ncon):
             c = d.contact[k]
@@ -297,14 +422,20 @@ class Trial:
             env_geom, body = (c.geom1, b2) if b1 == 0 else (c.geom2, b1)
             mujoco.mj_contactForce(m, d, k, self._f6)
             fn = float(self._f6[0])
-            fw = c.frame.reshape(3, 3).T @ self._f6[:3]       # the contact force in the world frame
+            fw = c.frame.reshape(3, 3).T @ self._f6[:3]       # the contact force in the world frame (on geom2)
+            if b1 != 0:
+                fw = -fw                                      # the force on the robot
             fh = float(math.hypot(fw[0], fw[1]))
             nz = abs(float(c.frame[2]))
             tag = x.wall_cls.get(env_geom)                  # a box that is a floor obstacle (slanted 4x4): scored like the floor
             on_wall = env_geom in x.wall_geoms and tag is None
             group = x.body_group[body]
-            if group == "foot" and not on_wall and not (tag and nz < SIDE_NZ):             # the foot's vertical load counts every contact, however light
-                load[body] += fn * nz
+            if group == "foot":                             # v2: every contact of the foot, walls included, as a vector
+                fsum[body] += fw
+                if -c.dist > TRAP_DEPTH:
+                    deep.add(("trapped_foot", m.body(body).name))
+            elif on_wall and -c.dist > CLAMP_DEPTH and group in ("head", "trunk", "arm", "thigh", "knee", "shin"):
+                deep.add(("limb_clamp", m.body(body).name))
             if fn < F_MIN:
                 continue
             name = m.body(body).name
@@ -319,14 +450,25 @@ class Trial:
                     v6 = np.zeros(6)
                     mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_XBODY, body, v6, 0)
                     spd = float(math.hypot(v6[3], v6[4]))
-                    self._event("foot_side", side, d.time, fn, c.pos, dict(on="wall" if on_wall else "terrain", cls=cls, nz=round(nz, 2),
-                                swing=bool(self.load[body] < STANCE_ON or spd > 0.3), foot_speed=round(spd, 2)), fh)
+                    self._agg(agg, "foot_side", side, fw, fn, c.pos, dict(on="wall" if on_wall else "terrain", cls=cls, nz=round(nz, 2),
+                              swing=bool(self.load[body] < STANCE_ON or spd > 0.3), foot_speed=round(spd, 2)))
             elif group in ("shin", "knee", "thigh"):
-                self._event(group, side, d.time, fn, c.pos, dict(on="wall" if on_wall else "terrain", cls=cls), fh)
+                self._agg(agg, group, side, fw, fn, c.pos, dict(on="wall" if on_wall else "terrain", cls=cls))
             else:                                           # trunk, head, arm
-                self._event(group, side, d.time, fn, c.pos, dict(on="wall" if on_wall else "terrain", cls=cls), fh)
+                self._agg(agg, group, side, fw, fn, c.pos, dict(on="wall" if on_wall else "terrain", cls=cls))
                 if group in ("trunk", "head") and not on_wall:
                     trunk_on_ground = True
+        for (kind, side, _, _), (F, fnmax, pos, extra) in agg.items():   # one reading per episode key and step: the summed vector
+            self._event(kind, side, d.time, float(np.linalg.norm(F)), pos, extra, float(math.hypot(F[0], F[1])))
+        for b in x.foot_ids:
+            load[b] = max(0.0, float(fsum[b][2]))
+        now = float(d.time)
+        for key in deep:
+            self.flag_runs.setdefault(key, now)
+        for key in [k_ for k_ in self.flag_runs if k_ not in deep]:
+            t0 = self.flag_runs.pop(key)
+            if now - t0 >= TRAP_MIN:
+                self.flag_eps.append([key[0], key[1], round(t0, 3), round(now, 3), round(float(d.qpos[0]), 2), round(float(d.qpos[1]), 2)])
         for b in x.foot_ids:                                # landings: the ground under the sole at touchdown
             self.load[b] = load[b]
             if self.stance[b] and load[b] < STANCE_OFF:
@@ -346,15 +488,26 @@ class Trial:
         return trunk_on_ground
 
     # ---- one trial ----------------------------------------------------------------------------------------------------
-    def run(self, seed: int, protocol: dict, seconds: float = TIME_LIMIT, record: bool = True, stand_only: bool = False):
+    def run(self, seed: int, protocol: dict, seconds: float = TIME_LIMIT, record: bool = True, stand_only: bool = False, prestand: float = 0.0):
+        """prestand (s): station legs (eval/legs.py): the robot first gets this long a stand command at its spawn pose (target = where
+        it stands, heading = its spawn heading, hold), no waypoint progress; the stall timer starts after it."""
         m, d, x = self.m, self.d, self.x
         rand = self.reset(seed, protocol)
         reason, pushes = None, list(self.pushes)
         dt_c = self.sub * X.SIM_DT
+        if prestand > 0:
+            p0, yaw0 = d.qpos[:2].copy(), X.yaw_of(d.qpos[3:7])
+            self.last_progress = prestand
         while reason is None:
-            if not stand_only:
+            pre = prestand > 0 and d.time < prestand
+            if not stand_only and not pre:
                 self._progress(dt_c)
-            cmd = self.command()
+            if pre:
+                cmd = Command(p0.copy(), self.ground(*p0), yaw0, True, np.zeros(3), float(np.linalg.norm(d.qpos[:2] - p0)), 0.0, 0,
+                              len(self.wps), np.zeros((0, 2)), True)
+            else:
+                cmd = self.command()
+            self.last_cmd = cmd
             if stand_only:
                 cmd.vel[:] = 0.0
                 cmd.hold = True
@@ -371,7 +524,16 @@ class Trial:
                 mujoco.mj_step(m, d)
                 trunk |= self._contacts()
             self._beams()
+            self._jlim()
             self._disturbance()
+            self._travel()
+            end_retry = END_RETRY and STAND_RULE == "strict" and self.wps and self.wps[-1]["hold_s"] > 0
+            if self.done_t is not None and self.disc_reason is None and self.wps and self.wps[-1]["hold_s"] > 0:
+                smp = self._stand_sample()                     # the end stand, strict rule
+                if end_retry and (smp[0] < STRICT_LOAD or smp[1] >= STRICT_SPEED or not smp[2]):
+                    self.end_win, self.end_breaks = [], self.end_breaks + 1     # a correction restarts the 1 s
+                else:
+                    self.end_win.append(smp)
             px, py, pz = d.qpos[:3]
             feet = [d.xpos[b] for b in x.foot_ids]
             low = min([self.ground(px, py)] + [self.ground(f[0], f[1]) for f in feet])
@@ -382,19 +544,40 @@ class Trial:
                 r["t"].append(d.time); r["qpos"].append(d.qpos.astype(np.float32).copy()); r["wp"].append(self.wp)
                 r["cmd"].append(cmd.vel.copy()); r["load"].append([self.load[b] for b in x.foot_ids]); r["h"].append(h)
                 r["hold"].append(cmd.hold)
+            fall = None
             if h < FALL_H:
-                reason = "fall: pelvis %.2f m above the ground" % h
+                fall = "fall: pelvis %.2f m above the ground" % h
             elif tilt > FALL_TILT:
-                reason = "fall: pelvis tilted %.0f deg" % tilt
+                fall = "fall: pelvis tilted %.0f deg" % tilt
             elif trunk:
-                reason = "fall: trunk or head on the ground"
+                fall = "fall: trunk or head on the ground"
+            if self.disc_reason is not None:                   # after the end stand: only the strict rule's "still upright"
+                if fall and self.strict_fail is None:
+                    self.strict_fail = "%s %.1f s after the end stand" % (fall, d.time - self.end_ok_t)
+                if fall or d.time - self.end_ok_t >= STRICT_POST_END:
+                    reason = self.disc_reason
+                    if STAND_RULE == "strict" and self.strict_fail:
+                        reason = "not a stand: %s" % self.strict_fail
+            elif fall:
+                reason = fall
             elif not stand_only and self.app is not None and (self._off_route(px, py) > OFF_COURSE or not self.app.inside(px, py)):
                 reason = "left the course"
-            elif self.done_t is not None and d.time - self.done_t >= END_STAND:
+            elif self.done_t is not None and (len(self.end_win) * dt_c >= END_STAND - 1e-9 if end_retry else d.time - self.done_t >= END_STAND):
+                self.end_ok_t = float(d.time)
                 missed = [k for k, v in self.beam_cross.items() if not v]
-                reason = "success" if not missed else "went round a 4x4: %s not stepped over" % ", ".join(missed)
+                self.disc_reason = "success" if not missed else "went round a 4x4: %s not stepped over" % ", ".join(missed)
+                if self.end_win:
+                    bad = self._stand_bad(self.end_win)
+                    if bad and self.strict_fail is None:
+                        self.strict_fail = "end stand: %s" % bad
+                if self.disc_reason != "success":
+                    reason = self.disc_reason
             elif d.time >= seconds:
                 reason = "time limit" if not stand_only else "stood"
+                if end_retry and self.done_t is not None:
+                    reason = "not a stand: end stand never held 1 s (%d corrections) before the time limit" % self.end_breaks
+            elif end_retry and self.done_t is not None and d.time - self.done_t > STALL:
+                reason = "not a stand: end stand never held 1 s in %.0f s (%d corrections)" % (STALL, self.end_breaks)
             elif not stand_only and self.wps and self.done_t is None and d.time - self.last_progress > STALL + self.wps[self.wp]["hold_s"]:
                 reason = "stalled"
         return self._result(seed, rand, reason)
@@ -405,6 +588,35 @@ class Trial:
         ab = b - a
         t = np.clip(((p - a) * ab).sum(1) / np.maximum((ab * ab).sum(1), 1e-12), 0, 1)
         return float(np.linalg.norm(a + ab * t[:, None] - p, axis=1).min())
+
+    def _stop_context(self):
+        """Where a trial stopped (coordinator 2026-11-12, for every stall / failure record): distance from the pelvis to the nearest
+        wall / post / box (footprint, boxes starting below 1.3 m), to the nearest raster cell more than 0.15 m above the floor under
+        the pelvis (within 1.5 m), to the edge of the course's raster, the harness command and the adapter's own command (if any)."""
+        d = self.d
+        px, py = float(d.qpos[0]), float(d.qpos[1])
+        out = {}
+        if self.app is not None:
+            bd = [math.hypot(max(abs(px - b["center"][0]) - b["half"][0], 0.0), max(abs(py - b["center"][1]) - b["half"][1], 0.0))
+                  for b in self.app.boxes if b["center"][2] - b["half"][2] < 1.3]
+            out["nearest_box_m"] = round(min(bd), 3) if bd else None
+            g = self.app.grid
+            xs = self.app.x0 + np.arange(g.shape[0]) * self.app.res
+            ys = self.app.y0 + np.arange(g.shape[1]) * self.app.res
+            i0, i1 = np.searchsorted(xs, px - 1.5), np.searchsorted(xs, px + 1.5)
+            j0, j1 = np.searchsorted(ys, py - 1.5), np.searchsorted(ys, py + 1.5)
+            hi = g[i0:i1, j0:j1] > self.ground(px, py) + 0.15
+            if hi.any():
+                ii, jj = np.nonzero(hi)
+                out["nearest_raised_cell_m"] = round(float(np.min(np.hypot(xs[i0 + ii] - px, ys[j0 + jj] - py))), 3)
+            else:
+                out["nearest_raised_cell_m"] = None
+            out["course_edge_m"] = round(float(min(px - xs[0], xs[-1] - px, py - ys[0], ys[-1] - py)), 3)
+        c = getattr(self, "last_cmd", None)
+        out["harness_cmd"] = [round(float(v), 3) for v in c.vel] if c is not None else None
+        ac = getattr(self.adapter, "last_command", None)
+        out["adapter_cmd"] = [round(float(v), 3) for v in ac] if ac is not None else None
+        return out
 
     def _result(self, seed, rand, reason):
         d, x = self.d, self.x
@@ -457,13 +669,35 @@ class Trial:
                           shin=kinds.get("shin", 0), knee=kinds.get("knee", 0), thigh=kinds.get("thigh", 0), arm=kinds.get("arm", 0),
                           trunk=kinds.get("trunk", 0), head=kinds.get("head", 0)),
             events=self.events[:2000], events_dropped=max(0, len(self.events) - 2000), edge_steps=[s for s in steps if s["edge"]][:500],
-            final=dict(xy=[round(float(d.qpos[0]), 3), round(float(d.qpos[1]), 3)], pelvis_z=round(float(d.qpos[2]), 3)))
+            final=dict(xy=[round(float(d.qpos[0]), 3), round(float(d.qpos[1]), 3)], pelvis_z=round(float(d.qpos[2]), 3)),
+            stop=(self._stop_context() if reason != "success" else None),
+            stand_rule=STAND_RULE, end_retry=bool(END_RETRY and STAND_RULE == "strict"), end_breaks=self.end_breaks, strict_success=bool(reason == "success" and self.strict_fail is None), strict_fail=self.strict_fail if (reason == "success" or reason.startswith("not a stand")) else None,
+            stations=[dict(name=s["name"], t=s["t"], strict=s["strict"], why=s["why"], travel_1s=round(s["travel"], 3)) for s in self.stations])
+        res["strict_clean"] = bool(res["strict_success"] and res["clean"])
+        res["flags"] = self._flags(reason)
+        res["measure"] = MEASURE
         return res
 
     def save_traj(self, path):
         r = self.rec
         np.savez_compressed(path, t=np.array(r["t"]), qpos=np.array(r["qpos"]), wp=np.array(r["wp"]), cmd=np.array(r["cmd"]),
                             load=np.array(r["load"], np.float32), h=np.array(r["h"], np.float32), hold=np.array(r["hold"]))
+
+
+def _why_key(f):
+    """Short class of a strict-rule failure: where (station name, end stand, after the end stand) and which condition."""
+    if f.startswith("fall"):
+        return "fell after the end stand"
+    where, _, why = f.partition(": ")
+    cond = [c for c, k in (("feet unloaded", "weight"), ("moving", "m/s"), ("left the disc", "disc")) if k in why]
+    return "%s: %s" % (where, ", ".join(cond))
+
+
+def _count(xs):
+    out = {}
+    for v in xs:
+        out[v] = out.get(v, 0) + 1
+    return out
 
 
 def summarise(results, meta):
@@ -509,7 +743,33 @@ def summarise(results, meta):
     tot = lambda k: int(sum(r["contacts"][k] for r in results))  # noqa: E731
     steps = max(tot("steps"), 1)
     times = sorted(r["time"] for r in ok)
-    return dict(meta, trials=n, successes=len(ok), success_rate=round(len(ok) / max(n, 1), 4), ci95=[round(lo, 4), round(hi, 4)],
+    strict = [r for r in results if r.get("strict_success")]
+    slo, shi = wilson(len(strict), n)
+    have_strict = all("strict_success" in r for r in results)
+    st = {}
+    for r in results:
+        for x_ in r.get("stations", []):
+            st.setdefault(x_["name"], []).append(x_["travel_1s"])
+    travel = {k: dict(reached=len(v), median_m=round(float(np.median(v)), 3), max_m=round(float(np.max(v)), 3),
+                      over_0_2m=int(sum(t > 0.2 for t in v))) for k, v in st.items()}
+    return dict(meta, trials=n, stand_rule=(results[0].get("stand_rule", "disc") if results else STAND_RULE),
+                strict_rule="strict stand (coordinator 2026-11-12): every station and the end stand 1 s in the disc with the feet carrying >= %.0f %% of the weight and pelvis speed < %.2f m/s, upright %.0f s after the end stand" % (100 * STRICT_LOAD, STRICT_SPEED, STRICT_POST_END),
+                strict_successes=len(strict) if have_strict else None, strict_success_rate=round(len(strict) / max(n, 1), 4) if have_strict else None,
+                strict_ci95=[round(slo, 4), round(shi, 4)] if have_strict else None,
+                strict_clean_successes=sum(bool(r.get("strict_clean")) for r in results) if have_strict else None,
+                strict_fail_reasons=_count([_why_key(r["strict_fail"]) for r in results if r.get("strict_fail")]),
+                station_travel_1s=travel,
+                measure=(results[0].get("measure", "v1 (before 2026-11-12 evening): summed magnitudes") if results else MEASURE),
+                flags=dict(trials_with_trapped_foot=sum(1 for r in results if (r.get("flags") or {}).get("trapped_foot_s", 0) > 0),
+                           trapped_foot_s_total=round(sum((r.get("flags") or {}).get("trapped_foot_s", 0) for r in results), 2),
+                           trials_with_limb_clamp=sum(1 for r in results if (r.get("flags") or {}).get("limb_clamp_s", 0) > 0),
+                           trials_with_joint_limit=sum(1 for r in results if (r.get("flags") or {}).get("joint_limit_s", 0) > 0),
+                           joint_limit_s_total=round(sum((r.get("flags") or {}).get("joint_limit_s", 0) for r in results), 2),
+                           joint_limit_threshold_rad=JLIM_EXCESS,
+                           trials_with_ankle_roll_past=sum(1 for r in results if (r.get("flags") or {}).get("ankle_roll_past_s", 0) > 0),
+                           ankle_roll_past_s_total=round(sum((r.get("flags") or {}).get("ankle_roll_past_s", 0) for r in results), 2)),
+                disc_rule="disc only (the rule before 2026-11-12): 1 s inside the disc at each station, still up 1 s after the last waypoint",
+                successes=len(ok), success_rate=round(len(ok) / max(n, 1), 4), ci95=[round(lo, 4), round(hi, 4)],
                 clean_successes=len(clean), clean_success_rate=round(len(clean) / max(n, 1), 4), clean_ci95=[round(clo, 4), round(chi, 4)],
                 mean_stumble_penalty=round(float(np.mean([r["stumble_penalty"] for r in results])) if results else 0.0, 3),
                 side_hits=dict(by_class=hit_tot, per_trial=round(sum(r["side_hit_count"] for r in results) / max(n, 1), 2),
@@ -527,11 +787,13 @@ def summarise(results, meta):
                               per_trial=dict(foot_side=round(tot("foot_side_contacts") / max(n, 1), 2), shin_knee=round((tot("shin") + tot("knee")) / max(n, 1), 2))))
 
 
-TRIAL_COLS = ["seed", "outcome", "success", "clean", "time_s", "sim_time_s", "waypoints", "of", "last_waypoint", "stopped_heading_to",
+TRIAL_COLS = ["seed", "outcome", "strict_success", "strict_fail", "success", "clean", "time_s", "sim_time_s", "waypoints", "of", "last_waypoint", "stopped_heading_to",
               "stopped_section", "sections_completed", "beams_crossed", "side_hits", "side_hits_4x4", "side_hits_wedge", "side_hits_stair",
               "scuffs", "stumble_penalty", "summed_impulse_Ns", "peak_impulse_Ns", "peak_force_N", "landings", "edge_landings",
               "foot_side_all", "shin", "knee", "thigh", "arm", "trunk", "head", "start_dx", "start_dy", "start_dyaw_deg", "friction",
-              "mass_scale", "torso_payload_kg", "final_x", "final_y", "final_pelvis_z"]
+              "mass_scale", "torso_payload_kg", "final_x", "final_y", "final_pelvis_z", "station_travel_1s_m",
+              "stop_nearest_box_m", "stop_nearest_raised_cell_m", "stop_course_edge_m", "stop_harness_cmd", "stop_adapter_cmd",
+              "flag_trapped_foot_s", "flag_trapped_foot_longest_s", "flag_limb_clamp_s", "flag_joint_limit_s", "flag_joint_limit_max_rad", "flag_ankle_roll_past_s"]
 EVENT_COLS = ["seed", "t_s", "dur_s", "kind", "side", "on", "class", "hit", "penalty", "peak_horizontal_N", "impulse_Ns", "peak_normal_N",
               "normal_z", "in_swing", "foot_speed", "pelvis_dv", "pelvis_dtilt_deg", "push_in_window", "x", "y", "z", "heading_to_waypoint", "section"]
 
@@ -545,7 +807,7 @@ def write_logs(out, results, wps):
         w.writerow(TRIAL_COLS)
         for r in results:
             h, c, rd = r["side_hits"], r["contacts"], r["random"]
-            w.writerow([r["seed"], r["reason"], int(r["success"]), int(r["clean"]), r["time"], r["sim_time"], r["waypoints"], r["of"],
+            w.writerow([r["seed"], r["reason"], int(bool(r.get("strict_success"))) if "strict_success" in r else "", r.get("strict_fail") or "", int(r["success"]), int(r["clean"]), r["time"], r["sim_time"], r["waypoints"], r["of"],
                         wps[r["waypoints"] - 1]["name"] if r["waypoints"] else "", r["stopped_heading_to"] or "", r["stopped_section"] or "",
                         " ".join(k for k, v in r["sections"].items() if v["completed"]),
                         " ".join("%s:%d" % (k.replace(" ", "_"), len(v)) for k, v in r["beams_crossed"].items()), r["side_hit_count"],
@@ -553,7 +815,11 @@ def write_logs(out, results, wps):
                         round(sum(h[k]["impulse"] for k in CLASSES), 3), max(h[k]["peak_impulse"] for k in CLASSES), max(h[k]["peak_force"] for k in CLASSES),
                         c["steps"], c["edge_landings"], c["foot_side_contacts"], c["shin"], c["knee"], c["thigh"], c["arm"], c["trunk"], c["head"],
                         round(rd["dx"], 3), round(rd["dy"], 3), round(rd["dyaw_deg"], 2), round(rd["friction"], 3), round(rd["mass_scale"], 3),
-                        round(rd["torso_payload"], 2), *r["final"]["xy"], r["final"]["pelvis_z"]])
+                        round(rd["torso_payload"], 2), *r["final"]["xy"], r["final"]["pelvis_z"],
+                        " ".join("%s:%.2f%s" % (x_["name"].replace(" ", "_"), x_["travel_1s"], "" if x_["strict"] else "!") for x_ in r.get("stations", [])),
+                        *[(r.get("stop") or {}).get(k, "") for k in ("nearest_box_m", "nearest_raised_cell_m", "course_edge_m")],
+                        " ".join(map(str, (r.get("stop") or {}).get("harness_cmd") or [])), " ".join(map(str, (r.get("stop") or {}).get("adapter_cmd") or [])),
+                        *[(r.get("flags") or {}).get(k, "") for k in ("trapped_foot_s", "trapped_foot_longest_s", "limb_clamp_s", "joint_limit_s", "joint_limit_max_rad", "ankle_roll_past_s")]])
     with open(out / "events.csv", "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(EVENT_COLS)
@@ -661,6 +927,11 @@ def main():
     if part.exists():                                       # continue an interrupted run: same seeds, same definition
         results = json.load(open(part))
         print("continuing: %d trials already done" % len(results), flush=True)
+    elif not a.kinematic:                                   # the regression check, once at the start of a run (eval/regression.py)
+        import regression
+        rg = regression.gate()
+        if rg is not None:
+            json.dump(rg, open(out / "regression.json", "w"), indent=1)
     have = {r["seed"] for r in results}
     for i in range(a.trials):
         seed = a.seed0 + i
@@ -674,7 +945,7 @@ def main():
         r = trial.run(seed, protocol, a.seconds, record=True, stand_only=a.stand)
         trial.save_traj(out / "traj" / ("%d.npz" % seed))
         results.append(r)
-        if len(results) % 5 == 0:
+        if True:                                            # every trial (2026-11-12: slow SSR trials, over 5 per 590 s slice, were never saved)
             json.dump(results, open(str(part) + ".tmp", "w"))
             os.replace(str(part) + ".tmp", part)
         print("trial %d seed %d: %s, %d / %d waypoints, %.1f s, steps %d (edge %d), foot side %d, shin/knee %d, wall time %.0f s" % (
@@ -683,7 +954,8 @@ def main():
     results.sort(key=lambda r: r["seed"])
     if part.exists():
         os.remove(part)
-    meta = dict(label=a.label, apparatus=a.apparatus, route=(app.route["name"] if app else None), simulator="MuJoCo %s (CPU), dt %.4f s" % (mujoco.__version__, X.SIM_DT),
+    rgf = out / "regression.json"
+    meta = dict(regression=(json.load(open(rgf)) if rgf.exists() else "not run"), label=a.label, apparatus=a.apparatus, route=(app.route["name"] if app else None), simulator="MuJoCo %s (CPU), dt %.4f s%s" % (mujoco.__version__, X.SIM_DT, X.model_note()), policy_trained_on=getattr(adapter, "trained_model", None),
                 adapter=adapter.name, checkpoint=str(adapter.checkpoint), observes=adapter.observes, control_dt=adapter.control_dt,
                 plant=adapter.plant_name or "harness default vendor_20260823 (test fixture)",
                 protocol=a.protocol if not a.stand else "standing check (zero command)", seeds=[a.seed0, a.seed0 + a.trials - 1],
@@ -696,6 +968,15 @@ def main():
     s["renders"] = pick_renders(results) if not a.stand else {"stand": results[0]["seed"]}
     if a.keep_traj == "picked":
         keep = set(s["renders"].values())
+        # and up to 5 failing seeds per section and kind (fall / stall / other), so typical failures can be rendered (2026-11-12)
+        per = {}
+        for r in results:
+            if not r["success"]:
+                k_ = (r.get("stopped_section"), str(r["reason"]).split(":")[0])
+                if len(per.setdefault(k_, [])) < 5:
+                    per[k_].append(r["seed"])
+        keep |= {sd for v in per.values() for sd in v}
+        s["kept_failures"] = {"%s / %s" % k_: v for k_, v in per.items()}
         for r in results:
             if r["seed"] not in keep:
                 os.remove(out / "traj" / ("%d.npz" % r["seed"]))

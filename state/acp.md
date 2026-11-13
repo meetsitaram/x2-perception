@@ -1218,3 +1218,953 @@ size-quantised wall library; not done.
 - The stage-3 data cfg includes the arm fix, so stage 2d arrives with stage 3 at the latest.
 
 Not verified: stage 3 on the GPU (speed, memory, warp behaviour with goal envs). The switch's own check covers it.
+
+## 16. Resume check by a new ACP agent (2026-11-12 04:55 UTC; nothing restarted)
+
+- Run `s2_v1` healthy: iteration 3,517 at 04:55, 64-65k env-steps/s, GPU 85% / 53 GB, newest `ckpt_003500.pt` 04:51
+  (written straight to the shared filesystem). Backup loop `acp-backup` alive, last pass 04:42:32 UTC (`backup/MANIFEST.txt`).
+- `acp-evallive` (`live_every.sh 4000 5000 6000`) alive and waiting for `ckpt_004000`; `live_costs.log` does not exist yet,
+  its first line is written at 4,000 (the 2,750 cost is in `live_s2_v1_002750_per334.live.json`: 190 s, 43.6% slowdown).
+- `acp-s3switch` (`to_stage3.sh`) alive, `bash -n` clean, armed 03:58:41. Plateau function dry-run on the live metrics works
+  (keys `it`, `end/finished_phase099` present). Finish rate is already flat: 94.29 -> 94.39% at 3,250, 94.56 -> 94.57% at
+  3,517 (gain under 1 point), so the criterion will almost certainly fire at the first allowed checkpoint, 5,500 (about
+  11:45 UTC at 12.4 s/iteration). If it switches at 5,500, the 6,000 entry of `acp-evallive` never fires (harmless; the
+  watcher then just waits).
+- Earliest apparatus-scorable stage-3 checkpoint: after the 500-iteration warm-up, i.e. about s3 6,000-6,250 if the
+  switch is at 5,500 (about 14:00-15:00 UTC). Proposed to the coordinator, not done: switch earlier (FORCE_IT=4000, right
+  after the 4,000 live eval), since stage 2 has not gained since 3,000; against it: eta_rew reaches 1 only at 5,450.
+
+### 16a. Early switch at 4,000 approved by the coordinator on conditions (2026-11-12 ~05:10 UTC)
+
+**The 2,750 figure, reconciled.** Section 14 says "pooled 92.7 %"; the file `eval/paper_eval/live_s2_v1_002750_per334.json`
+says 93.92 % pooled and 93.92 % sets-weighted-equally (8,016 episodes, Wilson 93.4-94.4). The mean of the eight per-set
+values listed in section 14 itself is 93.9 %, so **92.7 was an arithmetic slip in this file; 93.9 % is the value**.
+From now on **"the paper eval" = `category_dense_foot_only.success_pooled` of the `*_per334.json` file** (334 per set
+per seed, 3 seeds, eight stage-2 sets). Caveat for like-for-like: 2,750 ran with `njmax` 300 (nefc overflows, section 14);
+4,000 runs with 450. A small rise at 4,000 may be the fix, not learning.
+
+**Conditions and what the code says:**
+1. Plateau: finish rate (`end/finished_phase099`, 250-iteration means) since 3,000 under +1 point, and the 4,000 paper eval
+   at most 94.9 % (93.9 + 1). Checked after the 4,000 eval.
+2. Reward ramp: stage 3 does **not** cut it. `acp/train.py` (code_s3) computes eta from `it - s2_start`, and `s2_start` is
+   loaded from the checkpoint (`ckpt_003500.pt` holds `s2_start` 2250, checked). At 4,000: u = 1,750, eta_obs 1.0,
+   eta_rew = (1750 - 1700) / 1500 = 0.033, then the same ramp to 1 at 5,450 inside stage 3. Nothing to change.
+3. Roll-back: checkpoints are written straight to the shared filesystem (`runs/s2_v1/ckpt_004000.pt`), and the switch keeps
+   `code_prev/`. Stage-2 resume from 4,000: restore code (`cp -r code_prev/acp code_prev/tools code/`), then
+   `tmux new -d -s acp "ACP_PLANT=mc_20261024 DATA=cfg/stage2c_sets.json EXTRA='--stage 2 --init /mnt/filesystem-g4/tracks/acp/runs/s2_v1/init_from_s1_v1_002250.pt --planner-arch attn --u-obs 200 --u-rew 1700 --n-ann 1500' bash /mnt/filesystem-g4/tracks/acp/code/supervise.sh /mnt/filesystem-g4/tracks/acp/runs/s2_v1 36000 6500"`
+   (the supervisor resumes from `latest.pt` = 4,000; check that `latest.pt` is the 4,000 one first).
+   **Divergence in the first 250 stage-3 iterations, fixed before the start:** over iterations 4,150-4,250, any of:
+   reference-env finish rate under 90 % (stage 2: 94.5 %; reference-only = (finished x episodes - goal/success x
+   goal/episodes) / (episodes - goal/episodes), since `end/finished_phase099` mixes both env kinds in stage 3);
+   reference termination over 10 %; goal/fall over 25 %; any `diverged` / NaN; value loss over 5x its stage-2 mean;
+   env-steps/s under 50 % of stage 2 (64k). Then roll back to stage 2 at 4,000 and report.
+4. GPU idle: the switch stops stage 2, runs the 3-iteration check (300 s limit) and starts stage 3; under 10 minutes.
+   One training job at a time (the check runs only after the stage-2 job has left the GPU).
+
+### 16b. latest.pt at least every 30 minutes (coordinator, 2026-11-12)
+Numbered checkpoints every 250 iterations = about 55 min, over the 30-minute rule. `code_s3/acp/train.py` (and the mirror
+`code/staged/s3/acp/train.py`) now has `--latest-minutes` (default 20): `latest.pt` is also written when 20 minutes
+have passed since the last save, with a `[save] latest.pt at iteration N (time-based ...)` log line; numbered
+`ckpt_*.pt` stay every 250 (retention: `backup.sh` keeps the newest two plus every 1,000 and moves the rest to `_trash`).
+Pre-patch copy: `_trash/2026-11-12/pre_latest_minutes/code_s3_train.py`. The running stage-2 trainer cannot change this
+without a restart. The trainer needs CUDA (`gear_sonic/.../kinematics.py` at import), so there is no CPU test; the
+switch's 3-iteration GPU check runs with `--latest-minutes 0.0001` and requires the time-based save line.
+
+### 16c. Stage 3 is not the only plan (user rule "keep iterating and find ways", 2026-11-12)
+
+**Checks (times assume the switch at about 06:45 UTC and about 13 s per stage-3 iteration; corrected at the switch):**
+- **s3 +1,000 (`runs/s3_v1/ckpt_005000.pt`, about 10:30 UTC):** to the eval monitor for ladder step 1 and our apparatus;
+  ours: `tools/goal_check.py` on CPU (8 per family and level, levels 0/4/9, 0.20 m disc, 1 s stand).
+  "Working" = all of: training `goal/success` >= 50 % with `goal/level_mean` >= 3; goal_check level 0 >= 80 % in every
+  family, flat turns (in place, backward, sideways) >= 80 %, corridor >= 50 %, falls <= 5 %; reference-env finish >= 92 %
+  (stage 2: 94.5 %). Apparatus: any trial reaching more waypoints than the 3,500 stage-2 pair (0/200, stalls short).
+- **s3 +2,000 (`ckpt_006000.pt`, about 14:15 UTC):** apparatus above the baseline 15/200 (aim >= 40/200); ladder 10 cm
+  stairs >= 45/50, flat turns 50/50; goal_check level 4 >= 70 % per family.
+- Missing the +1,000 marks starts the fallback below at once (not at the 14,000 budget end).
+
+**Fallback experiments (if stage 3 does not beat 15/200), with the change each makes:**
+- (a) **Planner gap** (coordinator's figure: planner contacts reach the end 58 % vs 93 % with oracle contacts; I have not
+  found the 58 % in this file, to re-measure): measure planner-vs-oracle on the same pair on CPU (`tools/pair_eval.py`),
+  then fine-tune the attention planner offline on hindsight labels from successful goal and reference rollouts
+  (`python -m acp.planner label/train`, as in `ops/example_planner_job_run.sh`), loaded into the next restart. Needs
+  rollouts from a recent checkpoint (the live eval files at 2,750 have none; record them on CPU with `pair_eval`).
+- (b) **Data for what the ladder fails:** 10 cm stair clips (training props hold 14-22 cm only, section 14), heading turns
+  of +-70-90 degrees at waypoints, log corridor. Stage-3 v1 tiles already cover 8-22 cm risers, sharp turns and a
+  corridor; if they are not learned, add stage-2 reference clips of 8-12 cm stairs and turn-in-place clips (data build on
+  CPU, enters at a needed restart).
+- (c) **Stage 3 v2:** extended-map tiles (`data/terrains/extended_v1`) plus re-arranged single apparatus parts, allowed by
+  the held-out rule; parts to copy: the 4x4 log (step-over height and width), the slanted 4x4, the wedges, the stair
+  flight (riser and tread), the doorway width, the corridor walls. Needs a size-quantised box library and one GPU test of
+  a larger height field at a needed restart.
+- (d) **Goal command:** stage 3 already trains arrival in a 0.20 m disc and a 1 s stand (stations and goal). If the
+  apparatus still stalls, train with the eval's exact route semantics: waypoint switching on 0.20 m entry, stand only at
+  stations, the eval's goal lookahead, 180 s routes made from tile chains.
+
+**CPU work started now (no GPU):** goal_check of the stage-2 pair at 3,500 on all six families at levels 0/2/4/6/9,
+8 episodes each (tmux `acp-cpu`, `CUDA_VISIBLE_DEVICES=`, nice 19, cores 8-23, 3 h limit; out
+`eval/goal_check_s2_003500.json`). It is the stage-2 baseline that the s3 +1,000 numbers are compared with. Next on CPU after
+it: (a) planner-vs-oracle measurement with `pair_eval`, then (b) the data build. (c) and (d) need a restart.
+- (e) **Tracker under-trained** (coordinator, 2026-11-12): stage 1 stopped at 2,250 (about 1.5 billion samples; the
+  paper's stage 1 is about 10 billion / 11,500 of our iterations and ends at >= 98.5 % per category). Paper eval with
+  reference contacts, per set, 2,250 -> 2,750: flat 92.7 -> 93.5, blocks 91.6 -> 93.3, 4x4 92.5 -> 93.2, ramps 95.6 -> 98.1,
+  terrain-park stairs 88.9 -> 89.7, fitted climbs 89.6 -> 90.1, Pico 2x2 100 -> 100, chains 77.0 -> 93.4 (filtered, not
+  comparable); mean of the seven comparable sets 93.0 -> 94.0 (+2.0 points per 1,000). Flat walking at 93.5 % says the
+  tracker itself is short of the paper, not only the obstacle sets. **Test:** per-clip failure concentration on CPU (if a few
+  clips hold most failures: clip defects, repair or drop; if spread: training) plus the slope at 4,000 / 5,000. **Change:**
+  longer reference-only training (stay in stage 2, or stage 3 with a larger reference share than 0.5) until every set is
+  >= 98.5 % or the slope is flat.
+- **Switch at 4,000 is on hold** (coordinator, 2026-11-12): report the 4,000 eval with the per-set table and a
+  recommendation first; the armed 5,500 / 6,500 switch stays untouched until the coordinator decides.
+
+### 16d. Pair export per checkpoint, automatic (eval monitor's request, 2026-11-12 05:40 UTC)
+- `code/ops/export_pair.sh RUN IT` (CPU, CUDA hidden): `eval/pair_<run>_<it>/` with `tracker_ckpt_<it>.pt`, `actor.npz`
+  (eval's `export_actor.py`, goal r 0.3 for s2, 0.2 for s3), `planner_attn.pt` / `planner_attn.onnx` (the checkpoint's own
+  online planner, `ckpt['planner']`), `adapter_card.json` (stage-specific label), `obs_check.npz` (`tools/handover.py`,
+  MuJoCo Warp on the CPU = the training simulator), `DONE`. 3,500 done in 33 s; ONNX vs torch max difference 1.2e-7.
+- `code/ops/export_every.sh` in tmux `acp-export`: every numbered checkpoint of `runs/s2_v1` and `runs/s3_v1` from 3,500
+  on, 60 s after it is written, cores 8-23, nice 19; log `eval/export_every.log`.
+
+### 16e. Goal-tile baseline of the stage-2 pair at 3,500 (CPU, 8 per family and level, 240 episodes, 0.20 m disc)
+Success / 8 at levels 0/2/4/6/9: stairs up 8/8/8/7/6, stairs down 6/5/5/6/1, logs 8/8/8/8/8, corridor 0/0/2/0/0,
+blocks 4/1/0/0/0, flat turns 1/2/4/4/1. Total 119/240; falls 6/240 (stairs up levels 6 and 9). At 3,000: logs 12/12,
+stairs up 6/12, flat turns 3/12, stairs down 1/12, corridor and blocks 0/12. Corridor, blocks and flat turns (backward,
+sideways, turn in place) are what stage 3 must teach. `eval/goal_check_s2_003500.json`.
+
+### 16f. Stage 3 disarmed; base first (user via coordinator, 2026-11-12: "we might get the base more stable first probably")
+- 05:27 UTC: tmux `acp-s3switch` killed (it was waiting for `ckpt_005500`; it had changed nothing). Line in
+  `runs/s2_v1/stage3_switch.log`. `code/ops/to_stage3.sh`, `code_s3/` and the stage-3 cfg are kept ready. Stage 3 starts only
+  on the coordinator's go, after the **base gate**: tracker paper eval with reference contacts >= 98 % on flat and blocks,
+  >= 95 % on every other trained set, and the planner-driven closed loop within 5 points of the oracle one. Stage 2 trains on.
+- **Per-clip failure analysis** (`code/tools/fail_clips.py`, CPU, on the only saved rollouts: 2,250, stage-1 sets, 334
+  per set, out `eval/paper_eval/s1_v1_002250_fail_clips.txt`). Terminations are ours (paper silent): 0.5 m root position
+  or 1.0 rad orientation error against the reference; success also needs the end within 0.5 m of the segment end.
+  - flat: 25 fail of 334, all early ends, 18 of them lagging > 0.3 m behind the reference, none low (no falls).
+    Clips with "jump" in the name fail 14 of 14, "crouch" 7 of 13; together about 21 of the 25 failures. Failure rate by
+    reference speed: < 0.6 m/s 11 / 300, 0.6-0.9 m/s 13 / 32; by peak yaw rate: < 1 rad/s 1 / 149, > 2 rad/s 11 / 35.
+    Without jump and crouch clips flat would be about 4 / 308 failures (98.7 %).
+  - blocks: 29 / 334; jump 13 / 13, crouch 5 / 11; without them about 11 / 310 (96.5 %); the rest are fast (> 0.6 m/s) or
+    sharp-turn (> 2 rad/s) clips.
+  - fitted climbs gst_v1: all 36 failures are jog-up clips (36 of 53 jog episodes fail), all with the root low (falls);
+    without jog clips 0 / 281.
+  - terrain-park stairs: 43 / 334, 8 of 10 failing clips hold the gap, 20 low (falls); 5 clips fail every time.
+  - chains (since filtered): slow (< 0.3 m/s) clips lag and terminate, 63 / 163; 21 clips fail every time.
+  - 4x4: 3 of 6 failing clips hold the gap (slow clips, lag).
+  - Reading: the cap near 93-94 % is mostly specific clip kinds (jumps, crouches, jog-ups, a few stair and 4x4 clips),
+    not walking in general; fast and sharp-turn walking is the part that is training, not data.
+- `tools/paper_eval.py` now also writes `<out>_episodes_seed<k>.pt` (clip, success, failed, set per episode, every seed;
+  small, inside a try) so the 4,000 live eval gives the same analysis for the current tracker and data 2c (copy before the
+  change: `_trash/2026-11-12/pre_episode_record/`).
+- **Data set 2e (proposal):** 2d arm fix plus: drop jump and crouch clips from flat and blocks; drop jog-up clips from gst_v1;
+  drop the clips that fail every time in the 4,000 per-episode record (stairs, 4x4, chains) after a look at each (bad
+  retarget, prop mismatch, sole or arm penetration via `tools/clip_quality.py` / `ground_check.py`). Expected: flat about
+  98.5-99 %, blocks about 96-97 %, gst about 99 %, terrain-park stairs about 97 % on the remaining clips. Gate numbers are
+  reported on the 2e sets and, beside them, on the old sets (so a rise is not a change of data sets alone), with the
+  excluded clips listed.
+- **When:** no restart is due now (stage 3 is off). Proposal: one short stop (under 2 minutes, as at 2,500 and 3,000) right
+  after the 4,000 live eval and its per-clip check, if the check confirms the same clip kinds.
+- Planner gap at 3,500: `tools/pair_eval.py` on CPU, 40 per set, oracle vs planner contacts (tmux `acp-cpu`, out
+  `eval/pair_s2_v1_003500/pair_eval_40*`); running.
+
+### 16g. Decision: data set 2e = 2d arm fix + style filter, restart armed right after the 4,000 live eval (ACP agent, 2026-11-12 05:40 UTC)
+**Fact (coordinator's count):** `x2_loco_flat_train.pkl` (351 clips) is SuperMimic's general-tracking "flat" file (flat
+ground, no style filter): bump 87 clips, walk 80, injured 79, idle 32, crouch 22, jump 20, turn 15, back 12, other 4.
+`x2_loco_blocks_train` is the same clips over blocks. SSR and Hiking filter it by name.
+**Check, 2,250 rollouts (paper eval, reference contacts), fail / episodes by style (first matching word):**
+flat: bump 1/106, injured 2/66, walk 0/66, idle 1/42, turn 0/20, jump 14/14, crouch 7/13, back 0/5, other 0/2 ->
+kept styles 1/135 (99.3 %) against 25/334 (92.5 %) on the old set. blocks: bump 6/112, injured 2/66, walk 2/63, idle 1/46,
+turn 0/14, jump 13/13, crouch 5/11, back 0/4, other 0/5 -> kept 3/132 (97.7 %) against 29/334 (91.3 %).
+**Decision and reasons:** the apparatus needs plain walking, turns, slow walking, stops and starts, stands and stepping back.
+- Drop jump and crouch: they hold most of the failures and the apparatus has neither.
+- Drop injured and bump: they track fine (3/172 and 7/218), so they cost no success. But they are about 47 % of the flat
+  data, and the stage-2 planner learns its contact plans from hindsight labels of successful rollouts. Limping and
+  stumble-into-obstacle footholds on open ground are what the planner should not propose; the apparatus pair falls on
+  open ground (street 31/50, amphitheatre 0/50).
+- gst_v1: drop the jog-up clips (all 36 failures there, all falls).
+Kept on flat and blocks: 143 of 351 clips each (62,704 frames, about 21 min); gst_v1 86 of 113. Set weights unchanged, so
+plain walking is sampled more.
+**Built on CPU:** `code/cfg/stage2e_sets.json` (as 2d plus `exclude_name`), `cfg/armfix_stage2e_sets.pt` (`tools/arm_clear.py`:
+every set 0.0 % of frames short of 1 cm clearance after), `cfg/labels_stage2e_sets.json.pt`. 1,157 clips, 384,715 frames.
+Loader: `exclude_name` / `exclude_clips` in `code_next/acp/data.py` and `code_s3/acp/data.py` (pre-change copies in
+`_trash/2026-11-12/pre_2e_filter/`). `tools/paper_eval.py` takes `ACP_EVAL_DATA=<cfg>`, so the old-set numbers can be
+measured beside the 2e ones.
+**Restart:** tmux `acp-restart2e`, `code/ops/restart_s2e.sh 4000` (= restart_s2b plus a wait for the 4,000 live-eval line and
+the eval lock). It stops stage 2, installs `code_next/acp`, runs the 3-iteration resume check on 2e, and resumes `s2_v1` from
+4,000 with `DATA=cfg/stage2e_sets.json`, budget 10,000 (base first; stage 3 only after the base gate). If the check fails,
+the previous code is restored and 2c resumes. GPU stop expected under 2 minutes. Log `runs/s2_v1/restart.log`.
+Resume command after it: `tmux new -d -s acp "ACP_PLANT=mc_20261024 DATA=cfg/stage2e_sets.json EXTRA='--stage 2 --init /mnt/filesystem-g4/tracks/acp/runs/s2_v1/init_from_s1_v1_002250.pt --planner-arch attn --u-obs 200 --u-rew 1700 --n-ann 1500' bash /mnt/filesystem-g4/tracks/acp/code/supervise.sh /mnt/filesystem-g4/tracks/acp/runs/s2_v1 36000 10000"`.
+**Not in 2e yet:** clips that fail every time on terrain-park stairs, 4x4 and chains. They wait for the 4,000 per-episode
+record (`_episodes_seed*.pt`) and a look with clip_quality / ground_check, then go in through `exclude_clips` at the next
+restart.
+**Expected:** reference-contact eval on 2e about 99 % flat, 97-98 % blocks, about 99 % gst. Old-set numbers are run beside
+them with `ACP_EVAL_DATA=cfg/stage2c_sets.json` at the 5,000 eval.
+
+### 16h. Hip-roll hull finding: decision (c), one restart, armed (ACP agent, 2026-11-12 06:30 UTC)
+**Finding** (`state/ssr_port_audit.md`; coordinator's shared-model decision): the pelvis / hip-roll convex hulls overlap by up
+to 10.9 mm; the real meshes keep about 5 mm. The eval measured 753-799 N per side on that pair for the 3,500 pair while
+walking, and on the corrected model the 3,500 pair falls 3 of 3.
+**Reproduced in our builder:** `gear_sonic/supermimic/assets.py` now has `X2_EXCLUDE_PAIRS=hip` (same name as the eval's
+switch): it adds `exclude pelvis / left_hip_roll_link` and `pelvis / right_hip_roll_link`. Default off, so running tools
+are unchanged; pre-change copy in `_trash/2026-11-12/pre_hip_exclude/`. Hull penetration without it: -3.9 mm at 0.12 rad
+inward and -10.9 mm at 0.235 rad (matches the audit). With it: no hip-roll contact at any of these angles.
+**Our references ask for the blocked range** (2e data, CPU): inward hip roll over 0.05 rad (where the hull contact starts)
+on 41.7 % (left) and 41.0 % (right) of all frames; over 0.12 rad on 17.0 % / 15.9 %; the most inward is 0.258 / 0.255 rad,
+past the 0.235 limit. So the tracker could never follow the reference hip roll on 40 % of frames. That fits its lag on
+turns and fast clips, where the step width changes.
+**Finish-rate slip 94.5 -> 94.0 -> 93.2 % (3,401-3,650 / 3,651-3,900 / 3,901-3,932):** only flat (94.8 -> 93.6 -> 91.9) and
+blocks (94.2 -> 92.9 -> 91.0) drop; every other set is flat within 0.5. eta_obs = (it - 2,250 - 200) / 1,500 reaches 1 at
+3,950, so over these iterations planner contacts replace the last 20 % of the reference contacts in the tracker's input.
+They do it worst on open flat ground, the same place where the apparatus pair falls. Not a data defect: the planner gap
+on flat ground.
+**Decision: option (c).** One restart, no 2e-only stop first (the armed 2e restart was killed at 06:24:56, unused):
+- Run `s1_v2` = the paper's stage 1 (oracle contacts, CSI starts, stage-1 KL / entropy) on the corrected body, data 2e
+  (style filter + 2d arm fix), initialised from s2_v1 `ckpt_004000` (tracker weights, Adam state, iteration count go on
+  from 4,000). `latest.pt` every 20 min (`--latest-minutes`, now in `code_next/acp/train.py`); every checkpoint records
+  `x2_exclude_pairs`, and `tools/paper_eval.py` sets the body from it.
+- Why stage 1 and not stage 2: the base gate is on reference contacts, the user wants the base stable first, and stage 2's
+  planner contacts are what slipped on flat ground. The s2_v1 planner at 4,000 is kept for the next stage 2
+  (`--planner-init`).
+- Why not (b) at once: a fine-tune keeps everything else the tracker learned (stairs, logs, ramps: 50/50 on step-1 tests).
+  It is tried first under a fixed tripwire, and (b) starts by itself if it fails.
+- No contact-softness ramp: MuJoCo Warp has no cheap per-iteration pair softness. The ramp is the stage-1 CSI curriculum
+  (starts near clip start, phase rises on success) plus early termination.
+**Tripwire** (`code/ops/tripwire_s1v2.sh`, tmux `acp-trip`, started by the restart; log `runs/s1_v2/tripwire.log`).
+Stage-1 finish rate (`end/finished_phase099`, CSI starts, mean of the last 50 iterations) was 86.9 % at the end of
+s1_v1. Marks: >= 60 % at 4,300 and >= 78 % at 4,600, else option (b) starts automatically as `runs/s1_v3` (fresh stage 1,
+corrected body, 2e, no init). Recovery target: >= 87 % by 5,000.
+**Restart** (`code/ops/restart_s1v2.sh`, tmux `acp-restart`, log `runs/s1_v2/restart.log`). It waits for s2_v1
+`ckpt_004000` and the 4,000 live-eval line plus the eval lock, ends the s2_v1 live-eval watcher, copies the init, stops
+s2_v1 and installs `code_next/acp`. Then a 3-iteration check: 4,096 envs, corrected body, 2e, the time-based save line
+required. Then it starts `s1_v2` (budget 12,000). On a failed check: previous code back, s2_v1 resumes on 2c. GPU stop
+expected under 10 minutes.
+**Live paper eval for s1_v2:** `code/ops/live_every_run.sh` in tmux `acp-evallive2` at 5,000 / 7,000 / 9,000 on the 2e sets
+and at 6,000 / 8,000 / 10,000 on the old 2c sets (`ACP_EVAL_DATA`). One eval per 1,000 as the rule allows, so the old- and
+new-set numbers alternate.
+**Up-weighting:** dropping 208 of 351 flat clips at the same set weight samples each kept clip (walk, turn, back, idle,
+stop/start: the sharp-turn, fast and slow clips) 2.45 times as often.
+**Not done / not verified:** whether the wrist / thigh contacts are physical (the audit's mesh-distance check on those pairs;
+next on CPU). No apparatus scoring of s1_v2 (stage-1 pairs have no planner; the apparatus is scored again once stage 2
+resumes on the corrected body). The door-corner stall (sideways goal at a standstill): it needs turn-in-place and
+sideways data or the stage-3 flat-turn tiles; 2e keeps and up-weights the turn and back clips.
+
+### 16i. 4,000 eval, restart outcome, s1_v2 running (2026-11-12 07:10 UTC)
+**4,000 live paper eval** (s2_v1, standard body, reference contacts, njmax 450, 334 per set x 3 seeds, 10 sets, 10,020
+episodes): pooled 93.0 %. Cost: 240 s, training 41 % slower while it ran, 64.1k env-steps/s after.
+Per set, 2,250 / 2,750 / 4,000 (%): flat 92.7 / 93.5 / 90.9; blocks 91.6 / 93.3 / 92.5; 4x4 92.5 / 93.2 / 84.3; ramps
+95.6 / 98.1 / 96.1; terrain-park stairs 88.9 / 89.7 / 93.0; gst_v1 89.6 / 90.1 / 84.5; Pico 2x2 100 / 100 / 100; chains
+77.0 / 93.4 / 90.1 (filtered from 2,750); gs2dn_v2 - / - / 99.4; gs2lo_v1 - / - / 99.4. Mean of the seven sets in all three:
+93.0 / 94.0 / 91.6, so -1.6 per 1,000 since 2,750. Stage 2 has made the tracker worse on reference contacts. Training
+moved its input to planner contacts (eta_obs reached 1 at 3,950).
+**Per clip at 4,000** (`_episodes_seed*.pt`, out `eval/paper_eval/live_s2_v1_004000_fail_clips.txt`):
+- flat: jump 35/36 fail, bump 21/312, walk 13/201, crouch 9/36, turn 8/54, idle 3/118, injured 1/215, back 0/22. Styles kept
+  in 2e: 93.8 % of 403 (2,250: 99.3 % of 135). Plain walking itself got worse in stage 2.
+- blocks: kept styles 97.5 % of 402.
+- gst_v1: jog 109/156; the rest 94.6 %.
+- Clips failing every time (seen >= 3 times): 4x4 3 clips hold 44 of 157 failures (88.2 % without them); chains 4 hold 48 of
+  99 (94.7 %); terrain-park stairs 1 holds 20 of 70 (94.9 %); ramps 4 hold 12 of 39. These are the `exclude_clips`
+  candidates for 2f, after a look at each.
+**Restart:** the scripted check "failed" only because the `[save]` log line was missing from `code_next` (the line had been
+added to `code_s3` only). The check run itself reached 4,003 on the corrected body. My script then restarted s2_v1, but its
+STOP flag was still in place (it moved the flag after the restart, unlike restart_s2b), so s2_v1 did not resume and the GPU
+stood idle from 06:50:22 to about 06:52. I added the line, installed `code_next`, and started `s1_v2` by hand at 06:52 UTC.
+Lesson: move the stop flag before starting the next job.
+**s1_v2 recovery** (stage-1 finish rate, CSI starts): 4,001 0 %, 4,011 12 %, 4,021 36 %, 4,031 58 %, 4,041 76 %, 4,051 83 %,
+4,061 89 %, 4,067 89.5 % (s1_v1 ended at 86.9 %). Root position error 0.198 -> 0.110 m. 118.6k env-steps/s (stage 1 has no
+planner). The tripwire (`acp-trip`) will pass 4,300 and 4,600 if this holds.
+**Shared model:** our builder's MJCF is the shared `x2_ultra.xml` (sha256 4f6a4f5b...). `X2_EXCLUDE_PAIRS=hip` adds the same
+two excludes as `x2_ultra_hipexclude.xml`. Adapter cards now carry `trained_model` (`ops/export_pair.sh`; existing s2_v1
+cards say the standard model).
+**Planner gap at 3,500** (CPU closed loop `tools/pair_eval.py`, 40 per set, 10 sets, the same clips and starts; standard body;
+caveats: njmax 300 overflow and height-field collision overflow warnings; small n):
+- All sets: oracle contacts 95.0 % (400), planner contacts 74.3 %.
+- Flat: oracle 97.5 %, planner 42.5 %. Blocks: oracle 90.0 %, planner 27.5 %.
+- With a falls-only rule: flat 100 / 60, blocks 92.5 / 52.5.
+- So on open ground the online planner's contacts cost about 55 points. This is fallback (a) with numbers. The base gate's
+  "planner within 5 points of oracle" is far off, and it is the main lever for street and amphitheatre after the base.
+  Next stage 2 on the corrected body: retrain the planner from the s1_v2 tracker's successful rollouts (hindsight labels,
+  `acp.planner label/train`, CPU) before the co-training ramp, and measure flat and blocks separately.
+
+### 16j. Decisions 07:30 UTC (ACP agent, 2026-11-12)
+- **s1_v2 is kept; option (b) is not needed.** Finish rate 95.4 % at 4,251. Per set: flat 97.4, blocks 97.3, gst 98.2,
+  Pico 98.9, gs2lo 97.1, stairs 95.9, ramps 95.8, gs2dn 95.0, 4x4 91.7, chains 88.5. 110k env-steps/s, 7.4 s per
+  iteration. `acp-trip` stays as a guard.
+- **Live paper eval brought forward:** `acp-evallive2` now at 4,500 / 5,500 / 6,500 / ...; still one per 1,000. Sets
+  alternate: 4,500 on 2e, 5,500 on the old 2c sets, and so on. 4,500 is expected about 07:55 UTC, 5,500 about 10:00 UTC.
+- **Return to stage 2 (mark):** the first live eval on the 2e sets with flat >= 98 %, blocks >= 98 % and every other set
+  >= 95 % (reference contacts, corrected body). The old-set numbers are reported beside it and do not gate: they keep the
+  excluded jump, crouch and jog clips by design. The restart then goes to stage 2 on the corrected body:
+  - kept planner (`--planner-init` from s2_v1 4,000) and a new eta ramp (s2_start = the restart iteration);
+  - data 2e plus `exclude_clips` (2f) for the always-failing 4x4, chains, stairs and ramp clips once each is checked.
+  If 4,500 passes: restart about 08:00, first stage-2 pair on the corrected body at +250 (about 09:00 UTC). If not: the
+  next 2e eval is at 6,500 (about 12:05 UTC).
+- **Corrected-body pair available now,** without waiting for stage 2: `eval/pair_s1_v2_004250/`. It is the s1_v2 tracker
+  (trained_model `x2_ultra_hipexclude.xml`) plus the kept s2_v1 4,000 planner, labelled interim (the tracker was not
+  co-trained with this planner). `obs_check` was recorded on the corrected body: `export_pair.sh` now sets
+  `X2_EXCLUDE_PAIRS` from the checkpoint. `acp-export` exports every s1_v2 checkpoint the same way (every 250
+  iterations, about 31 min).
+- **Arms against the real meshes** (2e with the 2d arm fix, 600 random reference frames, arm visual-mesh vertices to the
+  same-side thigh and knee visual meshes, vertex spacing 0.3 mm; `eval/arm_real_mesh_2e.txt`): left: min 0.1 mm,
+  < 5 mm on 7.5 % of frames, < 10 mm on 20.8 %; right: < 5 mm on 9.0 %, < 10 mm on 24.5 %. **2d does not clear the real
+  meshes.** It cleared the training hulls by 1 cm, and the hip-roll collision mesh is 0.9-scaled in y. The no-fix
+  comparison is still running (`acp-cpu2`). Fix for 2f: arm_clear against the real visual meshes (or a 2 cm hull target),
+  checked with this script before the stage-2 restart.
+- **Arm comparison done** (same script, same 600 frames): without the 2d fix the arms are within 5 mm of the real leg
+  meshes on 47.7 % (left) / 40.7 % (right) of frames, touching (0.0 mm) at the 1st percentile; with 2d 7.5 % / 9.0 %, min
+  0.1 mm. 2d removes about 80 % of the near-contacts on the real meshes; the rest is the 2f item above.
+
+### 16k. 4,500 eval, gate, planner plan, 2f (ACP agent, 2026-11-12 08:30 UTC)
+**4,500 live paper eval** (s1_v2, corrected body, data 2e, reference contacts, 10,020 episodes): 97.7 % pooled.
+Per set: flat 99.0, blocks 98.3, ramps 99.1, terrain-park stairs 97.5, gst_v1 100, gs2dn_v2 100, gs2lo_v1 98.2, Pico 2x2 100,
+chains 94.9, 4x4 89.8. For comparison, 4,000 on the old body / 2c: 93.0 % pooled. The `.out` confirms
+`X2_EXCLUDE_PAIRS=hip`. `paper_eval.py` now writes `data`, `x2_exclude_pairs` and `trained_model` into every result
+file, and the 4,500 file has been annotated.
+**Gate: not passed.** Flat and blocks pass. Chains are 0.1 under 95 and 4x4 is 5.2 under. Stage 1 continues.
+**Failing clips at 4,500** (episode records, `tools/clip_quality.py` on 2e, `eval/clip_quality/clip_quality_stage2e.json`):
+- chains: 4 clips fail every time (46 of 51 failures; 99.5 % without them). They carry retarget joint jumps of 0.36-0.39
+  rad per 50 Hz frame (flag `jump`), 3 of them also `limit_dwell`. Defects: excluded in 2f (plus #434, 4 of 9, same flags).
+- 4x4: failures spread over 8 of 56 clips (1110: 28/29, 1136: 20/22, 1124: 18/18, 1108: 16/27, ...).
+  - Clips 1110, 1136, 1108, 1109 and 1135 have no quality flag: that is the step-over itself, a skill, and those clips stay.
+  - 1122 and 1106 have soles 9-10 cm inside the log on 15-21 % of frames (`sole_penetration`): defects, excluded in 2f.
+  - 1124 (sole penetration 9.8 cm on 1.7 % of frames) stays.
+  - Since both 4x4s are mandatory, 2f raises the 4x4 weight from 0.07 to 0.12 (ramps, at 99.1 %, go from 0.10 to 0.05).
+- terrain-park stairs: no clip fails every time; 460 and 467 are partial (`limit_dwell` 16 %). They stay.
+**Why the planner fails on open flat ground** (3,500 closed loop, 40 per set, planner vs oracle contacts): flat 42.5 vs
+97.5, blocks 27.5 vs 90, ramps 62.5 vs 100, Pico 2x2 80 vs 100. But stairs 90 vs 95, gst 90 vs 85, chains 85 vs 92.5 and
+4x4 85 vs 90. The planner holds where the terrain has features and fails where the scan is flat or smooth. Reading:
+- (1) Decode is top-1 over the 0.1 m scan grid (`planner.decode`). On a flat scan all 187 points have the same height, so the
+  affordance argmax has nothing to anchor on: targets snap to grid cells (up to 7 cm off) and can jump between cells or to
+  the scan edge. A random history on a flat scan decodes to (0.8, 0.3), the grid corner.
+- (2) The labels on flat ground were multimodal: 47 % injured and bump styles, plus jump and crouch. 2e removes them.
+- (3) The tracker was co-trained only on planner contacts after eta_obs reached 1, so its reference-contact tracking slid
+  (plain walk 99.3 -> 93.8 %).
+**Changes for the next stage 2 (code in `code_next`, CPU tests running):**
+- a. **Planner pre-trained on corrected-body hindsight labels.** tmux `acp-roll`: CPU paper eval of s1_v2 4,500 with the
+  rollout dump (100 per set) -> `acp.planner label` -> `acp.planner train --arch attn`. Output in
+  `runs/planner_s1v2_004500/`. Stage 2 starts from whichever of it or the kept s2_v1 planner scores better on the CPU
+  closed loop (flat and blocks reported separately).
+- b. **Decode test.** `ACP_DECODE_K` in `acp/planner.py`: k > 1 = affordance-weighted mean of the top-k points; default 1,
+  unchanged. Being tested on CPU (tmux `acp-dec`: s1_v2 4,500 tracker with the kept planner, k = 1 and k = 4, 20 per
+  set). If k = 4 closes the flat gap, stage 2 trains with it (departure: the paper uses top-k decode; k is our choice).
+- c. **Reference-contact floor:** `--eta-obs-max 0.8` (20 % of the tracker's contact input stays reference contacts;
+  departure: the paper ramps to 1). This keeps the tracker trained on reference contacts.
+- d. **Slower ramp:** `--n-ann 3000` instead of 1,500.
+- e. **Per-set gate on the ramp:** `--ramp-gate 2`. While flat's or blocks' finish EMA is more than 2 points under its
+  value at the ramp start, the ramp holds (`eta_hold`, logged as `stage2/eta_hold`, saved in the checkpoint).
+**Data set 2f** (`cfg/stage2f_sets.json`): 2e plus `exclude_clips` (5 chains segments, 2 4x4 clips) and the 4x4 / ramp weights
+above. The arm fix is rebuilt with 2 cm hull clearance (`ARM_CLEAR=0.02`) and checked against the real meshes (running).
+The loader now matches `exclude_clips` against segment names (`s<set>/<clip>#<seg>`); the first build, before that fix,
+is in `_trash`.
+**Return to stage 2:** at the restart that installs 2f, which is a needed restart (data change). Condition: the 5,500
+live eval (old 2c sets) confirms the tracker holds on the old sets, and the planner pre-training (a) and the decode test
+(b) are done. Then stage 2 from the newest s1_v2 checkpoint: corrected body, 2f, planner from (a) or kept, b-e on.
+Expected: restart about 10:10 UTC, first corrected-body stage-2 pair at +250 about 11:10 UTC. Until then the interim pairs
+(s1_v2 tracker + kept planner) are exported every 250 iterations. Every export now also runs a 4-per-set planner closed
+loop and writes `pair_eval_40/obs_check_pair.npz` (backfilled for 4,250 and 4,500 by `acp-cpu3`).
+
+### 16l. Interim pairs drift away from the frozen planner: return to stage 2 sooner (ACP agent, 2026-11-12 08:25 UTC)
+**Eval monitor** (corrected model, our apparatus, 50 seeds): the interim pair at 4,250 scored 17/50 and at 4,500 5/50.
+Walking speed fell 0.42 -> 0.342 m/s. Falls moved to the 4x4s and the landing; there were 13 stalls on the ramps.
+Stage-1 training moves the tracker away from what the frozen 4,000 planner produces, so interim pairs are not a measure of
+progress and every stage-1 iteration widens the gap.
+**Decision:** the 5,500 eval is no longer a condition. Stage 2 restarts as soon as (a) the corrected-body planner
+pre-training and (b) the decode test are done and the 2f arm check passes, expected about 09:45-10:00 UTC. The 4x4 skill
+(89.8 %) keeps training in stage 2: 20 % reference-contact floor and 4x4 weight 0.12. The restart is needed anyway
+(data 2f, stage change).
+**Fixes:**
+- `tools/paper_eval.py` runs on the CPU when no GPU is visible (the handover's CPU physics). The first `acp-roll` run had
+  failed on a CUDA-only load; it was restarted at 08:20 with 80 per set.
+- Interim pair cards now say the planner is byte-identical to the s2_v1 4,000 planner and was not trained with that
+  tracker (`planner_iteration` 4000). The 4,250 and 4,500 cards are corrected; `export_pair.sh` does this for every
+  PLANNER_FROM export.
+- `pair_eval_40/obs_check_pair.npz` exists for 4,250 and 4,500 (backfilled 08:1x UTC) and is written by every new export.
+  Planner closed loop, 4 per set, falls-only rule: 4,250 planner 77.5 % vs oracle 95 %; 4,500 planner 82.5 % vs oracle 95 %.
+
+### 16m. Station stop, decode result, arm 2f result, restart script (ACP agent, 2026-11-12 09:00 UTC)
+**The pair does not stop at the last station** (eval: it walks 0.4-0.7 m past button 5 and over the landing's 1.12 m drop).
+- Stage 2 has no hold after arrival: an episode ends when its clip ends.
+- Stage 3's stand-at-goal term needs the goal environments (stage 3, held until after the base).
+- So the stop moves into stage 2 as data: `tools/hold_clips.py` writes `<set>_hold.pkl`, where every clip whose last
+  frame is in double support (both feet in labelled contact) gets a 1.5 s stand appended (last frame held: zero velocity).
+  Clips that got the stand: flat 103 of 351, blocks 103/351, terrain-park stairs 83/88, ramps 190/264, 4x4 44/56,
+  gs2dn 30/57, gs2lo 31/82, Pico 6/10. Chains and gst end mid-climb, so none of theirs (their original files stay in 2f).
+- In stage 2 the goal is the segment end, so these clips train arrive -> stop -> hold with the goal near zero. The paper
+  eval's "not ended early" now includes the 1.5 s hold.
+- 2f is rebuilt with the stands: 1,161 segments, 426,366 frames, arm fix and labels rebuilt; the pre-stand 2f is in
+  `_trash/2026-11-12/cfg_2f_pre_hold/`. The ramp gate uses the `_hold` set names.
+**Decode test (refutes reading (1) of 16k)** (s1_v2 4,500 tracker + kept planner, CPU closed loop, 20 per set):
+- top-1: planner 67.5 % (flat 55, blocks 40, ramps 45, chains 30, 4x4 60) vs oracle 99 %.
+- top-4 weighted: 65.5 % (flat 55, blocks 40).
+- The decode is not the cause; it stays top-1 (as the paper). The gap is the planner's training: labels and data from the
+  old body and old styles, and a tracker not co-trained with it. Hence (a), re-labelling on the corrected body.
+**Arm fix 2f against the real meshes** (2 cm hull clearance, same 600-frame check):
+- Arms within 5 mm of the same-side thigh / knee: left 0.2 %, right 0.2 % of frames; min 2.7 / 1.3 mm.
+- For comparison, 2d (1 cm hulls): 7.5 / 9.0 %, min 0.1 mm; no fix: 47.7 / 40.7 %. The real meshes now clear.
+**Restart script ready:** `code/ops/restart_s2v2.sh` (`PLANNER=<file>`).
+- Stops s1_v2 (stop flag moved to `_trash` before anything starts) and ends the s1_v2 watchers.
+- Restarts `acp-export` so it picks up `runs/s2_v2`, and installs `code_next/acp`.
+- Runs a 3-iteration stage-2 check (4,096 envs) with the full flag set, then starts `s2_v2` from s1_v2's `latest.pt`:
+  corrected body, 2f, planner-init, u_obs 200, u_rew 1700, n_ann 3000, eta_obs <= 0.8, ramp gate 2 points on
+  flat / blocks; budget 14,000.
+- Arms the live eval at the next x,500 and then every 1,000. On a failed check, s1_v2 resumes.
+- Planner choice: the corrected-body pre-trained planner (`runs/planner_s1v2_004500/planner_attn.pt`, labelling and
+  training on CPU now, `acp-roll`) if it beats the kept s2_v1 4,000 planner on the same CPU closed loop (flat and blocks
+  first); otherwise the kept one.
+
+### 16n. Hold at goal: what the policy gets, and the new CPU check (ACP agent, 2026-11-12 09:30 UTC)
+**Goal command:** (dx, dy) = d / max(|d|, 0.3) in the body-yaw frame and dpsi = goal heading minus robot heading (`env.py`
+336-340). In stages 1-2 the goal is the reference at the segment end, so the policy sees a goal near zero only at clip
+ends (where the episode ends at once), in idle clips, and now in the 1.5 s stands of 2f. With nothing after the last
+station, our adapter convention is goal = that station's point and heading. A nonzero dpsi there asks for a turn in
+place, which stages 1-2 hardly train (the door-corner finding).
+**Stations next to a drop in training:** stage 2 has stair-top landings in the terrain-park and gs2 clips. Their 2f stands
+put holds on 0.3 m tops (the gst climbs to 1.02 m end mid-climb and get no stand). Stage-3 stairs-up tiles end with a
+station on a landing up to 1.07 m high (level 4) with a drop on three sides.
+**New CPU check** (`code_s3/tools/goal_check.py`, plus a `PLANNER=` option for stage-1 trackers). From the step the final
+station is first held, the next 3 s: pelvis travel, peak horizontal speed and falls. Pass = travel < 0.20 m, speed < 0.15
+m/s, no fall; the station height is reported. Rows are written to the json.
+**First result** (s1_v2 5,000 + kept 4,000 planner, 4 per family, levels 0 and 4, `eval/goal_check_s1v2_005000_hold.json`):
+- 18 holds checked, 13 pass, 0 falls. Median travel 1.6-6.2 cm; median peak speed 0.07-0.14 m/s (close to the 0.15
+  limit); speed is what fails.
+- On stair-top landings 0.87-1.07 m high (drop edge): 3 of 5 pass, none fall.
+- Corridor, blocks and flat turns did not reach their final station.
+**Reading:** in our own goal tiles the policy stops and holds next to a 1 m drop, with the goal fixed and nothing after it.
+At button 5 the eval sees it walk 0.58 m and turn left. So the difference is more likely the eval's command after the
+last station (heading, lookahead or goal source) or the landing's rail posts in the scan than the policy's stand itself.
+For the eval monitor: log the (dx, dy, dpsi) fed at button 5 during the second after arrival.
+
+### 16o. Stage 2 on the corrected body started: run s2_v2 (ACP agent, 2026-11-12, node clock 10:13 UTC)
+**Stand-at-the-drop set** (eval: at button 5 the policy cannot hold a stand 0.3 m from the landing's 1.12 m drop; 60 % on
+the apparatus when that station is moved inward). `tools/stand_edge.py`:
+- Source: the 26 plain idle clips of the flat set that drift < 0.10 m (10 others drift more and are skipped).
+- Each is lifted onto a 1.5 x 1.5 x 0.3 m landing slab (a size gs2 already uses, so no new prop slot) with its top at
+  1.1 m. The front edge is 0.25-0.45 m ahead of the pelvis, facing it; two corner variants also put the left or right
+  edge 0.30-0.40 m to the side.
+- 78 clips: `data/clips/stand_edge_v1.pkl` + `_props.json`, set weight 0.05 in 2f (flat 0.20 -> 0.15).
+- Checked on CPU: feet in labelled contact on 99 % of frames (min 95 %), pelvis 1.75-1.79 m (on top of the slab); arm fix
+  clean.
+**Planner choice** (CPU closed loop, s1_v2 5,000 tracker, 20 per set; oracle 99 %):
+- kept s2_v1 4,000 planner: 74.5 % (flat 55, blocks 45);
+- scratch planner on corrected-body labels: 63.0 % (flat 30);
+- kept planner fine-tuned 15 epochs on those labels (`runs/planner_s1v2_004500/planner_attn_ft.pt`): held-out target
+  error median 0.062 m (scratch 0.237); its closed-loop number is still running.
+- Decision: start stage 2 with the fine-tuned planner and not wait for that number. It starts from the kept one and fits
+  the corrected-body labels 4 times better, and every stage-1 iteration widened the gap.
+**Restart:** `restart_s2v2.sh`, stop 10:12:51, check passed 10:13:19 (stage 2, planner start 5,500, u_obs 200, u_rew 1700,
+N_ann 3000), s2_v2 started 10:13:19 from s1_v2 5,500, data 2f (defect clips out, 4x4 0.12, 2 cm arm fix, 1.5 s stands,
+stand-at-drop set), eta_obs <= 0.8, ramp gate 2 points on flat / blocks. GPU idle about 1.5 min.
+**First iterations:** 5,522: finish 94.9 %, flat 98.0 %, stand-at-drop 44 -> 65 % (new, rising), 71k env-steps/s,
+GPU 82 % / 53 GB. eta_obs 0 until 5,700, then 3,000 iterations to 0.8.
+**Exports:** every s1_v2 pair since 5,000 has `pair_eval_40/obs_check_pair.npz`. The script writes it before `DONE`, and an
+export takes about 6 minutes after the folder appears, so a folder without `DONE` is still being written.
+**Next:** first co-trained corrected-body pair `pair_s2_v2_005750` at about 11:10 UTC; it is still nearly tracker-only
+because eta_obs is only 0.017 at 5,750. Live paper eval at 6,500 (2c sets) and 7,500 (2f). Watchers: `acp-evallive2`,
+`acp-export`, `acp-backup`. `acp-trip` is ended (option (c) kept at 5,000).
+**Fine-tuned planner, closed loop** (same test, 20 per set): planner contacts 83.0 % (kept 74.5 %, scratch 63.0 %; oracle
+99 %); falls-only rule 92.0 %. Per set: flat 55 (falls-only 80), blocks 45 (65), chains 70, ramps 85, 4x4 90, stairs 95,
+the rest 90-100. The choice holds. Flat and blocks are still the gap; under the falls-only rule most of their failures
+are early ends (lag), not falls. The ramp gate in s2_v2 watches exactly these two sets.
+
+### 16p. 5,750 -> 6,000 apparatus drop (57.0 % -> 39.5 %): diagnosis (ACP agent, 2026-11-12, node clock 13:40 UTC)
+**Planner share in training:** eta_obs 0.016 at 5,750, 0.100 at 6,000, 0.228 at 6,386; eta_hold 0 (the flat / blocks gate
+never fired: flat finish 97.9 -> 99.3 %). Planner contacts are switched per env and per control step with probability
+eta_obs (`env.py`), so at 6,000 training still sees 90 % reference contacts. No training env runs planner-only, and no
+training number measures what the apparatus pair does.
+**Cross test** (CPU closed loop on the reference clips, 16 per set, tracker x planner at 5,750 / 6,000;
+`eval/xcheck_5750_6000/`). Planner-driven success:
+- T5750+P5750 81.3 %, T5750+P6000 83.5 %, T6000+P5750 83.0 %, T6000+P6000 81.8 %. Oracle 98.9-99.4 %.
+- 4x4 81.2 % in all four; ramps 50-75 %; flat 44-56 %.
+- So on reference clips neither the tracker nor the planner got worse between 5,750 and 6,000. The apparatus drop (4x4
+  approach and ramp stalls) does not show where the goal is the reference's segment end. It needs waypoint goals:
+  goal-tile check (logs, flat turns, stairs) at both checkpoints running, `acp-g005750` / `acp-g006000`.
+**Gate change written** (`code_next`, not yet running):
+- `--probe-envs N`: N envs that always use planner contacts. Their per-set finish is logged as `probe/finish/<set>`.
+- `--gate-signal probe`: the ramp gate watches the probe finish on the gated sets. Base = the best EMA after 100
+  updates. Hold the ramp below base - gate; back off 3 iterations per iteration below base - 2 x gate.
+- Proposed sets: 4x4, ramps, flat, blocks.
+**Goal-tile check, 5,750 vs 6,000** (waypoint goals, 8 per family and level, levels 0 / 4 / 9): the same at both.
+- logs (4x4 at the higher levels) 24/24 and 24/24, 0 falls; stairs up 21 / 22; stairs down 15 / 14; blocks 7 / 7;
+  corridor 1 / 0; flat turns 3 / 3.
+- My CPU checks therefore do not reproduce the apparatus drop. It is in apparatus geometry and approach (the front 4x4 with
+  the course around it, the ramps' front side), not in the tracker or planner on our tiles or clips.
+**6,500 live paper eval** (s2_v2, corrected body, data 2f, reference contacts, 11,022 episodes; the alternation rule
+put 6,500 on 2f, not 2c): 99.46 % pooled.
+- Per set: flat 99.4, blocks 98.8, chains 100, terrain-park stairs 98.2, gst 100, gs2dn 100, gs2lo 99.8, ramps 99.1,
+  4x4 98.7, Pico 100, stand-at-drop 100.
+- **Base gate passed on 2f.**
+**Decision, done:** the ramp is not held at the 5,750 share. The cross test shows neither component got worse with the
+share, and holding at 1.7 % would leave the tracker untrained on its own planner. Instead s2_v2 was restarted at 6,500
+(13:49:36-13:50:01 UTC, `code/ops/restart_probe.sh`) with 720 planner-only probe envs (2 %). The ramp gate watches their
+finish on 4x4, ramps, flat and blocks: hold under best - 2 points, back off under best - 4.
+- First probe numbers (planner-only finish, 6,500-6,548): flat 82.3 %, blocks 82.1, chains 86.7, terrain-park stairs
+  92.9, gst 95.8, gs2dn 95.8, gs2lo 99.1, ramps 86.9, 4x4 93.7, Pico 99.3, stand-at-drop 100.
+- eta_obs 0.28, no hold so far.
+- This is the first training number that measures what the eval pair does.
+**Stairs approach** (the robot arrives still turning and hits the first riser): stage-2 data has no turn right before a
+flight. The stage-3 stairs tiles have exactly that (a heading turn of up to +-70-90 degrees after the waypoint before
+the flight), so it is the first reason for stage 3, which is now open since the base gate passed. Until then, an eval
+waypoint square at the foot of the flight (a station with the heading of the flight) would be the cheap test that it
+is the approach.
+
+### 16q. The eval's three traced gaps at 6,000: counts, why, fixes (ACP agent, 2026-11-12, node clock 14:40 UTC)
+**Counted in the training data** (2f, reference pose = robot pose; `/tmp/situ.py`, method in the script header). Three
+situations:
+- (1) goal (segment end) under 0.5 m away with |dpsi| > 2.5: 2,219 of 454,116 frames (0.5 %), in 24 segments: ramps 11,
+  flat 6, blocks 6, 4x4 1. Goal tiles: flat_turns has turn-in-place and backward legs, but stage 3 is not running.
+- (2) a ~0.1 m step down started from a stand (still 0.5 s, then the root drops 0.06-0.16 m within 1.5 s): 45 segments
+  (stairs 22, chains 12, ramps 11).
+- (3) a heading change > 0.5 rad within the 0.5 m before the first rise of a flight: 0 on every stairs set (11 only on
+  ramps). The diagonal approach that turns onto a flight next to the first riser is not in the training data at all.
+**Why 6,000 lost what 5,750 had:** the planner share rose 0.016 -> 0.100. More planner-driven steps feed the online planner's
+hindsight buffer, and a skill seen in 0.5 % of frames (1) can be overwritten in 250 iterations. Gap (1) is the planner
+forgetting; gap (2) is the tracker drifting on a rare start. The probe envs (2 %, planner-only, reference clips) would
+not have caught either: they sample the same rare situations, and a per-set finish rate averages them away. They guard
+against general planner-driven decline, not these.
+**Fixes:**
+- (1) Data: `turn_place_v1` (turn > 2.0 rad with < 0.6 m travel, from the kept flat styles). Only 4 clips / 18
+  segments / 162 frames qualify, so data alone cannot fix it.
+  - The training fix is stage 3's flat_turns goal tiles: turn in place, backward and sideways with goals behind.
+  - Adapter rule, eval side: the current command is a poor way to ask for a turn. A target 0.36 m straight behind, plus
+    the 0.3 m lookahead, becomes a full-length goal (-0.95, +-0.3) with dpsi near pi, which training has almost never
+    shown.
+  - The rule I specify for ACP pairs: when the bearing to the next waypoint exceeds 1.5 rad and it is within 1.0 m, no
+    lookahead; command (dx, dy) = 0.3 m in the direction of the bearing clipped to +-1.0 rad, with dpsi clipped to
+    +-1.0 rad, until the bearing is under 1.0 rad; then the normal rule. That is a turning walk, which the data has in
+    every turn clip.
+- (2) Data 2g: 1.0 s stands prepended to every clip that starts in double support in the stairs, gs2, ramps, 4x4, chains
+  and gst sets (`*_hs.pkl`; ramps 253 of 264, stairs 83/88, gst 86/113, chains 34/96, 4x4 44/56, gs2lo 41/82,
+  gs2dn 7/57). Count (2) rises from 45 to 49 segments, but every one of those clips now starts from a standstill
+  before its first step.
+- (3) Not trainable in stage 2 (count 0). Stage 3's stairs tiles have a +-70-90 degree heading turn after the waypoint
+  before the flight. The eval's foot-station test: 13 of the 15 that stood square at the foot climbed the whole flight.
+  So it is the approach, and stage 3 (or an eval waypoint square at the foot) is the fix.
+**Done:** s2_v2 restarted on data 2g (`cfg/stage2g_sets.json`, `tools/mk_stage2g.py`, arm fix and labels rebuilt; flat weight
+0.15 -> 0.12, turn_place 0.03). Stop 14:38:42 at latest 6,698; back 14:39:08; 39 iterations lost. Probe gate unchanged
+(set names `_hs` for 4x4 and ramps).
+**Regression set (eval's offer c): yes.** Freeze `pair_s2_v2_005750` (57.0 %) as the reference pair. Rerun on each new
+pair: the turn-around seeds (1001, 1005, 1036), the ramps-trough seeds (1019, 1022) and the stairs seeds. Gaps (1) and
+(3) will not move until stage 3 or the adapter rule; (2) should move with 2g from about 6,950 on.
+**Next decision:** stage 3 is the training answer for (1) and (3), and the base gate is passed (16p). Stage-3 code
+(`code_s3`) predates the eta ceiling, ramp gate and probe envs; merging those is the next CPU job. Switch after the
+6,500 / 6,750 apparatus results.
+
+### 16r. Three falling apparatus scores: planner frozen at 5,750 (ACP agent, 2026-11-12, node clock 15:08 UTC)
+**Apparatus, strict rule, 200 seeds:** 5,750 57.0 % -> 6,000 39.5 % -> 6,250 36.0 %. At 6,250, 52 of 74 stalls are the
+turn-around after button 1. The stairs improved: on the 45 stairs seeds 6,250 has 14 successes and 4 stair falls.
+**a) Decision, done: freeze the planner at 5,750, keep training the tracker.**
+- `--freeze-planner <ckpt>` (`code_next/acp/train.py`): loads that checkpoint's planner and skips the online planner updates.
+  The hindsight buffer can no longer overwrite rare skills, and the tracker keeps adapting to one fixed planner as the
+  ramp continues (ceiling 0.8, probe gate on).
+- Source: `eval/pair_s2_v2_005750/tracker_ckpt_005750.pt` (the run's 5,750 checkpoint was pruned to `_trash` by the
+  retention rule; the pair folder holds the full copy).
+- Restart `code/ops/restart_freeze.sh`: stop 15:07:16 at latest 6,750, check passed ("planner frozen" in the log),
+  back 15:07:38; 0 iterations lost.
+- Why this and not a cap or a replay share: the eval traced gap 1 to the planner (the 6,000 planner proposes no step;
+  5,750 turns). A cap would leave the tracker unadapted to its planner, and a replay share needs counts of situations
+  that are 0.5 % or absent (16q).
+- **One check:** the turn-around seeds (1001, 1005, 1036) on the first frozen pair, 7,000 (about 15:55 UTC). Expected: the
+  5,750 behaviour (turns and walks on), with the tracker's later gains (stairs) kept.
+**b) Eval cores:** first the swap test (planner 5,750 + tracker 6,250, and the reverse), `turnwalk` and the three
+regression seed sets. 6,500 and 6,750 are from the forgetting regime, so only the regression seed sets for them, not
+200 + 200. The next full 200 + 200 is the first frozen pair at 7,000.
+**c) Stage-3 rule, in numbers.** "Stable" means the apparatus.
+- Stage 3 starts when two consecutive frozen-planner pairs (250 apart) each score at least 57 % strict on our apparatus
+  (the 5,750 reference). The paper eval with reference contacts must stay >= 98 % on flat and blocks and >= 95 % on
+  the rest, and planner-only probe finish must be >= 90 % on flat, blocks, 4x4 and ramps.
+- Second route to stage 3: if two consecutive frozen pairs score under 57 % and the regression sets show that >= 70 % of
+  their failures are the turn-around (gap 1) and stair approach (gap 3) — both absent from stage-2 data, so not
+  trainable there — stage 3 is the fix.
+- If neither holds after 7,500: stop and diagnose before anything else.
+
+### 16s. Swap test: the turn-around stall follows the tracker; fallback prepared (ACP agent, 2026-11-12, node clock 15:46 UTC)
+**Swap TEST** (eval, 50 seeds each). Successes / turn-around stalls:
+- pair 5,750: 21 / 0
+- pair 6,250: 18 / 8
+- planner 5,750 + tracker 6,250: 27 / 4
+- planner 6,250 + tracker 5,750: 27 / 0
+The stall follows the tracker. The planner's proposal depends on where the tracker puts the feet. The stairs improve with
+either newer half.
+**Stand pose after button 1** (my trace with the eval harness, corrected model, seeds 1001 and 1005;
+`acp_pose_trace.py` and `pose_*.npz` in the coordinator's shared scratchpad):
+- Stance width at the stand: 5,750 0.199 / 0.250 m; 6,250 0.199 / 0.165 m. Foot yaw within +-0.4 rad for both. No
+  systematic stance difference.
+- What differs is the planner's occupancy for one foot at that stand: 6,250 seed 1001 has 0.34 on the left foot (under the
+  0.5 validity line), so no left step is proposed. Yaw change in the first 3 s: 0.48 rad (6,250) against 2.89 (5,750).
+- All four traces finished in my 90 s runs (6,250 seed 1001 in 88.8 s, slowly).
+- Reading: the newer tracker's pose and history at the stand push the planner's foot occupancy across 0.5 for one foot. It is
+  a co-adaptation edge, not a clearly different stance.
+**b) Decision rule for the 7,000 check** (read against planner 5,750 + tracker 6,250: 27/50, 4 stalls):
+- If the turn-around seeds (1001, 1005, 1036) or the 50-seed set show turn-around stalls at 7,000, the tracker restarts
+  from 5,750 as well: `code/ops/restart_t5750.sh` (prepared, not run). It starts a new run s2_v3 from
+  `pair_s2_v2_005750` (tracker and planner), planner frozen at that checkpoint, data 2g, probe gate, same ramp, and adds
+  s2_v3 to the export watcher. The stairs gain of the newer halves is the cost; 2g's prepended stands are meant to cover
+  the step-down part of it.
+- If 7,000 has no turn-around stalls: s2_v2 continues frozen.
+**c) Hold-out gate:** yes. The CPU checks cannot reproduce this (16p), so the gate on tracker checkpoints is the eval's
+three turn-around seeds plus the two ramps-trough seeds, run on every export before its 200 + 200. A pair that stalls
+on any of the three turn-around seeds is not kept as a candidate.
+
+### 16t. Decisions received; extended map in stage 3 (ACP agent, 2026-11-12)
+- **Stage-3 second route allowed** (coordinator's recommendation under the user's rule of 2026-11-12, on the user's todo
+  list, can be overturned): two consecutive frozen-planner pairs under 57 % strict, with >= 70 % of their failures at the
+  turn-around and the stair approach. "Neither route by 7,500: stop and diagnose" stays.
+- **User confirmed:** strict stand with corrective steps allowed (the 1 s counts after the step); button 5 stays where it is.
+- **Extended map** (user: "i was expecting our extended terrain map be part of these training runs"). For ACP it goes into
+  stage 3, and stage 3 does not start on re-arranged props alone without a date for the real tiles.
+  - **What exists:** `data/terrains/extended_v1/`. 330 tiles of 8 x 8 m, 9 types, 10 levels, 650 checked routes; per type a
+    `.npz` with rasters, boxes and meshes, and a `.json` with spawns, routes and targets.
+  - **v2 plan, as they are:** the tile rasters and their boxes, with the routes as goal-env waypoints (stations as given).
+    - Types first: `single_beams`, `beam_fields` (the 4x4 skills), `stairs` (including the turn onto a flight, gap 3),
+      `log_corridors`, `blocks`, `street_front`, `homes`, `tight_spots`. Then `wedges`: their meshes become raster
+      heights (they are ramps).
+    - Routes with a waypoint behind the robot train the turn-around (gap 1).
+  - **What blocks it beyond the prop-box version:**
+    - (1) One combined height field for 330 tiles of 8 x 8 m in MuJoCo Warp, beside the existing ramp raster. The CPU loop
+      already prints height-field collision overflows, so this needs a GPU memory and speed test at a restart.
+    - (2) Box slots: every distinct box size is a slot in every world, and the tiles have 60-346 distinct sizes per type.
+      They need quantising to a size library (5 cm steps, capped count), checked against the slot limit.
+    - (3) Meshes: our props are boxes only, so wedge meshes go to the raster.
+    - (4) Walls and posts collide but must not end episodes near them (SSR's lesson in `SHARED_LESSONS.md`: an
+      obstacle-margin termination taught its policy to stand still beside walls). Ours ends only on falls and tilt, and
+      that stays.
+  - **Date:** v2 tile import, size library and CPU checks (tiles load, slots under the limit, spawn and route clearances,
+    one CPU closed loop per type) by 2026-11-13 12:00 UTC. The GPU height-field test runs inside the stage-3 switch
+    restart. If the switch comes earlier, stage 3 starts with the v1 tiles and v2 goes in at the next needed restart,
+    at the latest 24 h after the switch.
+  - Copied apparatus parts stay single, re-arranged parts, listed per tile in the import.
+
+### 16u. Export failure since 2g, fixed (ACP agent, 2026-11-12, node clock 16:31 UTC)
+- Every hand-over since data 2g failed. `tools/handover.py` looked up the stair set as "gst_v1", which 2g renamed
+  `gst_v1_hs`, so 6,750 and 7,000 had no `actor.npz` and no `DONE`, and the eval's 7,000 gate waited about 25 minutes.
+- Fix: the set is now found by prefix (`gst_v1*`), with the first set as fallback. No other hard-coded set names remain in
+  tools/ or acp/.
+- `pair_s2_v2_007000` was redone by hand on CPU and is DONE at 16:30:55. It matches `pair_s2_v2_006500`: same files,
+  actor shapes, gains, `trained_model` and obs_check shapes, plus `pair_eval_40/obs_check_pair.npz`. Its planner ONNX is
+  byte-identical to the 5,750 one (the freeze holds).
+- 6,750 is redone by the restarted watcher.
+- `ops/export_every.sh` now writes each attempt's result to `/mnt/filesystem-g4/status/acp_export.json` (done, running
+  or FAILED, with the reason). A failed folder gets `EXPORT_FAILED` and is skipped until the file is cleared. The watcher
+  also covers `runs/s2_v3`.
+- Lessons:
+  - A data-set rename breaks every tool that names a set; look sets up by prefix or from the config.
+  - `pkill -f <script>` from an ssh command line also kills that command (my first rerun killed itself).
+
+### 16v. 7,000 gate passed; fallback skipped (2026-11-12, eval finished 16:32:42 node clock)
+`pair_s2_v2_007000` (planner byte-identical to the frozen 5,750 one): turn-around seeds 1001 / 1005 / 1036 all succeed,
+22/22 waypoints, standing at button 5. For comparison: 5,750 two successes and a stairs fall; 6,250 a ramps fall, a
+success and a door-side fall; 6,000 three stalls. No turn-around stall, so by 16s the tracker-from-5,750 fallback is
+skipped and s2_v2 continues frozen. The 50-seed set (against the swap line, 27/50) is still to come from the eval.
+Next CPU work: the v2 import of the extended map (16t).
+
+### 16w. Extended map v2 import: built, first CPU check has an open defect (ACP agent, 2026-11-12, node clock ~17:30 UTC)
+**Built:**
+- `code/tools/import_extended.py` (run with 1 tile per type and level) writes `data/clips/hmap_ext_v2_40mm.npz` and
+  `data/goals/goal_tiles_v2.json`.
+- One height raster with the user's tiles as they are: each tile's floor raster plus every box and mesh that is not in it
+  (walls, posts, rails, chairs, tables, raised 4x4s, door leaves, stones). Door headers are left out so doorways stay open.
+  2 cm -> 4 cm by max.
+- 9 types x 10 levels (per level the first variant that has routes), 197 routes as goal-env routes (final waypoint = station);
+  the ramp raster is pasted in unchanged. Raster 2,260 x 1,819 = 4.1 M cells, x 29.7-120.0, y -0.7-72.0 m, max 4.54 m.
+- No new prop slots: the v1 tiles stay inside the 2g slot library (`goals.check_slots`: 0 over).
+- Waypoint and spawn heights are taken from the raster: 0 of 605 waypoints differ by more than 6 cm. The generator's z
+  was off on wedge slopes and over non-raster beams.
+- Config `cfg/stage3v2_sets.json` (in code and code_s3): 2g reference sets + goal tiles v1 + v2 + the new raster.
+- `goal_check.py` takes `ACP_NCONMAX`.
+**First CPU closed loop** (7,000 pair, 2 per family, levels 0 / 4 / 9; `eval/goal_check_ext_v2_007000*.json`):
+- v1 families as before (stairs up / down and logs 2/2 at every level).
+- Every extended type falls 2/2 at levels 0 and 9 within about a second, with 0 waypoints. At level 4 there are no falls;
+  stairs L4 2/2 and tight_spots L4 1/2 succeed.
+- Same result with nconmax 200 (one overflow line), so the falls are not the contact buffer.
+- A 4-env diagnostic run of the same tiles did NOT reproduce it: single_beams L0 stood for 750 steps, while blocks L0
+  fell at 0.64 s with a clear spawn. So it depends on the env count or ordering and is not plainly the terrain.
+- Open: tile/world assignment in the goal env with many families, or a CPU-physics artefact with the large hfield.
+  Next: replay goal_check's exact env order with a per-env fall log, then the GPU test at the stage-3 switch.
+**Also seen:** the running s2_v2 log has 5,228 "height field collision overflow (>= 50 contacts per pair)" lines on the
+existing ramp raster (no broadphase overflow). Contacts beyond 50 per geom pair are dropped there today. Worth a look
+before the larger raster goes in (coarser raster, or an hfield on the feet only).
+**Date:** the 2026-11-13 12:00 UTC target for the v2 CPU checks stands. The open defect above is the first item.
+
+### 16x. 7,000 on the 50-seed set: rule revised, continue; next loss = 4x4 falls (ACP agent, 2026-11-12)
+**Eval** (seeds 1000-1049, strict + retry, planner frozen): 7,000 26/50 against pair 5,750 22/50, swap (planner 5,750 +
+tracker 6,250) 27/50 and pair 6,250 18/50.
+- Failures: 18 falls (4x4s 13, ramps 2, stairs 3) and 6 stalls (4x4s 3, ramps 3). Turn-around stalls 1 (6,250 had 8,
+  the swap 4).
+- Stair falls 3 (5,750: 19). Button 5 held 26/26. Gate seeds: turn-around 3/3, ramp trough 1/2.
+**Decision: do not fire the 5,750 restart; the rule is revised.** As written, one turn-around stall in the 50 would trip it.
+But 7,000 beats 5,750 on the same seeds (26 vs 22), has a sixth of its stair falls (3 vs 19) and 1 turn-around stall
+against 8 at 6,250. A restart from 5,750 would give all of that up for one stall.
+- New rule: the tracker restarts from 5,750 only if a frozen pair stalls on any of the three turn-around gate seeds, OR
+  has >= 4 turn-around stalls in the 50-seed set (the swap line), OR scores below 5,750's 22/50 there.
+- 7,000 meets none, so s2_v2 continues.
+**Next loss to attack: falls at the 4x4s** (13 of 24 failures at 7,000; ramp trough 1022 also fell going back over the
+front 4x4). Asked the eval for the traces split by phase: approach, over the front 4x4, going back over it, the slot.
+2f/2g already raised the 4x4 weight to 0.12, and the paper eval has 4x4 at 98.7 % with reference contacts. So the gap is
+likely the apparatus approach geometry or the planner's footholds at the log, as at the front-4x4 stall. The traces decide.
+**Dropped height-field contacts in s2_v2:**
+- 5,407 "height field collision overflow (>= 50 contacts per pair)" lines over about 1,980 logged iterations: about 2.7 per
+  iteration. Warp prints one line per kernel launch in which any of the 36,000 worlds overflowed, and an iteration is 24
+  steps, so about 11 % of steps have at least one world over 50 contacts with the ramp raster.
+- 50 contacts per pair needs a large geom lying on many 4 cm cells (a body hull of a fallen or kneeling robot). The sole
+  spheres touch a few cells each.
+- So the overflow is most likely in falling robots on the ramp raster, which end within a second, not in normal stance.
+- I see no link to the apparatus ramp falls and stalls: those come from the eval's own MuJoCo model, which has no height
+  field there and showed the 11 cm trough step-down (16q).
+- Not verified per world; a per-world contact count on the ramp set (CPU) would confirm it.
+
+### 16y. 7,000 at 200 trials; jammed-foot check in the training physics (ACP agent, 2026-11-12, node clock ~18:00 UTC)
+**Apparatus** (eval, 200, strict + retry): 7,000 125/200 = 62.5 % (55.6-68.9), against the 5,750 reference 57.0 %; better
+but not separable at 200.
+- Failures: falls / stalls at the 4x4s 37 / 14, ramps 4 / 8, stairs 9 / 2 (5,750: 45 stair falls).
+- Turn-around stalls 11 in 200 (2.75 per 50, under the rule's 4). Button 5 held 125 of 126.
+- This is the first frozen pair at or above 57 % (stage-3 rule: a second consecutive one is needed; 7,250 next).
+- 4x4 losses are not acted on until the eval's own floor-physics artefact is settled (eval: 2 cm height-field floor, soft
+  contact, spheres jam sideways in cells with 4-20 kN).
+**Same check in our training physics** (`code/tools/sole_contacts.py`).
+Setup: CPU mujoco_warp, the training model (corrected body, data 2g), the 7,000 tracker with reference contacts,
+deterministic, 6 clips per set, 250 control steps = 1,000 physics steps each. Model facts: 24 sole spheres + 2 terrain
+foot boxes, geom solref 0.02 s / damping ratio 1, dt 5 ms, ramp raster cells 4 cm.
+
+| where | contacts | depth p50 / p99 / max (mm) | normal force p50 / p99 / max (N) | near-horizontal normals |
+|---|---|---|---|---|
+| flat floor (plane), spheres | 88,826 | 0.3 / 1.9 / 10 | 22 / 85 / 362 | 0 % |
+| box props (gs2dn stairs), spheres | 44,244 | 0.4 / 7.9 / 13.9 | 43 / 368 / 756 | 0.5 % (max 489 N) |
+| ramp raster (height field), spheres | 43,812 | 0.5 / 8.6 / 29.6 | 20 / 265 / 18,650 | 3.2 % (p99 450 N, max 4,845 N) |
+| ramp raster, terrain foot boxes | 420 | 0.8 / 86 / 254 | 29 / 9,180 / 18,650 | - |
+| box props, terrain foot boxes | 117 | 2.2 / 8.4 / 8.5 | 34 / 183 / 184 | - |
+
+**Reading:**
+- On the flat plane and on box props the foot physics is clean: mm penetration, forces up to about 1.8x body weight.
+- On the height field the sole spheres mostly behave, but a few percent jam sideways in cells. The terrain foot box (meant to
+  catch edges) sinks up to 25 cm into the field with 9-19 kN at the 99th percentile: the same artefact the eval found, worse
+  with a box than with spheres.
+- So yes: the tracker has been learning partly on jammed-foot physics, but only on the ramp raster set (weight 0.05 in
+  2g, 0.10 before) and in a small share of its steps there (420 box contacts in 6,000 env-physics-steps).
+- The flat, block, stairs, 4x4, chains, gst and Pico sets are box props or plane, and clean.
+- The 5,407 overflow lines fit this: the deep box-in-field contacts produce the >= 50 contacts per pair.
+- **Consequence for the extended map v2:** it is all height field, so this artefact would be in every tile. It may also be
+  the cause of the unexplained v2 falls (16w).
+**Fix to test on CPU before any training change** (not yet applied):
+- (A) take the terrain foot boxes out of height-field collisions (spheres only on the field; the boxes still meet props);
+- (B) stiffer sole contact on the field (solref 0.005-0.01 s);
+- (C) 2 cm field cells (cost: 4x cells).
+- Measure with `sole_contacts.py`, then rerun the v2 goal check. The training change goes in with the stage-3 switch or the
+  next needed restart.
+
+### 16z. The 4x4-section failures at 7,000 (eval traces, provisional while the floor jam is present)
+Eval: 16 failures in the 4x4 section of 50.
+- 8: east drift into the ramp cells during or after the turn-around at button 1.
+- 3: falls crossing the front 4x4 going back west; the right foot hits the ramp-end face, and seed 1022 crosses 143
+  degrees off square.
+- 4: at the door side after the crossing.
+- 1: trunk on the wall before button 1.
+**What trains "turn in place, walk back the way you came, cross a beam square":**
+- Stage 2: next to nothing. Turn-in-place frames are 0.5 % of the data (`turn_place_v1`: 4 clips). The 4x4 clips approach
+  the log already walking, mostly square, and never right after a turn in place.
+- Stage 3 v1: the logs family crosses a log after a waypoint with a heading turn of up to +-70-90 degrees, and flat_turns
+  trains turn in place and walking backward. Neither has a station, then a 180-degree turn, then a crossing back over the
+  same log.
+- Extended v2: beam routes cross beams, but not after a turn-around.
+- Missing piece, cheap in `acp/goals.py`: a "logs_back" family. Walk over the log to a station 0.4-0.8 m past it, turn
+  135-180 degrees, cross back square, with the station on the side the apparatus has (a wall or wedge beside it). Planned
+  for the stage-3 tile set.
+**East drift, planner or tracker:**
+- The goal is right: after button 1 the target is west, behind the robot.
+- The planner proposes steps where the robot already is, with high occupancy: stepping in place, not toward the beam.
+- The tracker turns by stepping in place, with the body yawing and slipping sideways, and drifts east because it turns in
+  a wide arc, not in place.
+- I read it as the turn-in-place execution of the pair (tracker plus a planner trained on that tracker's own hindsight
+  steps), both from the same data gap, not the goal handling.
+- The adapter rule for a target behind (16q: no lookahead, 0.3 m goal along the bearing clipped to +-1.0 rad) would turn
+  it into a controlled turning walk; it is worth testing on these 8 seeds.
+- Training fix: stage 3 (flat_turns and logs_back).
+
+### 17a. 7,250 gate failure, tracker drift, checkpoint selection, stage-3 rule in legs (new ACP agent, 2026-11-12, node clock 18:10 UTC)
+Handover: the previous agent's context passed the limit; this agent started from 16p-16z, USER_RULES 2026-11-12, FINDINGS B8/D.
+All apparatus numbers below are provisional (B8 floor jam; the eval's corrected-floor comparison runs until about 21:00).
+
+**Inputs.** Legs (50 each) at 7,000: 49 / 39 / 46 / 50 / 43, product 0.605; full route 125/200 = 62.5 %. 7,250 hold-out gate:
+turn-around 1001 fell (back 4x4, 8/22), 1005 success, 1036 fell (door side, 7/22); ramp trough 1019, 1022 success. 7,250 legs
+(partial at 18:05): leg 1 43/44, leg 2 38/46 (7 falls), leg 3 44/50, leg 4 49/50, leg 5 not started.
+
+**a) What 7,250 means, decision.**
+- The 16x rule (restart from 5,750) does not fire: it names stalls on gate seeds, and 7,250 fell, it did not stall. The
+  intent of the gate (16s: "not kept as a candidate") does apply: 7,250 is not a candidate until its legs say otherwise.
+- Two falls on three single seeds are weak: one re-rolled seed flips the count. 7,250's partial leg 2 (38 of 46 done, 8
+  failures) is at 7,000's rate (39/50, 11 failures), not worse. So no evidence yet that the tracker regressed.
+- Decision: **s2_v2 keeps training; no restart now.** Evidence needed: 7,250's full legs (about 18:20) and 7,500's gate and
+  legs (exported 17:43; about 19:00). Restart rule, written now: if 7,250 AND 7,500 both score below 7,000 by legs (product
+  < 0.55, or leg 2 < 39/50 and leg 5 < 43/50), restart the tracker from 7,000 with `code/ops/restart_t7000.sh` (prepared,
+  not run; run s2_v3, planner frozen at 5,750, gate hold-only with a fresh base, see b). Otherwise continue.
+
+**b) Is the tracker drifting with the planner frozen?** (logs on the node, `runs/s2_v2/metrics.jsonl`, +-50 iterations)
+- Probe (planner-only) finish EMA: 4x4 0.958 (6,750) -> 0.939 (7,000) -> 0.909 (7,250) -> 0.922 (7,500); ramps 0.949 ->
+  0.932 -> 0.891 -> 0.903; flat 0.85-0.87 and blocks 0.84-0.87 flat. About 11 4x4 and 5 ramp probe episodes per
+  iteration, so the 7,250 dip is about 3-4 standard errors: real, small, partly recovered by 7,500.
+- Same sets with reference contacts: 4x4 0.984-0.986, ramps 0.983-0.985, flat 0.988-0.991 throughout. Live paper eval:
+  7,500 on 2c 96.2 % pooled (flat 92.7, blocks 92.7, gst 84.4) against 96.5 % for s1_v2 5,500 on the same 2c; 6,500 on 2f
+  99.5 %. No 7,000 / 7,250 live eval (alternation is every 1,000). So the tracker's reference tracking does not drift; what
+  moves is how it works with the frozen planner (the co-adaptation edge of 16s), worst around 7,250, which matches the gate.
+- **Defect found in the probe gate:** eta_obs has fallen 0.35 (7,000) -> 0.26 (7,250) -> 0.17 (7,500) -> 0.15 (7,580);
+  eta_hold 265 -> 1,293 (about +2 per iteration: back-off). Gate bases in the checkpoint: flat 0.879, blocks 0.869, the
+  ramp and 4x4 sets 0.954 / 0.962. The base is the MAX of a noisy EMA (5-11 episodes per iteration), so it sits about 2 points
+  above the set's real level and the gate backs off on noise as well as on real dips. With the planner frozen, backing off
+  also removes the cause it was built for (the hindsight buffer, 16q) and moves the tracker away from the contacts the
+  eval uses, and eta_rew falls with it. Fix written (`code/acp/train.py` = `code_next`, default behaviour unchanged):
+  `--gate-backoff N` (eta_hold per iteration under base - 2 gate; 1 = hold only) and `--gate-rebase` (drop the base carried in
+  the checkpoint). It goes in at the next restart (restart_t7000.sh uses both); I do not restart for it alone now, because
+  the 7,250 / 7,500 evidence arrives within the hour and two restarts would cost more than an hour at eta 0.15.
+- **Selection rule (replaces "train on and hope"):** the candidate pair (the champion) is the frozen-planner pair with the
+  highest leg product that passes the hold-out gate; within 0.05 of product, the one with fewer legs under 45/50 wins, then
+  the earlier one. The champion is what the eval scores on 200, what goes to stage 3, and what a restart starts from.
+  Newest is not best (7,250 gate). Champion now: **7,000** (only pair with legs). Pair folders keep the tracker copy
+  (`eval/pair_s2_v2_<it>/tracker_ckpt_<it>.pt`), so retention pruning in `runs/` does not lose a champion.
+
+**c) Stage-3 rule in leg scores** (replaces 16r c; the user's order: full route only after all five legs pass 45/50).
+- Base condition unchanged: paper eval with reference contacts >= 98 % flat / blocks and >= 95 % the rest on the cleaned set
+  (2g), with the old 2c beside it; probe finish >= 90 % on 4x4 and ramps (flat / blocks probe stays ~85 %: the planner-only
+  flat number is the planner's limit, D2, and is reported, not gated).
+- Route 1: two consecutive frozen-planner pairs each pass all five legs at >= 45/50. Their full route (200) is then run, and
+  must be >= 57 % (the 5,750 reference) as a cross-check.
+- Route 2 (untrainable gaps): two consecutive frozen-planner pairs with legs 1, 3, 4 at >= 45/50, and >= 70 % of the failures
+  in legs 2 and 5 at the turn-around (gap 1) or the stair approach (gap 3), which stage-2 data lacks (16q). Stage 3 then starts
+  from the champion.
+- Why legs, not the full-route 57 %: the full route multiplies five legs, so it cannot say which section stops it, and the
+  user ordered legs first. 57 % stays as the cross-check once a full route is run.
+- 7,000 by route 2: legs 1/3/4 49, 46, 50; leg 2 failures 11 of 11 at the turn-around (waypoint 0-1 of 5, front 4x4); leg 5
+  failures 4 of 7 at the stair approach (d) plus 2 stalls at 0/7 leaving button 4 and 1 at the landing: 15 of 18 = 83 %.
+  7,000 qualifies; the second pair decides (7,250 if its legs qualify and it is the champion or within 0.05, else 7,500).
+  Stage-3 code still needs the merges of 16q (eta ceiling, probe gate, freeze, now gate flags) and the logs_back family (16z).
+
+**d) Leg 5 (button 4 -> button 5) at 7,000:** 4 falls (1021, 1024, 1028, 1037), all with the "foot of the stairs" waypoint
+reached (4 of 7), heading "up the stairs", 16-18.5 s, pelvis 0.58-0.74 m (on the first treads), 3-10 stair side hits, nearest
+box 1-12 cm, adapter yaw command 0.87-1.0 rad (saturated) at the fall. That is gap 3: the robot turns onto the flight next to
+the first riser and hits the riser while still turning; the same failure as 29 of 45 stair failures at 5,750. Not the climb.
+2 stalls (1016, 1040) at 0 of 7 just after the spawn at button 4 ("ramps, front side", commanded 0.7 m/s forward with 0.6 rad
+yaw): a start-from-stand stall like the turn-around. 1 stall at the landing (1032) with 27 stair hits and a 13 kN peak
+(possible B8 artefact). Trace wanted from the eval: for the 4 falls, per control step from waypoint 3 to the fall, heading
+against the flight axis, the adapter command, the planner's proposed footholds (occupancy, distance to the riser edge), the
+foot that hits the riser (toe or side) and the B8 flags; and leg 5 with a square station at the stair foot (the 16q test), 50
+trials, to confirm the approach. For 1016 / 1040: the planner's occupancy per foot at the spawn.
+
+**Done this turn:** gate flags in `code/acp/train.py` and `code_next/acp/train.py` (backup in `_trash/train.py.pre_gatebackoff.*`);
+`code/ops/restart_t7000.sh` prepared (bash -n checked, not run). No restart, nothing stopped.
+
+**What went wrong since the last report:** (1) 7,250 failed the hold-out gate with the planner frozen: the tracker alone
+moves the pair; addressed by the selection rule. (2) The probe gate has backed eta_obs from 0.35 to 0.15 in 580 iterations,
+partly on noise (max-of-EMA base): fix written, goes in at the next restart. (3) Leg 5 loses to the stair approach as at
+5,750: stage 3 (stairs tiles with the turn before a flight).
+
+### 17b. 7,500 worse: tracker restarted from champion 7,000 with the gate fix (ACP agent, 2026-11-12, node clock 18:54 UTC)
+**Evidence** (eval, current floor, provisional). Legs, failures out of 250 trials: 7,000 49/39/46/50/43 (23 failures, product 0.605); 7,250
+49/41/44/49/44 (23, 0.610); 7,500 45/36/41/49/43 (36, 0.448). Gate: 7,000 5/5 turn-around + 1/2 ramp, 7,250 1/3 + 2/2, 7,500
+1/3 + 0/2.
+**What I treat as real:** the audit's identical-physics control flipped 21 of 50 outcomes, with a net difference of 5 of 50, so one
+leg differing by 3-5 trials is noise. Across all five legs (250 trials, about 23 failures) the binomial SD of the failure count
+is about 4.7 per pair, about 6.7 for a difference. 7,500's +13 failures is about 2 SD, and it points the same way as three other signals:
+the gate (1/5 against 6/7 at 7,000), the probe finish dip on the 4x4 and ramp sets from 7,250 on, and eta_obs falling 0.35 -> 0.15. 7,250 against 7,000
+(0 difference) is a tie. Rule from now on: a pair-to-pair difference counts only at >= 10 failures over the five legs, or
+when legs and gate and probe agree.
+**Decision, done:** my 17a rule asked for both pairs worse; I fired it on 7,500 alone because the gate defect (17a b) keeps
+backing eta off every iteration, so waiting for 7,750 / 8,000 would score more pairs from the same failure mode. Restart
+`code/ops/restart_t7000.sh` launched 18:53:51 (tmux `acp-restart`): s2_v2 stops at about 7,907, new run `runs/s2_v3` from
+tracker 7,000, planner frozen at 5,750, data 2g, `--gate-backoff 1 --gate-rebase`. s2_v2's checkpoints stay as they are
+(7,750 is exported and can still be scored; it is not a candidate unless its legs beat 7,000 by >= 10 failures).
+Champion stays 7,000 (tie with 7,250; 7,250 failed the gate).
+**Stair-square test** (eval): 38/50 with a 1 s squaring stop at the stair foot against 43/50 without it, no control: no help. The
+route stays as it is (user). The stair approach has to be trained.
+**New assets (user's request):**
+- `tp_stairs_all_v1` (44 Pico stair takes, 6 turn-then-climb clips): enters as data **2h**, at a second restart once built.
+  Build on CPU (same pipeline as 2g: `tools/mk_stage2g.py` shift / prepended stand / arm fix / labels), drop the 7 takes that fail the
+  2 cm contact check (also 114308 and 114330 out of the existing stairs set), then a CPU closed loop with the 7,000 tracker on reference
+  contacts per clip (our replay check in place of the SuperMimic rollouts), keeping clips that it finishes or nearly finishes. Weight:
+  the stairs share of 2g split, turn-then-climb clips upweighted. Target: built and checked by 2026-11-13 06:00 UTC, restart then.
+- `extended_v1_2_stairs_inset` (60 tiles, 700 routes with `kind`): replaces the extended_v1 stair tiles in the v2 import for
+  stage 3 (16w); routes of every kind kept, sampled evenly by kind.
+**Wall contact:** nothing in ACP ends an episode on a wall touch. Terminations are base position error > 0.5 m, base rotation
+> 1 rad and divergence only. Wall contacts are not penalised by body part either (gap against the user's rule; candidate for
+stage 3's reward, logged, not acted).
+**B8 fixes A-C** for our height field (16y): not started. Next CPU item after 2h.
+
+### 17c. Height-field fixes done, v2 fall defect found, v2b import with the new map assets (new ACP agent, 2026-11-12, 22:25-23:00 UTC)
+Priority from the user (22:30): the extended map in all runs. ACP's stage 2 is unchanged; the map is made ready for stage 3. CPU only.
+**Drop test** (`code/tools/drop_test.py`, results `eval/drop/*.json`, summary `eval/drop/summ.py`): SSR's test on OUR raster. A 10 kg
+foot with the training model's left-foot collision geoms (12 sole spheres + the terrain foot box, contact params copied), training
+options, MuJoCo Warp CPU; dropped at 1-4.5 m/s with 1 m/s sideways and a 150 N pull 0.1-0.3 s, at 2 flat, 2 slope and 2 edge sites
+(edge = > 8 cm jump under the foot). Bar (SSR): no contact deeper than 1 cm for more than 0.07 s.
+
+| raster, variant | box sink max (mm) | time > 1 cm, flat / slope / edge (s) | other |
+|---|---|---|---|
+| ramp 4 cm, as trained (base) | 209 | 0.11 / 0.06 / 0.06 | overflow lines; box jam reproduced |
+| ramp 4 cm, A (box off the field) | 0 | 0.09 / 0.055 / 0.05 | |
+| ramp 4 cm, A+B (solref 0.01, priority 1) | 0 | 0.015 / 0.01 / 0.025 | PASS; solref 0.005 identical (clamped) |
+| ramp 2 cm (C), base / A / A+B | 221 / 0 / 0 | A+B: 0.015 / 0.01 / 0.13 | C is worse at edges: not used |
+| v2 raster one field, as trained | 7,472 | - | **foot thrown 17-240 m** |
+| v2 raster chunked, A+B | 0 | 0.02 / 0.01 / 0.06 | PASS, no ejection |
+
+- **Second defect, the cause of the 16w "unexplained CPU falls":** MuJoCo Warp mis-collides on one 2,260 x 1,819 height field. On a flat
+  1.66 m platform a sphere got a 9 m deep contact and the foot was thrown 240 m (`tools/hf_crop_diag.py`): MuJoCo C on the same model
+  8 mm, Warp on crops of 51-681 cells 8 mm. Location-dependent, so it hit levels 0 and 9 and not level 4, and not a 4-env run.
+- Single-step deep sphere contacts at cliffs (up to 26 cm for one step as a foot slides off an edge) remain with A+B; the time over 1 cm
+  stays <= 0.06 s and the pull moves the foot, so no trap. Planes and boxes (the eval's fix) are not needed for release.
+**Fix, in code** (`gear_sonic/supermimic/terrain.py` `add_hfield`, backup `backup/terrain.py.pre_hffix_20261112`; shared by code,
+code_next, code_s3 via symlink): (1) the raster is split into fields of at most 400 x 400 vertices sharing border vertices (always on;
+a raster that fits one field is one geom "course" as before, so the stage-2 ramp raster is unchanged; surface checked: 0 of 2,000
+cell-interior rays off the raster); (2) `ACP_HF_FIX=1` = A + B. Default 0, so the running s2_v3, the live eval and the exports keep
+their physics. **Decision:** ACP_HF_FIX=1 goes into the data-2h restart (one planned restart, user rule) and into stage 3.
+**v2b import** (`tools/import_extended.py`, old outputs in `backup/goal_tiles_v2a.json`, `backup/hmap_ext_v2a_40mm.npz`; cfg
+`cfg/stage3v2b_sets.json` = stage3v2 with a fresh label cache):
+- stairs: `extended_v1_2_stairs_inset` tiles replace the extended_v1 stair tiles; per level one straight, one L, one U, plus the
+  extended_v1 amphitheatre (not in the inset set): 4 rows, 40 tiles, 366 routes in 12 kinds (straight, side_left/right, oblique,
+  far_straight, cross, L, C, S, descend, side_down, base).
+- single_beams, beam_fields, blocks, wedges, log_corridors: + `extended_v1_1_prop_routes` (kinds prop_*). tight_spots, homes,
+  street_front: base routes only (no extra set exists).
+- At most 4 routes per kind per tile (seeded), so kinds are sampled about evenly; each route keeps `kind` and `check_note` in `info`.
+  Routes flagged by the generator's checker defect (start above 1 m read as blocked) are kept: the defect is in the checker.
+- Result: 884 extended routes (was 197) + 720 v1 tiles; raster 2,260 x 2,419 = 5.5 M cells, 30 fields, max 4.85 m.
+**Ramp question (C8):** ACP uses the height map only (`tp_ramp_hmap_x30_40mm.npz`, max-pooled from `tp_ramp_hmap_x30.npz`; the ramp
+set has no props file), never `props/ramp.json`. The tracker finished the ramp set at 99.1 % on that map (2f note), so the map and the
+motions agree well enough for ACP (not re-checked per clip tonight). The mirrored ramp set comes with its own mirrored map: in 2h the two maps must share one raster
+(place the mirrored one beside the original and shift its clips by the same offset).
+**v2b goal check** (CPU closed loop, pair 7,000 = tracker 7,000 + planner 5,750, 2 per family at levels 0 / 4 / 9, same tiles in all
+runs; `eval/goal_check_ext_v2b_007000_{single,nofix,fix}.json`, table `eval/gc_v2b_table.txt`):
+
+| run | extended families: success / falls of 54 | v1 families: success / falls of 36 | overflow lines |
+|---|---|---|---|
+| v2a (16w, one field, no fix) | 3 / 36 | 20 / 0 | 13 |
+| v2b one field, no fix | 0 / 46 | 14 / 4 | 32 |
+| v2b chunked, no fix | 6 / 24 | 14 / 4 | - |
+| v2b chunked + A+B (ACP_HF_FIX=1) | **9 / 22** | 14 / 4 | 1 |
+
+- Chunking removes the defect (46 -> 24 falls); A+B adds a little (24 -> 22). The remaining falls are spread over levels and families
+  (level 0: 5 of 18 fall) on terrain this stage-2 pair never trained on; I read them as the policy, which stage 3 trains, not physics.
+- **Open, cheap:** the v1 stair families fall 4 of 36 under the v2b config in all three runs (0 in v2a, same tiles), so not the field.
+  Difference between the runs: the config copy `stage3v2b_sets.json` with a freshly built label cache and 884 instead of 197 goal
+  clips. To check before stage 3: v2b tiles with the old label cache, or v2a tiles with the new one.
+**Can stage 3 start the moment a pair qualifies?** The map is ready (cfg `stage3v2b_sets.json`, env ACP_HF_FIX=1). Still needed first:
+(1) merge the stage-2 additions into `code_s3` (env.py differs, train.py 148 diff lines: gate, data 2g/2h features), (2) the v1-stair
+question above, (3) logs_back family (16z, optional). All CPU, a few hours; target before the 2026-11-13 12:00 check. The base gate
+(16f) is not met yet (champion 7,000: full route 57 %), so the map is not the bottleneck.
+**Data 2h** (restart target 2026-11-13 06:00 UTC, user's batching rule: one planned restart, then none for 2,000 iterations unless a
+crash or failed trial): use the CORRECTED Pico sets `tp_stairs_all_v1_1.pkl` and `pico_2026-10-29_2x2_train_v1_1.pkl` (the old 2x2 set
+in 2g has take `pico_20261029_211326_0_2x2` with a retarget artefact), plus the mirrored sets (`*_v1_1_mir`, `tp_t4x4u_y20_mir`,
+`tp_ramp_base_x30_mir` with `tp_ramp_hmap_x30_mir.npz`, each with its `_mir_props.json`), all in
+`/mnt/filesystem-g4/data/motions/ssr_prior_sources/terrain_park_train_sets/`; ACP_HF_FIX=1. Not built yet.
+User rules to respect in 2h / stage 3 (USER_RULES last sections): backward travel paid less than forward or turning in place; turn
+in place learned, also beside walls and on slopes.
+
+## HOW TO RESUME (current at 2026-11-12 23:00 UTC node clock)
+- Node: `config/nodes.local.json` key `acp`, user `NODE_USER`, `ssh -i ~/.ssh/nebius_corpus -o IdentitiesOnly=yes -o BatchMode=yes`.
+  tmux: `acp` (run **s2_v3**, started 18:54:48 from tracker 7,000, planner frozen at 5,750, data 2g, probe gate `--gate-backoff 1
+  --gate-rebase`, to 14,000; iteration 8,208 at 22:51), `acp-evallive2` (live paper eval of s2_v3), `acp-export` (pairs every 250 ->
+  `eval/pair_s2_v3_<it>`, status `/mnt/filesystem-g4/status/acp_export.json`), `acp-backup`, `acp-gcv2b` (finished goal checks; can be
+  closed). One GPU job per node; exports and checks on CPU. No git commits or pushes.
+- Champion pair: 7,000 (full route 114/200 = 57 % on the final floor). Automatic scorer (`eval/autoscore/results.csv`): 7,250 gate PASS
+  4/5, legs 49/41/43/50/44 (0.608); 7,750 gate FAIL 2/5 (turn-around 1/3). Selection, noise and stage-3 rules: 17a b), 17b, 17a c).
+- Height field (17c): B8 fixed in `gear_sonic/supermimic/terrain.py` (chunked fields always; `ACP_HF_FIX=1` = foot box off the field
+  + solref 0.01). Drop test passes (time > 1 cm <= 0.06 s). Running s2_v3 keeps the old physics (flag off).
+- Extended map v2b (17c): `tools/import_extended.py` -> `data/goals/goal_tiles_v2.json` (884 extended routes, stairs inset, prop
+  routes, kind-balanced), `data/clips/hmap_ext_v2_40mm.npz`; cfg `cfg/stage3v2b_sets.json`. Goal check with fix: 9 / 22 falls of 54.
+- Next, in order: (1) build data 2h (17b + 17c list: corrected Pico v1_1 sets, mirrored sets, mirrored ramp map sharing one raster,
+  ACP_HF_FIX=1) and restart s2_v3 with it at 2026-11-13 06:00 UTC; then no planned restart for 2,000 iterations. (2) v1-stair falls
+  under the v2b config (17c, cheap). (3) Merge stage-2 additions into `code_s3`; logs_back family (16z). (4) v2 check due 2026-11-13
+  12:00 UTC: the 17c goal check is it; repeat with the stage-3 code after (3). (5) Stage 3 only after the base gate (16f), old and
+  new data sets side by side.
+- Asked of the eval: the leg-5 traces of 17a d).

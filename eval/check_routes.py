@@ -118,6 +118,53 @@ def check_door(app):
     return out, bad
 
 
+def check_doorways(app):
+    """Every doorway the route goes through, found from the physics boxes (a box labelled door_header spans each opening;
+    training-map courses have no route.json door): the clear width across the door plane (10 cm either side of it), with
+    every physics box at body height counted (walls, jambs, an open door leaf), must be at least DOOR_MIN, and the route
+    must pass at least HALF_W from either jamb. Returns (list of dicts, problems). Eval monitor, 2026-11-12."""
+    P, out, bad = app.path(), [], []
+    for b in app.boxes:
+        if "door_header" not in str(b.get("label") or ""):
+            continue
+        lo, hi = np.array(b["lo"], float), np.array(b["hi"], float)
+        ax = 1 if hi[1] - lo[1] > hi[0] - lo[0] else 0         # the opening runs along `ax`; the door plane is across the other axis
+        n_ax = 1 - ax
+        plane = 0.5 * (lo[n_ax] + hi[n_ax])
+        for p, q in zip(P[:-1], P[1:]):
+            if (p[n_ax] - plane) * (q[n_ax] - plane) >= 0:
+                continue
+            at = float(p[ax] + (plane - p[n_ax]) * (q[ax] - p[ax]) / (q[n_ax] - p[n_ax]))
+            if not lo[ax] - 0.10 <= at <= hi[ax] + 0.10:
+                continue
+            s = np.arange(lo[ax] - 0.40, hi[ax] + 0.401, 0.01)
+            free = np.ones(len(s), bool)
+            for v in np.arange(plane - 0.10, plane + 0.101, 0.02):
+                for i, w in enumerate(s):
+                    if free[i]:
+                        x, y = (w, v) if ax == 0 else (v, w)
+                        g = app.height_patch(x, y, 0.06, np.max)
+                        free[i] = app.wall_clearance(x, y, g + BODY_LO, g + BODY_HI) > 0.005
+            i = int(np.argmin(np.abs(s - at)))
+            if not free[i]:
+                bad.append("doorway under %s at %.2f: the route crosses the door plane where a box stands" % (b.get("label"), at))
+                continue
+            j0, j1 = i, i
+            while j0 > 0 and free[j0 - 1]:
+                j0 -= 1
+            while j1 + 1 < len(s) and free[j1 + 1]:
+                j1 += 1
+            width = float(s[j1] - s[j0])
+            jamb = min(at - s[j0], s[j1] - at)
+            out.append(dict(header=[round(float(v), 2) for v in (lo[0], lo[1], hi[0], hi[1])], crosses_at=round(at, 2),
+                            clear_width=round(width, 2), jamb=round(float(jamb), 2)))
+            if width < DOOR_MIN:
+                bad.append("doorway at %.2f: clear width %.2f m is under %.2f m" % (at, width, DOOR_MIN))
+            if jamb < HALF_W:
+                bad.append("doorway at %.2f: the route passes %.2f m from a jamb" % (at, jamb))
+    return out, bad
+
+
 LOW_MIN = 0.05       # m: a box standing on the floor whose top is this far above it is an obstacle (eval monitor 2026-11-12)
 ON_FLOOR = 0.10      # m: a box "stands on the floor" when its bottom is within this of the floor under it
 LEG_HALF_W = 0.18    # m: below BODY_LO only the legs pass: feet 0.10 m either side of the centre line plus half a sole (0.06) and 2 cm
@@ -209,6 +256,8 @@ def check(app: Apparatus, half_w=HALF_W):
             blocked.append((s, w["name"], "wall %.2f m from the centre line at (%.2f, %.2f)" % (clear, where[0], where[1])))
     app.route_warnings = []
     blocked += check_floor_obstacles(app, half_w, app.route_warnings)
+    app.doorways, bad_dw = check_doorways(app)
+    blocked += [(-1, "doorway", m) for m in bad_dw]
     return rows, blocked
 
 

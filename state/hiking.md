@@ -5,6 +5,564 @@ Updated 2026-11-12 01:05 UTC (Hiking track agent, second agent, resumed at 00:53
 
 ## Hand-over 2026-11-12 (newest first)
 
+- 22:30 **v4k built, CPU pre-flight PASS, armed at model_6750 (tmux `cont4k`, about 23:11); the last planned restart for >= 2,000 it.**
+  - Stall check (eval of 4750, `eval/out/hiking/x2_parkour_v4_4750/`): turn_in_place: all 38 failures ended with the heading
+    within 1.4 deg of the goal (adapter yaw 0.04 rad/s) but 0.23-0.39 m off the station: inside the adapter's 0.4 m stop radius
+    (so it commands a stand) and outside the harness's 0.20 m arrival disc. Cause = drift while turning (training turn/planar_speed
+    0.20 m/s) plus the 0.4 / 0.20 m radius mismatch in the eval (eval monitor's to fix: inside 0.20-0.40 m the adapter should
+    creep back). Not a slow-yaw stall. Legs 3 / 4: stalls at buttons 3 / 4 with vx 0 and yaw 0.1-0.5 rad/s (stand turn under the
+    trained 0.4 rad/s cost threshold) = slow-yaw dead zone confirmed there. Leg 5: 18 stalls at vx 0.7 below the stairs (other cause).
+  - Route count "364" is not a defect: routes on the 100 instantiated cells (v4i 196, v4j 343 in training); v4k adds prop routes.
+  - v4k contents: option v (`slow.py.v4k`: forward cap U(0.1, 0.45) for 25%, |yaw| cap U(0.1, 0.4) for 40%, `turn_effort`
+    replaces `dont_turn_wait`, `turn_drift` -2.0, metrics slow_fwd_ratio / slow_turn_ratio / turn_drift); VX_BACK=0 (no backward
+    commands; backward earns nothing); terrain `data/extended_v4k` = v4j + extended_v1_1_prop_routes (single_beams 29->268,
+    beam_fields 30->268, blocks 30->240, wedges 99->484, log_corridors 80->124 routes; spawn filter re-applied); motion
+    `data/motion_v4` = v2 + t4x4u_y20 sideways + mir (18), stairs v1_1 turning + mir (24; 113941 fixed in v1_1, class straight,
+    not selected), 2x2 v1_1 + mir (18), driveway v1_1 + mir (12): 827 s, 52% new, 0 joint-limit frames. Graded contact,
+    sidestep, inset stairs, spawn fix kept. staged.py allows v (backup `_trash/2026-11-12/staged.py.before_v_*`).
+  - Scripts: `code/x2_port/continue_v4k.sh`, `v4j/precheck_v4k.py` (PASS, log `v4j/precheck_v4k.log`), `v4j/append_motion_v4.py`,
+    `v4j/make_terrain_v4k.py`. Trial bars: level 0.8 x, episode 0.4 x, turn rate 0.5 x; fall-back `fallback_v4j.sh` + guard4j.
+  - Resume keeps Adam moments, discriminator + its optimizer and normalizers; the adaptive LR restarts at 1e-5 and re-adapts in
+    2-5 iterations. Recovery after the last three restarts (5000, 5500, 6000): level back within 3-5 iterations (level keeper);
+    episode length back to 95% in 80 / 119 / 76 iterations (all robots reset at a start, so 30-40 of those are mechanical).
+
+- 20:18 **v4j restart failed at 19:22 (cause found), fixed, re-armed at model_6000 (fifth agent).**
+  - What went wrong: the 19:22 construction check died in `staged.py` `__post_init__`: `AssertionError: unknown HIKING_X2_OPTS:
+    ['g']` (allowed set was "abcdefrstkyzow"). The env never got built, so no "[X2 routes]" line and no reward table: hence
+    "routes none". `test_v4j.py` exec's only the .v4j files, never the staged.py option gate (needs Isaac), so the CPU build
+    passed. The fall-back worked (v4i resumed from model_5500 at 19:22:47) but left v4i without a crash guard.
+  - Fix: staged.py allows `g` (backup `_trash/2026-11-12/staged.py.before_g_*`); new CPU pre-flight `code/x2_port/v4j/precheck_v4j.py`
+    (opts letters vs staged.py, compiles staged.py and the .v4j files, terrain / motion paths and npz from the launcher's env,
+    v3 frame count, test_v4j.py) PASS; negative test with the old staged.py reports the `g` failure. Isaac cannot be imported
+    without Kit (`pxr` missing), so the full construction check stays a GPU step in the pause.
+  - `continue_v4j.sh` now runs the pre-flight after the checkpoint appears and BEFORE stopping v4i (fail: v4i not stopped,
+    line in launch.txt); the construction-fail path now starts `guard4i`. Backup `_trash/2026-11-12/continue_v4j.sh.before_precheck_*`.
+  - Motion v3 rebuilt without `tp_stairs_113941` (retarget artefact: frozen right hip yaw 2.38 rad, pelvis pitched 46-52 deg):
+    12 turning stair takes, 6,065 added frames (121 s), total 521 s, 0 joint-limit frames, seam speed max 1.29 m/s (was 1.14).
+    `append_motion_v3.py` has `V3_EXCLUDE` (default 113941); MJCF `data/robots/x2/mjcf/x2_ultra.xml` (x2_ultra/ lacks meshes).
+    Old v3 in `_trash/2026-11-12/motion_v3_with_113941_201407/`. No `_v1_1` corrected sets existed at 20:14; v3 uses no 2x2 or
+    driveway takes; no `*_mir*` sets added.
+  - Running: v4i (5,798 at 20:18); `guard4i` (L0 5.80, E0 878); `cont4j` = `continue_v4j.sh 6000` (model_6000 about 20:55).
+  - User rule 2026-11-12 (no backward steps; learn turn in place), code read 20:25, v4j unchanged:
+    backward: per-column ranges are floored at VX_MIN 0.45 (staged.py 318-320), routes walk forward (v4j adds sideways);
+    only the random-velocity columns (perlin_rough_stand / _velocity, `cmd.ranges.lin_vel_x = (-0.4, 0.8)`, extended.py 189)
+    can command backward. Nothing penalises backward motion beyond the velocity-tracking term.
+    turn in place: option y (keep.py) turns 15% of non-stand robots on every column (walls, tight spots, homes, slopes) for 4-6 s
+    on the spot; train.log turn/share 0.066, rate_along_cmd 0.90 at cmd 0.90 rad/s, BUT planar_speed 0.20 m/s while turning
+    (drifts, not in place). No turner is placed on a side-sloped wedge or against a wall on purpose.
+    Plan for the restart after v4j: lin_vel_x floor 0 on the random-velocity columns (no backward commands); a drift penalty
+    for turners (planar speed > 0.05 m/s); a share of turners spawned on the wedge / ramp tiles (16 deg side slope) and within
+    0.5 m of a wall; log turn/planar_speed and rate per tile group.
+  - 21:12 **v4j training** (pre-flight pass 20:52, check 20:57: 364 routes, trial 21:09: level 5.73 vs 5.73, episode 453 vs 886
+    (0.51 x), turn 0.87 vs 0.92). guard4j running. To check: 364 routes vs about 741 stair routes expected (sampled cells?).
+  - Eval model_4750 turn_in_place 12/50 (4125: 32/50): 37 stalls (20 turning to face back, 17 turning to face ahead), 1 time
+    limit. Training does not show it: v4i turn/rate_along_cmd per 100 iterations 0.82-0.97 from 4,600 to 5,900 (dips only at
+    restarts), planar drift 0.19-0.22 m/s. The training metric measures rate while commanded, not finishing a 180 deg turn.
+  - Decision 21:12: turn changes go in v4k at model_6500 (about 22:45), not into v4j now: v4j needs about 500 iterations
+    for a clean read of contact / spawn metrics, and a restart costs about 17 min of GPU. v4k = the plan above plus turners
+    with targets behind (150-180 deg, as in the eval) and a turn-completion log (share reaching 10 deg in 6 s). Build and CPU
+    test on the next resume.
+
+- 19:06 **v4j built, CPU tests all pass, armed: `continue_v4j.sh 5500` in tmux `cont4j` (model_5500 about 19:25 node clock).**
+  - Files: `code/x2_port/v4j/` (contact.py, make_v4j_files.py, make_terrain_v4j.py, append_motion_v3.py, test_v4j.py, logs);
+    `files_instinctlab/.../x2/{contact,extended,routes,keep}.py.v4j` (live files untouched until the restart; v4i's are backed up
+    to `_trash/<date>/v4i_files_<time>/` by the script). Option letter g; sidestep and terrain / motion by env vars (script header).
+  - Contact (g): `wall_contact_graded` replaces `undesired_contacts`: trunk (pelvis, waist, torso, shoulders, head) and legs
+    1 + min(F/100 N, 3) per body; elbows / wrists free under 30 N and 0.5 s, then 0.25 x; feet stay with stumble / edge terms.
+    `base_contact` ends only for a torso force > 50 N with the vertical part dominant. Logs: end/<cause>_<group>,
+    end/reached_<group>, c10/<feet|legs|trunk|arms>_<group> (> 10 x weight), c50/... (horizontal > 50 N), tunnel/<group>
+    (body origin > 2 cm inside a prop box: pelvis, torso, knees, elbows, wrists, feet), wallspeed/near|far_<group>.
+  - Sidestep: 30% of route robots on tight-spot / home tiles walk the route sideways (facing +-90 deg, |v| <= 0.3 m/s);
+    every route robot gets vy = clip(lateral offset, +-0.2) for a waypoint within 1 m.
+  - Motion v3 (`tracks/hiking/data/motion_v3/`): v2 (400 s) + 9 sideways Pico takes (32 s, lateral share 0.73 as chained) +
+    13 turning stair takes (C, S, down-then-turn, side approach; in_set and checks ok), 528 s total; 0 joint-limit frames
+    added; pelvis z p50 0.70 vs v2 0.675; seam speed max 1.14 m/s. The 13 straight stair takes not added (v2 has stairs).
+  - Terrain (`tracks/hiking/data/extended_v4j/`): stairs v0-v5 from the inset set at the extended_v1 rows (draws unchanged),
+    741 stair routes (700 inset by kind + 41 amphitheatre); extended_v1_1 not loaded. Spawn fix: route starts within 0.40 m
+    (planar) of a box rising into 0.25-1.5 m above the floor are moved forward along the route to the first point with
+    0.40 m; if none, kept at the widest point when >= 0.30 m (tight spots: 10 routes), else dropped (tight spots 4 of 40).
+    Spawns near props dropped. Homes starts under 0.34 m: 46.5% -> 0% (54 of 101 moved); tight spots 50% -> 11% (one
+    sampled layout). Causes on homes: 'block' furniture > 1 m tall (30) and walls (17); tight spots: low walls (20); the
+    wedges hits were mesh bounding boxes over ramps (meshes now left out).
+  - Restart path: STOP at 5,500, old crash guard killed, construction check 256 robots (needs routes >= 100 and
+    wall_contact_graded in the reward table), trial 31 iterations (level 0.8 x, episode 0.4 x, turn 0.7 x), else
+    `fallback_v4i.sh` (restores files and levels, resumes v4i); new crash guard in tmux guard4j (fall-back v4i).
+  - Not verified on CPU: anything needing Isaac (the termination / sensor APIs, the box table on the real layout, log
+    keys); the spawn-contact figure in Isaac comes from `artefact/spawn_ext_homes` after the restart (was 23.5%).
+
+- 18:55 **Wall contact, route clearance, stairs inset, artefacts, lean (third agent; numbers from `metrics.jsonl`, v4i at 5,313).**
+  - What a wall / prop touch does in v4i (code read): episode ends only on `base_contact` = `torso_link` over 1 N (any
+    direction, wall or ground), plus `root_height` and `bad_orientation`; the fall penalty (f) is 0 now (schedule ended at
+    1,500); `stalled` (d) is off since 1,500 (log 0.0). Every other body over 1 N, feet excluded, pays `undesired_contacts`
+    -1 per body per step: a hand brush costs the same as a hip or shin. Feet against a wall: `feet_stumble` -2 (horizontal
+    force > 3 x vertical, foot moving). Pelvis contact does not end the episode.
+  - So SSR's refusal mechanism (any touch ends the episode) is absent here except for the torso. Evidence of no refusal so
+    far: levels since 5,000 rose on tight spots 5.41 -> 6.74 and homes 5.74 -> 6.39 (log corridors 4.57 -> 6.45; stairs fell
+    5.48 -> 5.04). Episode ends (all robots, 5,313): time-out 90.0%, root_height 5.5%, bad_orientation 2.6%, base_contact
+    2.0%, flat since 4,900. Speed ratio (actual / commanded, all robots) 0.42-0.53, noisy, no trend (0.45 at 4,900, 0.415).
+  - Not logged (gap): episode ends and route arrivals per tile type, wall distance, speed near walls, which body touches.
+    `route/final_reached` (all route robots) 0.09-0.47, `route/waypoint_index` 0.35-0.93: noisy, rising.
+  - Defects seen in the artefact log: (1) tight spots: 8.6% of robots carry a contact force over 10 x body weight (4.1 kN)
+    at a step, up from 2.8% at 5,000 (open tiles 0-0.02%); body unknown (max over all bodies, feet included): pressing into
+    walls or seam / penetration spikes. Homes 3.3%. (2) spawn contact: share of robots with a non-foot contact over 50 N in
+    their first 0.2 s: homes 23.5%, blocks 8.3%, tight spots 7.1%, paper 1.5%: spawns (route starts, possibly with the
+    reference-state arm pose) inside props. (3) sunk feet (>1 cm below ground in contact): wedges 16% (ramp faces vs the
+    flat ground scanner: likely the measure, not a sink), street 3.7%, others <1%. Running max force 148 kN on paper columns.
+  - Lean: torso pitch (Isaac, commanded forward) flat -16.7, stairs -14.1, boxes -14.3, gaps -13.7 deg; waist pitch -17.9
+    (at its -18.0 limit) everywhere. Unchanged.
+  - Decision: one restart, v4j, at the first 250-checkpoint after the CPU build passes (earliest model_6000, about 21:00
+    node clock; 5.4 it/min). Contents, each listed as a deviation:
+    1. `wall_contact_graded` replacing `undesired_contacts`: horizontal-force contacts by group. Torso, pelvis, hips,
+       thighs, knees, shins: strong (about -2 per step, scaled by force up to 4x at 200 N). Feet: `feet_stumble` stays.
+       Elbows, wrists, hands: free under 30 N and under 0.5 s continuous, then -0.2 per step.
+    2. `base_contact` ends the episode only for a torso force that is mostly vertical and over 50 N (lying on something);
+       a torso against a wall becomes the strong penalty. Falls stay covered by root_height and bad_orientation.
+    3. Logs per tile type: episode end causes, route arrival share, contact share and 10x-weight share per body group,
+       route-robot speed within 0.5 m of an obstacle-mask cell vs elsewhere (stall near walls).
+    4. Spawn fix: route robots get no reference-state start, and a start is skipped (other route) if the tile's mask is
+       within 0.40 m of it; check the homes spawn share falls under 3%.
+    5. Stairs: `extended.py` loads stair tiles v0-v5 from `extended_v1_2_stairs_inset/stairs.{npz,json}` (same tile ids,
+       same arrays, routes with `kind`), amphitheatre v6-v7 from `extended_v1`; `extended_v1_1_stair_routes` not loaded
+       (its 526 routes are for the replaced tile versions). Loader needs: the merge by `tile_id`, start z from the route's
+       `z` for routes that start on a landing (descend, side_down), and `kind` carried to the route table for a per-kind
+       arrival log. Route format is identical (`start`, `waypoints`, `target`, `z`), checked.
+    6. Sidestep (vy on route robots in tight spots and homes): only together with the sideways Pico clips in the motion
+       reference, otherwise the style reward fights it; find the X2 sideways retargets at the build; if not ready, the
+       next restart.
+    Path: CPU tests of each term on recorded tensors, construction check with 256 robots in the restart pause, trial at 31
+    iterations (level >= 0.8 x, episode >= 0.4 x), fall-back v4i, crash guard.
+
+- 17:25 **Routes (option w) built and armed: `continue_v4i.sh 5000` in tmux `cont4i` (model_5000 about 17:45).**
+  - `config/x2/routes.py`: `RouteFarTargetPoseVelocityCommand` (subclass of the turn-in-place command). `extended.py`
+    records which tile each terrain cell got (`_CALLS`, generator order: columns, then rows). At each reset, 70%
+    (`HIKING_X2_ROUTE_SHARE`) of the robots on the 12 tile columns get one of their tile's checked routes. They start at
+    the route start (their env origin moves there, so height terminations use the route's floor), facing the first
+    waypoint +-0.3 rad, and follow the waypoints with the eval harness's law: yaw clip(1.5 x error, +-1); forward 0 over
+    60 deg, else clip(distance, 0.15, vmax) x cos(error); pass-through inside 0.2 m; final station = zero inside 0.2 m,
+    held. Route robots are never turners and keep the route for the whole episode. That is about 26% of all robots
+    (12/32 x 0.7).
+  - Routes per tile type in the set (checked routes kept): single beams 29, beam fields 30, blocks 30, wedges 99 (38 of 40
+    tiles), tight spots 40, log corridors 80, homes 101, street front 120, stairs 121. Every tile type has routes on
+    every level; on a sampled layout every one of the 120 tile cells had at least one route.
+  - CPU tests (`run4/test_routes.py`): the law's cases; route table from the real set with world coordinates checked
+    against the tile; a kinematic robot passes two waypoints without stopping and stops inside 0.2 m of the third;
+    assignment at reset (origin, height, heading, flags; nothing outside a reset; paper columns untouched).
+  - Restart path: pause at 5,000, then the construction check with option w and 256 robots (all 32 columns get
+    robots). It must build a route table of at least 100 routes, else v4h resumes. Then continue with w. Levels come
+    from the saved file (same layout). The trial at 31 iterations needs level >= 0.8 x, episode >= 0.4 x and turn
+    rate >= 0.7 x, else fall back to v4h. Then the crash guard (fall-back v4h).
+  - New logs from v4i: `route/share`, `route/final_reached`, `route/waypoint_index`; artefact watch per tile type
+    (below); posture already in.
+- 17:25 **Isaac artefact check (user's question): what is known, and the log that goes in with v4i.**
+  1. Contact forces: not measured until now. v4i logs, per group (paper columns; each new tile type; velocity
+     columns): share of robots with any body force over 3 x / 10 x body weight (1,240 / 4,120 N), running max force, and
+     share of feet in contact more than 1 cm below the ground under them (foot height scanners). Whether spikes end in
+     falls more often needs per-episode bookkeeping: not built.
+  2. Tunnelling through walls, rails, posts, door leaves: not checked. The "sunk foot" share covers feet into floors
+     only. A per-robot path check against the tile's boxes is not built.
+  3. How props reach PhysX (from the builder code): each tile is a trimesh concatenation of one closed box per prop box
+     plus the set's meshes, with no boolean union. So coincident and internal faces remain where boxes touch or overlap
+     (seams inside a stair flight, posts under rails, slabs under door frames), and seam ghost contacts are possible.
+     Leaning or overhanging props are oriented boxes (quaternion), not filled underneath. Thin boxes survive as they
+     are (8.9 cm posts and beams are fine; plates thinner than about 2 cm are tunnelling risks at 200 Hz). A 0.5 m slab
+     sits under every tile. The depth camera and the height scanners ray-cast the same terrain mesh PhysX uses.
+  4. Spawns on new tiles: the 16:19 check put no robot on a new tile. v4i logs, per tile type, the share of robots in
+     their first 0.2 s with a non-foot contact over 50 N, and its construction check puts 8 robots on every column.
+  5. Robot side: 25 pairs are filtered in Isaac (pelvis / hip-roll both sides; same-side wrist yaw / pitch / roll vs
+     hip pitch / roll / yaw; knee / ankle-roll; wrist-yaw / wrist-roll; torso / head-pitch). Foot-foot, leg-leg and
+     arm-torso pairs still collide. No measurement of which pairs carry load in training. The foot is the mesh's
+     convex hull in Isaac (the eval uses sole spheres).
+  - Fit: the logs come with the v4i restart (no extra pause). Counts per tile type and the worst three examples come
+    from the first 100 iterations of v4i.
+
+- 17:40 **Doorway falls re-read from the eval's traces (model_4125, seeds 1002-1004): overshoot of a pass-through waypoint
+  into a corner, then a turn with the feet against the 4x4, then a backward / sideways escape and a fall. My slow-turn
+  reading was wrong. New order: routes first, turn-rate cap after.**
+  - Why it overshoots and misses sideways, from the task as trained:
+    1. Every training target is a terminal stand: the command is vx = min(2 x distance, vmax) toward it and drops to zero
+       inside 0.4 m, so the policy learned to run at vmax until 0.4 m and coast 0.28-0.35 m. A waypoint it should pass
+       through and then turn at is never trained; nothing slows it before a heading change.
+    2. Lateral error is corrected only by yaw: vy is always 0 in the paper / run-4 task (`lin_vel_y` range 0), and vx is
+       forward-only, so a waypoint slightly to the side at short range is missed sideways and the correction comes after.
+    3. Until 4,500 there were no walls or beams beside a turn in training; turning in place happened in open ground.
+  - Backward / sideways escape under foot contact: `feet_stumble` (-2, from 4,500) charges a moving foot hit from the side
+    (horizontal force over 3 x vertical, foot faster than 0.15 m/s); it punishes the contact, it does not teach a way out.
+    Backward and sideways walking is commanded only on the two velocity columns (since 4,500) and has no clips in the motion
+    reference, so the escape is untrained either way.
+  - Order of the next changes (one at a time, trial / fall-back / crash guard each):
+    1. **Routes as start / target sequences** (before the turn-rate cap): robots start at the map's route starts with their
+       heading and follow the route's waypoints in order, passing through intermediate waypoints (next target taken inside
+       0.2 m, no stop) and standing at the end station; this trains turns beside walls, beams and door frames at the
+       distances the routes have, braking before a turn, and the final stand. Needs: per-cell record of the tile instance,
+       spawn pose with yaw, a waypoint-sequence command (the current command has one target per period). CPU build and
+       tests: about 3 h of work at the next resume; Isaac check in the pause of the restart after it.
+    2. Turn-rate cap 0.3-1.0 rad/s (prepared) after that.
+    3. Later: lateral command (vy) on route tiles so small side errors are stepped out, not turned out; backward / sideways
+       clips (the Pico captures) for the velocity columns.
+  - Eval-side, for now (the eval's choice): for a pass-through waypoint followed by a turn of more than 45 deg, slow the
+    command to the station rule from about 0.6 m out, because the policy brakes only when the command drops.
+
+- 17:12 **v4h on the map; model_4750 exported for the eval** (`eval/x2_parkour_v4_4750/`, task
+  Instinct-Parkour-ExtendedFixed-Amp-X2-v0, trained_model hipexclude, ONNX vs torch 1.9e-6; 4,625 also exported).
+  - Training at 4,758: mean level 5.57, episode 889. New columns: single beams 6.38, beam fields 6.34, blocks 6.48, wedges
+    6.02, tight spots 4.46, log corridors 3.30, homes 4.29, street front 5.77, stairs 4.04. Posture (Isaac, commanded
+    forward): torso pitch flat -17.4, stairs -15.0, boxes -15.8, gaps -13.2 deg; waist pitch -17.7 to -17.8 deg everywhere
+    (at its -18.0 deg limit). So the lean is no smaller on stairs or gaps than on flat ground, as the eval found.
+  - Doorway turn (4,125: 21 falls "clear of the door wall", 3,000: 3): reading, not yet shown. The eval's turn-in-place
+    drift at +-0.4 rad/s grew from 0.15-0.42 m (3,000) to 0.40-0.53 m (4,125), more than the doorway's 0.44 m half-width.
+    Training turn commands are clip(2 x bearing error, +-1) and almost always saturate at 1 rad/s, so slow turns are
+    untrained; overspeed (o) and sliding (z, any yaw) changed how it turns at speed, and the training map had no walls until
+    v4h. Asked the eval for three of the 21 traces (command, yaw rate, planar velocity, contacts in the last 2 s).
+  - Next changes inside v4h, one at a time, each with the trial / fall-back / crash guard:
+    1. Per-turner yaw-rate cap 0.3-1.0 rad/s (prepared: `patch_turnrate.py`, also adds the per-command speed log), so
+       slow turns are trained; restart after model_4750's eval confirms the doorway issue (about 18:30).
+    2. The map's checked routes as start / target pairs with start heading: record which tile each (level, column) cell
+       got, use the route starts as env origins with yaw, and the route ends (and their waypoints) as targets on those
+       cells instead of flat patches. CPU build tonight; Isaac check in the pause of the restart after (1).
+  - Turn-in-place commands on tight-spot and home tiles: yes; option y gives 15% of command periods on every
+    non-velocity column (all new tile columns included) as turn-in-place periods toward a target at least 1.5 m away.
+
+- 16:25 **Extended task construction check passed (exit 0, 16:19-16:23) and v4h is starting** (continuation of v4g's
+  model_4500 on `Instinct-Parkour-ExtendedFixed-Amp-X2-v0`; trial at 31 iterations, fall-back v4g; crash guard after).
+  Check log `runs/x2_parkour_v4/_check_extended_161908/`: the X2ParkourExtendedFixedEnvCfg built with all 32 columns, the
+  env stepped 150 zero-action steps without a Traceback, depth frames written (32 x 8 x 36 x 32, values 0.10-1.0, no NaN).
+  Limits of the check: with 64 robots only columns 0-15 got a robot (2 each), so no robot stood on a new tile in the
+  check; the script's printed summary (contacts, episode ends) did not reach check.log (only the npy files), so contact
+  and fall counts at spawn on the new tiles are first seen in the v4h trial. The posture log goes in with v4h.
+
+- 16:15 **Torso lean back: the camera explanation holds; watch item, fix belongs to the camera, a user / hardware decision.**
+  - Reference clips (v2 motion file, frames at 0.35-0.65 m/s, 7,245 of 20,001): pelvis pitch -1.8 deg, waist pitch +13.3 deg,
+    torso about +11.6 deg (forward).
+  - MuJoCo, my `posture.py` at 0.5 m/s, t = 3-8 s (forward positive): model_1000 torso -17.5 / pelvis +1.1; 1,500 -17.3 / +1.3;
+    2,250 -14.5 / +4.2; 3,000 -14.3 / +4.4; 4,125 -13.8 / +4.6; standing at zero command (4,125) torso -10.2 / pelvis +7.8.
+    **Waist pitch -18.3 to -18.4 deg in every checkpoint and standing: the joint sits on its lower limit (URDF -0.314 rad =
+    -18.0 deg)**, so the lean is the waist bent fully backward since at least 1,000, not a drift. Eval (state/eval.md):
+    3,000 -16.6, 4,125 -15.5; by zone -14 to -18.7, no forward lean near stairs. Isaac: not logged until now; per-group
+    posture log (`posture/torso_pitch_<flat|stairs|boxes|gaps>`, `posture/waist_pitch_*`, robots commanded forward) added to
+    keep.py with constant keys (CPU test passes) and goes in with the v4h restart.
+  - What holds the trunk: `pelvis_orientation_l2` -3.0 on torso_link and `flat_orientation_l2` -3.0 on the pelvis (projected
+    gravity squared: a 14 deg lean costs 3 x 0.058 x 0.02 = 0.0035 per step), `freeze_upper_body` -0.004 x |q - q0| (waist
+    0.32 rad: 0.00003 per step). The style discriminator sees the 12 leg joints only (run-4 fix a), so nothing in style
+    pulls the waist toward the reference's +13 deg. The trunk is almost free; the camera is the only strong reason to choose.
+  - Camera as trained (env.yaml of run 4, same in the card): torso_link (0.131, 0, 0.259), 61.6 deg down, 87 x 58 deg,
+    64 x 36 raw, crop 16 columns each side only (rows untouched), clip 0-3 m. Footprint on flat ground (my MuJoCo calc,
+    centre column): upright torso: top row about 1.5-1.6 m ahead of the toe (eval: 1.66 m), bottom row at the toe tips; at
+    the walking lean (4,125): 3.07 m (z-depth 2.96 m, at the 3 m clip), bottom row 0.19 m ahead of the toe; at 1,000-1,500 the
+    top row was beyond the clip (3.8-4.0 m). Reference lean (+11.6 deg): about 1.0 m. So the upright view is short of the
+    user's 2 m and the policy buys the range by bending the waist to its limit, losing its own toes from the image.
+  - What meets the requirement (10 cm behind the toe tips to 2 m ahead, at the standing pose, lens about 1.07 m): it needs
+    about 67 deg of vertical field (95 deg down to 28 deg down); the trained field is 58 deg. Options: (1) pitch up about 5 deg
+    (56-57 deg down): top row 2.0 m, bottom row at the toe tips (misses "10 cm behind" by about 10 cm); (2) 65 deg vertical
+    field (taller image) at about 61 deg down: about -0.05 m to 2.0 m; (3) both. Which is right depends on the real camera's
+    depth field and the real mount pitch (the mount was solved from the user's landmarks; a training pitch that differs from
+    the hardware makes a sim-to-real gap). Not decided by me: the user's camera mount / sensor field.
+  - Cost: same observation size, so a continuation (fine-tune) from the current policy, not a restart from scratch; the depth
+    encoder sees a shifted view and must re-learn, so expect a dip like a restart. Not together with v4h (one change at a
+    time): after v4h's trial passes. Expect the waist to come off its limit once the upright view reaches far enough; if it
+    does not, a waist term (style on the waist, or a stronger upright cost) is the next step.
+  - Stance width (MuJoCo, 0.5 m/s): 3,000 0.217 m mean (min 0.083), 4,125 0.200 (min 0.102, 10% of frames under 0.12 m), 2,250
+    0.164 (min 0.039, 30%). `feet_close_xy` (+0.4 x Gaussian, threshold 0.12 m) is the only term against narrow feet; foot-foot
+    and leg-leg hulls still collide in Isaac (only pelvis / hip-roll and wrist / hip pairs are filtered), so a crossing costs a
+    contact, not an episode. Knees bent (pelvis 0.65 m against 0.679 m standing default) and little arm swing: the arms and
+    waist are outside the style input, so nothing asks for a swing.
+
+- 16:05 (node clock) **Extended map goes into training now (user, via coordinator). Plan and state.**
+  - model_4125 (v4g) eval: card 50 / 50 / 32 / 50, floor 50 / 50 / 1 / 50; turn drift 0.40-0.53 m at +-0.4 rad/s, 0.22-0.24
+    at +-0.8; stop 0.28 m; speed +20 / +6 / -2 / -7 / -17% at 0.2 / 0.35 / 0.5 / 0.6 / 0.8. Keep v4g. The floor variant
+    (at least 0.45 m/s until the disc) was a workaround for a policy that would not walk slowly; 4,125 tracks 0.2-0.35 within
+    20%, and the floor variant spoils turning in place (1/50) by commanding forward speed into the station. Retire it; the card
+    is the standard. In Isaac, turners still slide 0.23-0.25 m/s (`turn/planar_speed`, 4,000-4,370, slowly falling).
+  - Next change = the extended task (ahead of the walking-floor change; its velocity columns already command -0.4..0.8 m/s
+    and turn-only). Prepared but held: per-turner turn-rate caps 0.3-1.0 rad/s and a per-command speed log on the flat column
+    (`scratchpad patch_turnrate.py`, not applied).
+  - Code: `extended.py` now has `X2ParkourExtendedFixedEnvCfg` (run 4's Fixed task with all HIKING_X2_OPTS, plus the extended
+    columns, velocity columns, stumble -2.0, clearance -0.5), registered as `Instinct-Parkour-ExtendedFixed-Amp-X2-v0`. Same
+    observations and actions, so v4g's checkpoint continues on it. The 2026-11-11 class (on the run-2 task) is kept, not used.
+  - Columns: 32; paper types keep 20 (62.5% of robots); 12 new: single beams, beam fields, blocks, wedges, tight spots, log
+    corridors (wall / rail / post sides), homes, street front, stairs x2 (one column each, ~256 robots), and 2 velocity
+    columns (forward -0.4..0.8, sideways +-0.3, turn +-1). All ten levels of every tile type are in the grid; robots on new
+    columns start where Isaac's curriculum puts new robots and move by the same tracking rule.
+  - Near walls: no proximity termination anywhere in this task. Episodes end on torso contact (`base_contact`), tilt > 1 rad,
+    pelvis below the floor minimum, leaving the terrain, time-out. Any non-foot contact over 1 N costs -1 per step
+    (`undesired_contacts`); feet inside edges cost -4 (`volume_points_penetration`); new: side hits on a moving foot (stumble
+    -2), low swing foot (clearance -0.5). So a wall beside the path is free until it is touched (SSR's 6 cm termination is not
+    here). Not done: a margin term (cost for a limb within a few cm of a wall).
+  - Held-out rule: tiles are the exported set; no apparatus layout or route (the set's README and generator check).
+  - Missing, as before: the set's checked routes as spawn / target pairs with spawn yaw (targets are flat patches on each
+    tile, spawn is the tile's widest-clearance spawn); backward / sideways clips in the motion reference; drop-edge stations
+    and slot stations (to add to the tile set after this first run).
+  - Times: `continue_v4h.sh 4500` in tmux `cont4h`. At model_4500 (about 16:17) it stops v4g, runs `check_x2_env.py --task
+    Instinct-Parkour-ExtendedFixed-Amp-X2-v0` (64 robots, 150 steps, limit 30 min; result in launch.txt and
+    `runs/x2_parkour_v4/_check_extended_*/check.log`); on failure v4g resumes at once. On success it continues v4g's policy on
+    the extended task with: paper levels from the logged means, the pin, a trial at 31 iterations (level >= 0.5 x because 12
+    new columns start low, episode >= 0.4 x, turn >= 0.7 x), fall-back to v4g; then the crash guard (fall-back v4g).
+    Expected training on the extended task by about 16:45. Routes as spawn / target pairs: CPU work after that.
+  - Per-command probe without a second GPU job: (1) the eval's MuJoCo tables on the desktop CPU for every checkpoint; (2) at a
+    later restart, an in-training log of speed / command per command bin on the flat column (prepared, see above).
+
+- 14:20 (node clock) **model_3500 (v4f, overspeed -3 since 3,250) fails the eval; decision: keep v4f's term, add one change
+  (drift under a zero linear command), armed for model_3875 (about 14:32).**
+  Eval 3,500: speed at 0.2 / 0.35 / 0.5 / 0.6 / 0.8: 0.33 / 0.49 / 0.59 / 0.63 / 0.68 (3,000: 0.20 / 0.34 / 0.48 / 0.56 /
+  0.67); stop 0.40 m (met); flat card 50 / 50 / 2 / 50, floor 50 / 5 / 0 / 50 (3,000 turn in place 18 / 33); turn rates
+  0.45 / 1.01 / -0.36 / -0.88 with 0.42-0.66 m drift (3,000: 0.15-0.42). Apparatus (3,000): 0/50, 29 falls, 21 stalls.
+  a) Why, checked:
+  - Same frame: `overspeed` uses root_lin_vel_b[:, 0] against the command's x, both in the root (yaw) frame the command is
+    given in. It fires only when the forward command is above 0.1 m/s, so never during turn-in-place or stands; it cannot
+    have taught the turn drift, and nothing else charges drift there (dont_turn_wait charges only a slow turn rate).
+  - Training at 0.2-0.35: never. Walking commands are 0.45-0.8 / 1.0 (`HIKING_X2_VX_MIN` 0.45), so the eval's +66% / +41%
+    is extrapolation the penalty never saw; I have no per-command Isaac probe, so I cannot say whether Isaac agrees. The
+    training monitor mixes all terrains (cmd 0.62, actual 0.22-0.25, ratio 0.35-0.39 from 3,300 to 3,757, below 3,000's
+    0.44), so in training the penalty is small (-0.4 to -0.8 per episode) and the robots are slower on average, not faster.
+  - Overspeed at 0.5 / 0.6 grew 3,000 -> 3,125 before the penalty existed (0.48 -> 0.58 at 0.5); 3,500 is about where 3,125
+    was. So the -3 weight at most slowed the drift; it did not cause it. Turn in place in Isaac is good (rate along command
+    0.87-0.91 at 0.93 commanded, 3,400-3,757), so the MuJoCo failure is drift, not rate: an unpenalised behaviour, plus
+    whatever sim gap there is (not measured).
+  b) Decision: keep v4f (overspeed stays, it is not the cause and costs little), roll forward with ONE change: option z with
+  `HIKING_X2_STOP_ANY_YAW=1`: -2.0 x planar root speed whenever the linear command is zero (stands and turn-in-place periods;
+  a turner drifting 0.5 m/s pays 0.5 x 2 x 0.02 per step). CPU tests pass (charges turner drift and stand coast, never
+  walking; log keys constant, new `turn/planar_speed`). `continue_v4g.sh 3875` (tmux `cont4g`): pin, pre-stop level copy,
+  trial at 31 iterations (level >= 0.8 x, episode >= 0.4 x, turn rate >= 0.7 x), fall-back to v4f; then the crash guard
+  (two error exits -> v4f with pre-stop levels; after-pin level check at 80 iterations, marks 5.7 / 900).
+  Measure on model_4125 (second checkpoint after): flat_turn_in_place >= 33/50 floor (3,000's), turn drift <= 0.3 m, stop
+  <= 0.40 m, stop-stand >= 45/50, walk 50/50; Isaac `turn/planar_speed` falling. If speed at 0.2-0.35 is still +40% or more,
+  the next single change is slow commands in training (below).
+  c) Apparatus needs not trained yet, in the order I will add them (each one change, same restart path):
+  1. Slow commands: walking floor 0.45 -> 0.15 with `dont_wait` moved from 0.3 m/s to half the command, so a stander under
+     a slow command still pays (SHARED_LESSONS "Slow commands": the paper never trains 0.2-0.4). After v4g passes, about
+     4,250.
+  2. Station stops next to obstacles and in narrow slots: targets placed 0.3-0.5 m behind a 4x4 / box edge with a 90-degree
+     approach, and stand stations next to 0.4-1.2 m drops (ACP's 78 drop-edge stands). Needs terrain or target changes, so
+     it belongs to the extended task: CPU build today, first Isaac check at the restart after slow commands.
+
+- 12:55 **v4f crash loop found and fixed.** Traceback (train.log, both crashes): `on_policy_runner.py` line 253 in `log`:
+  `KeyError: 'Curriculum/level_keeper/levels_pinned'`. instinct_rl's logger takes its keys from the first step's dict and
+  fails when a key disappears; my level keeper stopped returning `levels_pinned` when the pin released (about 62 iterations
+  after each start), so every start from 3,250 died before the 3,375 save. The trial check at 12:22 passed (level 5.56,
+  episode 408, turn 0.765) because it ran before the release. Fix in keep.py (installed in the InstinctLab copy too): every
+  key on every call (`levels_pinned` 0/1; turn values carry the last value when no turner is active; after an internal
+  error the same keys with 0). CPU test `run4/test_keep.py`: identical keys over 31 calls through the release at 1,500
+  steps, turners on and off, and after a forced error. Killed the third attempt (SIGTERM hung; SIGKILL at 12:54:12);
+  v4f restarted 12:54:42 from 3,250 with the fix, levels from the file (3,282: mean 5.56). Cost: no progress from 12:12 to
+  about 13:00 (three starts of about 6 min Isaac start-up each, about 9-10 min of training lost each time).
+  - 13:12 verified in Isaac: past the pin release without a crash (iteration 3,331, `levels_pinned` 0), level 5.51 (5.4
+    before), episode 657 (850 before; still rising after the synchronised start). AFTER PIN check OK.
+  - `crashguard_v4.sh` (tmux `guard4`): two error exits from the same checkpoint after it started -> stop, pre-stop levels,
+    v4d staged.py, `start_x2_parkour_v4d.sh`; and 80 iterations after its start (after the pin releases) writes level and
+    episode length to gates.txt ("AFTER PIN"), flagging level < 0.8 x 5.4 or episode < 0.5 x 850.
+
+- 12:07 **Overspeed: one change armed (v4f at model_3250, about 12:13, tmux `cont4f`).** Eval on model_3125: speed at
+  0.2 / 0.35 / 0.5 / 0.6 / 0.8 commands 0.30 / 0.47 / 0.58 / 0.64 / 0.71 m/s (3,000: 0.20 / 0.34 / 0.48 / 0.56 / 0.67), stop
+  0.47 m at 0.68 m/s (stopping time 0.69 s, same as 3,000's 0.64 s): the longer stop is the higher speed.
+  - Option o (`keep.py` `overspeed`, staged.py.next5): weight -3.0 x max(vx - vx_cmd, 0) for forward commands > 0.1 m/s; 0 at
+    or under the command, 0 for stand and turn commands. Per control step (CPU test at -2.0, scaled to -3.0) beside the speed
+    reward (+2.0, perfect +0.040): 0.60 under 0.60: 0 (speed reward 0.040); 0.84 under 0.70: -0.0084 (speed reward 0.037);
+    0.30 under 0.20: -0.0060 (0.0384); 0.45 under 0.60: 0 (0.0366).
+  - Restart path: level pin (1,500 steps) in keep.py; pre-stop level copy; trial after 31 iterations requires level >= 0.8 x
+    (5.3 now), episode >= 0.4 x, and the turn-in-place rate >= 0.7 x the value before (0.83 rad/s over the last 20 prints),
+    else automatic fall-back to v4d with the pre-stop levels. The pin holds levels during the trial, so the level check mostly
+    tests the pin itself.
+  - Success measure: eval on model_3500 (second checkpoint after the restart): speed within +-15% of the command at
+    0.2-0.6, stop test <= 0.40 m and <= 0.05 m in the last 2 s, stop-stand >= 45/50, flat_walk 50/50, turn in place at least
+    3,000's (card 18 / floor 33 of 50; rates >= 0.4 rad/s). Reference checkpoint stays 3,000.
+
+- 11:55 **No restart: v4e retry withdrawn.** Eval on model_3000 (v4d, no stop penalty): flat_walk 50/50 and flat_stop_stand
+  50/50 with both the card and the floor command (2,625: stop-stand 0/50; 2,250: 45/50). Stop test: 0.55 m/s before the
+  zero command, 0.35 m travelled, 0.03 m in the last 2 s. That meets the bar of 45/50 stop-stand.
+  - Why it improved, with numbers. Stop distance divided by speed before the stop (an effective stopping time): 2,250
+    0.40/0.48 = 0.83 s; 2,500 0.72/0.60 = 1.20 s; 3,000 0.35/0.55 = 0.64 s. So it is not only slower walking; the stop
+    itself got shorter. Most likely the 10% exact-stand periods (on since 1,875) taking hold; not separated from the
+    effect of the level dip after the 2,750 restart.
+  - Watch for overspeed: training speed before the stop is 0.55 now (0.60-0.67 at 2,500), and eval speed at a 0.6 command
+    for 3,000 is still pending. If 3,125 / 3,250 show speed at 0.6 above 0.70 m/s, or the stop test above 0.45 m, the next
+    single change is an overspeed term (charge forward speed above the command), not the stop penalty. Both are prepared
+    (stop_motion in keep.py; level pin; trial path with the pre-stop level copy).
+  - Levels at 3,064: boxes 5.95, slope 5.47, mesh boxes 4.58, rough 5.70, stand 5.40, stairs 7.02, stairs high 5.61, inverted
+    5.84, inverted high 5.32, gaps 1.05 (mean 5.28; 5.62 at 3,000).
+  - Gaps (1.05) lag every other type by about 4 levels. The paper's gap sizes were made for the G1 (hip about 0.76 m against
+    the X2's 0.64 m). Neither apparatus has gaps, so they are not on the path to the goal; left as is. Revisit in the
+    specialist stage, or scale the gap widths to the X2's leg length in the extended task.
+  - Stand at an edge with a drop: the paper's terrains place targets on flat patches, including platform and box tops (40 cm
+    in Table 8) and stair tops, and the 10% stand periods happen wherever the robot is, so stands near 0.2-0.4 m edges occur
+    by chance. Nothing trains a stand 0.3 m from a 1.1 m drop. Planned for the extended task: stations next to drops of
+    0.4-1.2 m (ACP's fix), with the date of the extended start.
+
+- 11:02 **v4e trial failed on levels; the fall-back (v4d, no new term) drops the same way, so every restart costs levels.**
+  v4e (z on), from 5.44: 4.48 at 2,753, 3.55 at 2,759, 2.91 at 2,768, 2.82 at 2,781; episode 96 -> 451. Fall-back v4d from
+  model_2750 (10:52), restored 5.42 from a level file I rebuilt at 10:53 from the per-type means at 2,719-2,728 (the saved file
+  had already been overwritten by the trial with 2.79; copies in `_supervisor/terrain_levels_prestop_2728.pt` and
+  `_trash/2026-11-12/terrain_levels_trial_2782.pt`): 4.43 at 2,751, 3.56 at 2,760, 3.17 at 2,770, 3.08 at 2,780; episode 36 ->
+  497. Reading: the drop is the restart, not stop_motion. Mechanism: the restored levels move the env origins but the robots
+  are still on their start tiles, and all robots start together; the first episodes end early (35-150 steps; the first wave
+  probably on the out-of-bounds check against the moved origin, not verified), and the curriculum score is summed over steps /
+  1,000, so every short episode moves a robot down a level, two or three times in 20 iterations.
+  - Fix (keep.py, CPU-tested; takes effect at the next restart only): for 1,500 control steps after a restore the curriculum's
+    moves are undone for every resetting robot (`HIKING_X2_LEVELS_PIN_STEPS`); afterwards the curriculum runs as usual.
+  - Trial path fixed: `continue_v4e.sh` keeps `terrain_levels_prestop.pt` and the fall-back restores from it.
+  - Now: v4d training from 2,750 at about level 3.1, recovering by itself (last time 1.8 -> 5.0 took 220 iterations). No restart.
+  - Next: retry v4e (z, with the pin) only once levels are back to about 5 (about 3,000-3,125); trial criteria unchanged.
+
+- 10:40 **Stop regression 2,250 -> 2,500: reproduced, diagnosed, one change armed (v4e at model_2750, tmux `cont4e`).**
+  - Reproduced with the eval's own `eval/stop_test.py` (3 seeds, 4 s at 0.6 then a stand for 3 s; desktop, standard
+    command): 2,250 speed before 0.48 m/s, travel after zero 0.41-0.42 m, last 2 s 0.11-0.12 m; 2,500 0.60 m/s, 0.63-0.64 m,
+    0.23 m. Matches the eval (0.40 / 0.72). My own `probe.py` gives 0.73 / 0.71 and is not used for gates.
+  - Diagnosis (config read plus trainer log): (1) nothing in the reward charges motion under a stand command. The paper's
+    `stand_still` (-0.3) is (sum |q - q0| - 4) under a zero command: a joint-pose term with no velocity in it. The speed
+    kernel exp(-v^2/0.25) keeps 70% at 0.3 m/s. (2) v4d's 10% exact-stand periods do include stops from a walk (any period
+    after a walking one), but the only cost of coasting is that weak kernel. (3) Walking got faster: speed before the stop
+    0.48 -> 0.60 m/s at a 0.6 command (eval: 0.84 under the 0.7 cap). The touchdown air-time reward rose 9.4 -> 12.7 -> 13.8 per
+    episode (1,990 / 2,500 / 2,707) and measured air per touchdown 0.08 -> 0.10 s: longer swings at the same cadence are
+    longer, faster steps, and overspeed is cheap in the same kernel (+0.2 m/s keeps 85%). More speed means more run-on.
+    (4) Overshoot past the 0.4 m radius turns the command back on as yaw-only (turn toward a target behind), which is the
+    circling. (5) Levels: flat-terrain robots (perlin_rough) went 7.8 -> 5.8 -> 6.3; no sign that levels drive the speed.
+  - **One change, option z:** `stop_motion` = planar root speed (m/s) while the command is a stand (|v| < 0.1 and |yaw| <
+    0.1), weight -2.0 (a 0.5 m/s coast for 1 s costs 1.0). keep.py + staged.py.next4; CPU tests pass (`run4/test_keep.py`
+    incl. stop_motion cases, `test_t` on next4). Overspeed and overshoot are left for later, one at a time.
+  - Restart path with trial: `continue_v4e.sh` waits for model_2750, records level and episode length before the stop
+    (5.42, 852), restarts, and after 31 iterations requires level >= 0.8 x and episode >= 0.4 x, else stops and resumes v4d
+    from the same checkpoint (logged in launch.txt).
+  - **Success measure:** eval stop test on model_3000 (3 seeds): travel after zero <= 0.30 m and last-2-s drift <= 0.05 m,
+    with flat_walk 50/50 and speed at 0.6 of 0.45-0.65 m/s; flat stop-stand >= 45/50 (2,250: 45). Reference checkpoint for
+    obstacle and route tests stays 2,250 until then.
+
+- 10:10 **No restart; carry on v4d.** Patience rule in full (coordinator 10:01): no restart without a defect shown on a probe that
+  reproduces the eval; one change at a time; any restart path tried first in a short throw-away run with automatic fall-back
+  if levels or episode length collapse in the first 30 iterations.
+  - Levels per type, 1,749 -> 2,398: boxes 4.63 -> 5.43, slope 4.03 -> 5.10, mesh boxes 2.62 -> 3.67, rough 5.94 -> 5.41,
+    stand 6.11 -> 5.30, stairs 6.49 -> 6.83, stairs high 6.07 -> 5.39, inverted 3.99 -> 5.69, inverted high 4.57 -> 5.44, gaps
+    0.60 -> 0.81; mean 4.43 -> 5.0 (flat at 5.0 since 2,250). Time-outs 69% (same), episode 840 (800).
+  - Training speed ratio 0.70 (2,000) -> 0.47 (2,150-2,350) -> 0.37 (2,400) while the mean level rose 1.8 -> 5.0, wait
+    penalty -0.6 -> -3.0 per episode: slower on harder tiles, same pattern as 1,250 -> 1,500. Watch: if the eval's flat speed
+    table at the next checkpoints drops below 2,125's (0.51 at 0.6), that is a defect.
+  - Air-time miss at 2,000 (0.084 s against 0.10): no change. Rising (0.043 / 0.066 / 0.072 / 0.084 at 1,000 / 1,500 / 1,750 /
+    2,000), and the eval-side blockers are stop and turn, not air time.
+  - Turning in training: rate along command 0.66 rad/s at 0.91 commanded (2,398). Eval at 2,125: 0.48 / 0.88 / -0.52 / -0.87
+    rad/s at +-0.4 / +-0.8, flat 50 / 6 / 19 / 50 (walk / stop-stand / turn in place / turn and return).
+  - **Probe bug found:** my 08:30 numbers for "1,500" were model_500 (a shell typo `_$1500` expanded to `_500` when copying).
+    Re-run on the right files (single seed, starts from standing): 1,500: 0.66 m/s at 0.6, run-on 1.18 m in 1 s, yaw -0.09 /
+    -0.07; 2,125: 0.66 m/s, run-on 0.37 m, drift 0.32 m in the next 3 s, yaw 0.73 / 0.85 rad/s. Eval: 1,500 0.56 m/s, about
+    1 m coast, no turn; 2,125 run-on 0.34-0.35 m, yaw 0.88 / 0.87, "nearly still" after the stop. Agrees except the drift after
+    the stop (mine 0.32 m); until that is resolved against `eval/stop_test.py`, the eval's numbers are the gate.
+  - Stop and target behind, as trained: the training command is zeroed within 0.4 m of the target (`target_dis_threshold`
+    0.4, card `target_stop_radius_m`), so the policy learned to brake about 0.4 m out and coast 0.3-0.35 m; the eval's
+    brake-early variant (zero from about 0.35 m) is the trained rule. A target behind the robot and more than 0.4 m away gives
+    vx = 0 (forward-only clamp) and yaw toward it: turn on the spot, then walk; inside 0.4 m the command is zero (stand).
+  - Next single change, only if the eval still shows run-on over 0.25 m at the 0.35 m brake on 2,500 / 2,625: stand_still
+    weight -0.3 -> -1.0 (shorter stops), tried in a 30-iteration throw-away run first.
+
+- 08:30 **v4c restart at 1,750 collapsed the curriculum; restarted as v4d from model_1875 (08:26).** Measured (trainer log):
+  1,749: episode 973, levels 4.43, time-outs 68%. After the restore: 1,751 episode 34, 1,760 levels 1.55, 1,780 levels 0.00,
+  root_height falls 60-67% of ends, value loss 3 -> 68 (1,760) -> 0.6 (1,850); by 1,854 episode 798, reward 26 (recovering) at
+  level 0 on every type. Cause as far as shown: my forced time-out right after the restore (keep.py) gave every robot a
+  1-step episode, whose tracking score (summed over steps / 1,000) is under the 0.3 threshold, so every robot dropped a level
+  and all resets were synchronised; the value function then saw states it did not know (value loss x20) and the policy fell
+  for about 80 iterations, each fall another level down. Not separated from the other v4c changes (y turners, vx floor 0.45).
+  Fix: the forced time-out is off (HIKING_X2_LEVELS_FORCE_RESET, default 0; levels move at natural resets). Since levels were
+  already 0, the v4d restart cost no curriculum. Turn signal in v4c: `turn/rate_along_cmd` 0.31 rad/s at 0.85 commanded
+  (1,844-1,854), from 0.05 at 1,770.
+- 08:30 **Stand regression 1,000 -> 1,500 (eval: zero-command drift 0.43 m / 8 s, stop-stand 49/50 -> 8/50): reasoning.**
+  (1) Option c set `rel_standing_envs` to 0 (paper 0.05): since 03:19 no robot has had an exact stand command for a whole
+  command period; the only zero commands are the last part of a period after arriving within 0.4 m, and an overshoot there turns
+  the command back on (turn and walk back), which is the "corrective circle" the eval saw. (2) The style coefficient ramped
+  0.075 -> 0.25 from 500 to 1,500 (schedule s) on a reference with 3.3% standing frames, so standing still scores low style.
+  (3) The stand column gets random yaw (+-1), never an exact zero. The air-time reward t does not pay at a zero command
+  (gated on |cmd| > 0.1), so it is not the cause. **v4d adds exact stand commands: `HIKING_X2_STAND_SHARE=0.10`**
+  (staged.py.next3; paper 0.05) on top of v4c (k, y, vx floor 0.45, t 140, save 125). Fallback: v4c.
+- 08:30 Deterministic MuJoCo probe (`perception-agents-work/hiking_sim2sim_x2/probe.py`, desktop CPU, one seed; stop = 4 s at
+  0.6 then zero; yaw = [0, 0, +-0.8] 6 s): 1,000: walks 0.11 m/s, falls after the stop; yaw -0.09 / -0.08. 1,500: walks 0.00
+  in its last second at 0.6 (eval measured 0.56; my probe starts from standing, one seed), stop 0.07 + 0.01 m; yaw 0.11 /
+  -0.05. 1,750: walks 0.49 m/s, stop distance 0.33 m in 1 s, drift 0.31 m in the next 3 s; yaw +0.19 / +0.41 rad/s with
+  0.7-1.2 m drift (circles, not on the spot). **Gates for v4d (probe, run on the desktop when resumed): 2,000 and 2,250:
+  stop distance <= 0.25 m, drift <= 0.10 m / 3 s, yaw >= 0.4 rad/s both ways with drift <= 0.3 m, no fall.** If the stand
+  fails at 2,250: stand share 0.2 and the stand_still weight up; if turning fails: turn share 0.3.
+
+- 07:38 **Decision at the 1,500 gate: carry on with t at 140; no t-280 / kernel experiment.** Gate recorded FAIL on air only:
+  measured air per touchdown 0.066 s (mark 0.07) on a rising curve (0.043 at 1,000, 0.063, 0.066), speed 55.7% (mark 50%),
+  falls 32% (49% at 1,000), episode 759 (644), while the mean terrain level rose 2.15 -> 3.77 (stairs 4.62, stairs high 7.07).
+  A 0.004 s miss while the terrain gets harder is not a defect; the narrower kernel targets slow commands, which run 4 never
+  sees (its walking floor is 0.6 m/s). The 2,000 gate (air >= 0.10 s, speed >= 0.6) stands.
+- 07:38 **Eval at 1,000 (eval monitor): flat 50/48/0/0 (walk / stop-stand / turn in place / turn and return); never turns in
+  place.** Own MuJoCo check (desktop, `perception-agents-work/hiking_sim2sim_x2/yaw_test.py`, model_1000): command fed directly
+  as [0, 0, wz], the form the perlin_rough_stand robots train with: wz 0.8 -> turned -0.59 rad in 6 s, wz -0.5 -> +0.53 rad,
+  0-4 lift-offs, i.e. it does not turn on the spot under any command form; not an adapter problem. Cause in the task: the only
+  zero-forward yaw commands are the stand column (5% of robots, uniform +-1 rad/s), and a stander keeps much of the yaw reward.
+- 07:38 **Next restart armed: `continue_v4c.sh 1750` in tmux `cont4c`** (waits for model_1750, about 08:03 UTC). Changes:
+  - y (new, `config/x2/keep.py`): 15% of command periods off the stand column become 4-6 s turn-in-place periods: command
+    [0, 0, clip(2 x bearing error, -1, 1)] to a target >= 1.5 m away, then stand facing it (the apparatus station); plus
+    `dont_turn_wait` -0.5 when commanded > 0.4 rad/s and turning < 0.2 rad/s. Logged as `level_keeper/turn/*`.
+  - k (new, keep.py): terrain levels saved every 300 s to `_supervisor/terrain_levels.pt` and restored at every restart; this
+    first time from the per-type means at the newest iteration (current: stairs 5.2, stairs high 6.7, inverted 3.3/4.2, boxes
+    4.0, mesh boxes 2.3, gaps 0.5), then robots time out once and respawn on their tiles.
+  - Walking-command floor back to the paper's 0.45 m/s (`HIKING_X2_VX_MIN`; run 4 raised it to 0.6): the eval walks at 0.5 and
+    the policy makes 0.19 m/s there.
+  - Kept: a,c,d,f,r,s,t, t weight 140, save interval 125. Fallback: old staged.py + `start_x2_parkour_v4b.sh`.
+  - Checked on CPU: `run4/test_keep.py` (stand column never turns, share 0.152, 4-6 s, forward zeroed; dont_turn_wait cases;
+    restore from means keeps each type's mean, restore from file exact, time-out after restore, no-op without variables);
+    `test_t.py` on `staged.py.next2`; level-means extraction on the live log; `bash -n`. Not checked: construction in Isaac (the
+    restart is the check, with the fallback); whether the motion reference has turning-on-the-spot frames for the style reward.
+  - Check after the restart: `turn/rate_along_cmd` rising toward `turn/cmd_abs` by 2,250; eval flat_turn_in_place on the first
+    checkpoint after 2,000. If turners stay under 0.2 rad/s by 2,250: raise the share to 0.3 and add a yaw-tracking kernel of 0.25.
+- 07:38 `trained_model` set in all run-4 cards ("x2_ultra_hipexclude.xml (pelvis / hip-roll pairs excluded)" plus the other
+  filtered pairs) and in `export_for_eval.py` for the Fixed / Extended tasks. Isaac has no contact for pelvis / hip-roll at all
+  (filtered since run 4).
+- Not done: real Isaac observations for obs_check (needs a recording run; next pause that happens anyway).
+- Paper A.8 plan, slow commands (0.2-0.4), backward / sideways: unchanged from 06:25 (extended task; specialists after the
+  general policy).
+
+- 06:25 **Option-t continuation verified and watched** (started 06:02 by `gates_v4.sh`: air per touchdown 0.043 s at 1,000).
+  Trainer environment read from /proc: OPTS a,c,d,f,r,s,t, AIR_TD_WEIGHT 140, `agent.save_interval=125`, resume from
+  model_1000; measured monitor in the log (`Curriculum/walk_monitor/air_per_touchdown_s`). One GPU job (pid 131721, 57 GB).
+  New log dir `runs/x2_parkour_v4/20261112_060244_from20261112_031923/`. Gates: 750 speed 0.384, stalled 23%, no drift;
+  1,000 speed 0.407, falls 49%, episode 644, level 1.55. After restart (1063-1072): speed 0.451, falls 44%, episode 571,
+  measured air per touchdown 0.043-0.046 s (flat; touchdowns >= 0.2 s 2.7-3.1%), air-time reward 0.094/ep (was 0.078).
+  Terrain levels restarted from 0 on resume (1.55 -> 0.61 at 1030 -> 0.91 at 1072; the curriculum state is not in the
+  checkpoint), which also explains the shorter episodes. Decision: keep running.
+  - Gates `code/x2_port/gates_v4b.sh` (tmux `gates4b`, record only): 1,250 and 1,750 line only; **1,500 pass = measured air
+    >= 0.07 s and speed >= 0.50; 2,000 pass = air >= 0.10 s and speed >= 0.60**; alert if train.log silent > 15 min. Next
+    experiment if 1,500 fails: continue from model_1500 with t weight 280 and the speed kernel narrowed 0.25 -> 0.1 (SSR r6d
+    form), prepared on CPU before 1,500.
+  - Automatic export `code/x2_port/auto_export_v4.sh` (tmux `autoexp`, CPU, niced): every new checkpoint to
+    `eval/x2_parkour_v4_<N>/`, log `eval/auto_export_v4.log`. 750 and 1,000 exported (ONNX vs torch 6e-7, 1e-6). obs_check is
+    synthetic for all run-4 exports; record real Isaac observations (`--obs`) at the next restart that happens anyway.
+  - Eval needs not trained by the paper's task, and who covers them: exact stand on arrival and 1 s stand: adapter (command
+    exactly zero inside the disc; the task trains exact-zero stands). 0.2-0.4 m/s: adapter can keep the command at >= 0.45
+    until the disc and then zero; real slow walking goes into the extended task (commands 0.15-0.45 with dont_wait from
+    0.1 m/s). Turn in place: extended task (zero-forward yaw commands, a share of corner targets). Backward, sideways:
+    extended task (commands written; clips missing). Dates: extended task CPU changes 2026-11-12; Isaac construction check
+    at the next restart; fine-tune from the general policy at about 3,000 (about 11:30 UTC 2026-11-12) if stairs levels rise.
+  - Paper A.8 plan: after the general policy, fine-tune specialists (stairs; platforms) from it, flat plus the target terrain,
+    walking command 0.45-0.55 m/s, run one after the other on this GPU; first one when general stairs levels stall.
+  - Pelvis / hip-roll: filtered in Isaac since run 4 (fix d, both sides), so Isaac makes no contact for that pair at all; the
+    policy never learned to carry load there. MuJoCo eval keeps it (153 N standing at 500). Shared-model question, coordinator.
+
+- 04:57 (node clock; the 05:05 and 05:10 entries below were stamped ahead of the node clock) **Resumed, run 4 healthy, gates
+  automated.** Heartbeat 04:54: iteration 577, GPU 82%, 55 GB, pid 102936, one trainer start since 03:19 (no restarts).
+  metrics.jsonl lags the trainer by about 20 iterations (newest parsed 554). **545-554:** 22,065 samples/s (8.9 s/iteration),
+  speed ratio 0.316 (0.22/0.70 m/s), falls 62%, stalled 22%, time-outs 18%, episode 399, air per touchdown (est.) 0.032 s,
+  air-time reward 0.040/ep, both feet down 58%, D-reward 0.51, level 0.48. Against 500: speed 0.26 -> 0.32, episode 370 -> 399,
+  air per touchdown 0.029 -> 0.032 s (still under the 0.05 s gate).
+  - Option t files re-tested on the node CPU: `run4/test_t.py staged.py.next monitor.py.next` passes (0.25 / 0 / 0.30 cap / 0;
+    threshold 0.05 s, default weight 140); `continue_v4.sh` syntax OK, weight 140.
+  - **`code/x2_port/gates_v4.sh` running in tmux `gates4`** (CPU only, polls metrics.jsonl once a minute): at 750 writes the
+    report line and the drift check (stalled > 40% with speed < 0.2) to `runs/x2_parkour_v4/_supervisor/gates.txt`; at 1,000
+    writes the line and, if air per touchdown (est.) < 0.05 s, starts `continue_v4.sh` in tmux `cont4` (stops run 4 through its
+    supervisor, continues from model_1000 with t; falls back to plain run 4). Expected: 750 about 05:20, 1,000 about 06:00 UTC.
+  - Export of `model_500` made on the CPU: `eval/x2_parkour_v4_500/` (policy.onnx, encoder+actor, adapter_card.json,
+    obs_check.npz; ONNX vs torch 7e-7; observation 10,016 = 800 proprio + 8 x 36 x 32 depth; chest camera torso_link 61.6 deg
+    down; gains from env.yaml).
+  - **Path to ladder step 1:** earliest scorable checkpoint is `model_500` (export ready; `model_250` export also exists). Blocker:
+    there is **no `eval/adapters/hiking.py`** in the common eval (only acp, acp_baseline, stand). The adapter card plus
+    `code/x2_port/sim2sim/sim2sim_mujoco_x2.py` (MuJoCo observation builder incl. depth, used for the 250 renders) are the sources
+    for it. Expected result at 500: fails `flat_walk` (0.27 m/s net in MuJoCo at 250, short shuffles). Owner of the adapter: the
+    eval monitor (common eval code), to be asked by the coordinator.
+  - Backup: manifest 04:49:36, 2 checkpoints (250, 500), newest model_500 (04:42); next checkpoint 750.
+  - 05:05 (coordinator: checkpoints at least every 30 min) **Save interval 125 at the next restart**: `--save_interval 125`
+    added to `continue_v4.sh` (generated `start_x2_parkour_v4b.sh`) and to `start_x2_parkour_v4.sh` (fallback / plain resume).
+    125, not 150: instinct_rl saves when iteration % interval == 0, so 150 would skip 2,000, 3,000, ...; 125 keeps every 1,000
+    (about 18.5 min apart at 8.9 s/iteration). Run 4 keeps 250 until it is restarted (model_1000 is still saved, the gate
+    finds it). Retention: the supervisor deletes nothing (all checkpoints kept, decision 2026-11-11); at 125 that is about
+    240 x 68 MB = 16 GB over 30,000 iterations. Pruning to "newest two plus every 1,000" is not implemented.
+    Backups of the old launchers: /tmp on the node.
+
 - 05:10 **Option t changed to threshold 0.05 s, weight 140** (coordinator; SSR uses 0.10 s): run 4's swings are 0.03-0.06 s, so
   0.10 s gave no gradient. Cap 0.30 s kept. Walker with 0.2-0.25 s swings: 0.07 touchdowns per step x 140 x 0.02 x (0.15..0.20) =
   **+0.029..+0.039 per control step** (with dt: 2.8 per touchdown per second of clamped air; without dt: weight 2.8). A 0.06 s
@@ -923,3 +1481,81 @@ Plan: a small monitor term for per-type terrain level, actual vs commanded speed
 ## Blockers
 
 None. Open: the user's measured camera height and angle; which pelvis mass is right (URDF 3.52 kg or MJCF 5.03 kg).
+
+## HOW TO RESUME (updated 2026-11-13 01:57 node clock; supersedes everything below where they differ)
+
+- WHAT WENT WRONG: v5 never trained. 01:32 construction check died in Isaac Lab's term check
+  (`manager_base._resolve_common_term_cfg`: "amp_policy/joint_pos_rel expects mandatory parameters ['asset_cfg','kw']"),
+  because `style_weights.py` wrapped the observation functions with `**kw`, which Isaac Lab's signature check counts as a
+  mandatory parameter. The CPU pre-flight tested the functions on stubs but not Isaac's signature rule. v4j resumed from
+  model_7250 at 01:32 (run dir `20261113_001803_from...`? newest ckpt dir; v4j at it 7344 at 01:55, 9.8 s/it).
+- FIX (01:50): `code/x2_port/v5/fix_style_signature.py` gave the 4 wrappers explicit keyword parameters with defaults (same as
+  the wrapped functions; bad copy in `_trash/2026-11-13/style_weights.py.v5bad`), both copies (InstinctLab tree and
+  files_instinctlab). `v5b/precheck_v5b.py` now runs Isaac's signature rule on the 4 swapped terms on CPU.
+- v5b = v5 content (v4k changes, option j style weights, fresh discriminator 330 -> 550 inputs, simcheck) with the motion
+  reference = the paper's reference v2 ALONE (379.6 s, 18,982 frames; floating-feet fix): `data/motion_v5b/
+  parkour_motion_without_run_x2_v2_retargetted.npz` + yaml. Coordinator correction 01:57: the user's "include my Pico ones"
+  was for SSR; Hiking keeps the paper's data only. A Pico-mixed build (01:52, 614 s) was disarmed before it ran; files and
+  build script in `_trash/2026-11-13/`. The paper file has 49 planar jumps > 5 m/s (clip seams inside the release, v1 and v2
+  alike). Scripts generated by `v5b/mk_v5b.py` from the v5 ones.
+- Discriminator: re-initialised (forced: every checkpoint has the 330-input leg-only discriminator; v5's 550-input one never
+  existed). Policy, value and optimizer load from the checkpoint.
+- Pre-flight `v5b/precheck_v5b.py` PASS at 01:56 on the v2-only file (motion reader steps, 380 s, signature check, discriminator drop).
+- ARMED 01:56:50: tmux `cont5b` = `v5b/continue_v5b.sh`, GO_v5b written (user approved via coordinator), restart from model_7375
+  (about 02:00). Trial 75 iterations, marks over the last 30; fall-back = v4j (`fallback_v4j.sh`), since v5 never ran.
+- NEXT CHECK about 02:30: `_supervisor/launch.txt` (v5b check exit, trial line); then style reward / discriminator logits,
+  base_contact share on ext_tight_spots, slow_* and turn metrics vs v4j.
+
+## (older) HOW TO RESUME (updated 2026-11-13 00:42 node clock; supersedes everything below where they differ)
+
+- 00:05 v4k started (693 routes); trial FAILED 00:17 (ep 306 vs 944, turn 0.34 vs 0.91); v4j resumed from model_7000 at 00:18.
+- Trial was NOT fair (CPU from train.log, `code/x2_port/v4j/cmp_trial.py`, `restarts.py`): v4j restarted from the SAME
+  model_7000 with v4j config scored ep 195, turn 0.17, vx -0.13 in its first 32 iterations, below v4k (184, 0.21, -0.18), and
+  recovered by 7044 (ep 520-780, turn 0.67, vx 0.20). Cause: the episode mark is censored, since no episode can time out
+  until about 42 iterations after a full reset (v4k end/time_out 0.00 vs 0.78), so it counted falls only. The turn mark already
+  excludes the capped robots (caps <= 0.4, metric needs |cmd| > 0.4). Endings in both: root_height about 0.7, bad_orientation
+  0.27. One v4k-specific signal: base_contact on ext_tight_spots 12% of ends vs 0.5%; watch it in v5. Open: why the
+  7000 restart transient is deeper than earlier restarts (first-32 turn 0.63-0.88 at 3250-6750).
+- v5 = ONE combined restart, built and armed (tmux `cont5`, `code/x2_port/v5/continue_v5.sh`): v4k content + paper motion
+  retargeted to X2 (`data/motion_paper_x2/`, copied as *_retargetted.npz: the loader reads only that suffix) + option j
+  (style input: legs/waist 1.0, shoulders/elbows 0.3, wrists/head out; 550 inputs; checkpoint discriminator dropped on shape
+  mismatch, policy kept; `style_weights.py`) + simcheck (`simfault.py`, `v5/supervise_x2_v5.py`). Trial 75 it, marks over the last 30.
+  Gate: `touch _supervisor/GO_v5` (content "now" = newest checkpoint at once, else the next 125 checkpoint). Pre-flight
+  `v5/precheck_v5.py` PASS at 00:41 on the delivered retarget (18,982 frames, 380 s, 50 fps); FAILs on the 23:11 bad file.
+
+- 23:11 v4k NOT started. What went wrong: the GPU construction check died in `AmassMotion._read_retargetted_motion_file`
+  (`ValueError: 'left_hip_pitch_joint' is not in list`, check.log line 153) because `data/motion_v4/append_motion_v4.py` reused
+  the variable `names` (joint names, line 13) for the clip keys (line 49) and saved the 72 clip keys as `joint_names`. The
+  arrays were right. The CPU pre-flight only counted frames. Fix (23:30, `code/x2_port/v4j/fix_v4k_jointnames.py`): script
+  uses `JNAMES`; npz rewritten with the v2 joint names, arrays identical (bad copies in `_trash/2026-11-12/`);
+  `precheck_v4k.py` now runs the reader's joint lookup, shapes, finite values and quaternion norms for every yaml file on CPU:
+  PASS on the fixed file, FAIL (exit 1) on the 23:11 file. `continue_v4k.sh` writes the check's last error line to launch.txt.
+  Not reproducible on CPU: everything from `gym.make` in `check_x2_env.py` line 28 (scene, sim.reset, managers, route table).
+- v4j resumed 23:11 from model_6750 (run dir `20261112_231149_from20261112_205728`), guard4j. Re-armed 23:31: tmux `cont4k` =
+  `continue_v4k.sh 7000` (about 00:05), content unchanged; same pre-flight, check, trial 31 it and fall-back.
+- Next check about 00:30: launch.txt; then Metrics/base_velocity/slow_* and turn_drift, turn/* and episode length vs v4j.
+- PENDING (user decision 2026-11-13, via coordinator, docs/USER_RULES.md): keep the paper's single discriminator; replace the
+  BONES-SEED + Pico motion mix with the paper's own motion reference retargeted to X2:
+  `/mnt/filesystem-g4/data/motions/hiking_release_x2/parkour_motion_without_run_x2.npz` (paper keys, X2 joint names, 50 fps;
+  retargeted by another agent). v4k stays unchanged. Goes into the next planned restart after v4k's 2,000-iteration freeze, and
+  only once the coordinator confirms the retarget passed its checks. Before that restart: run `precheck_v4k.py`'s motion-reader
+  check on it (joint lookup, shapes, quaternions), new yaml, and a CPU pre-flight twin.
+- After v4k: NO restart for >= 2,000 iterations (coordinator 22:20) except crash or failed trial.
+
+## (older) HOW TO RESUME (2026-11-12 20:18 node clock)
+
+- Node `hiking` = the host whose `tmux ls` shows `hiking_x2` (login NODE_USER, key ~/.ssh/nebius_corpus; address not written here).
+- Running: run 4, v4i (options a,c,d,f,r,s,t,k,y,o,z,w) resumed from model_5500 at 19:22 after the failed v4j check;
+  iteration 5,798 at 20:18 (about 5.4 it/min); tmux `hiking_x2`, `autoexp` (exports), `guard4i` (crashguard_v4.sh 5.80 878).
+- Armed: tmux `cont4j` = `code/x2_port/continue_v4j.sh 6000` (stdout `_supervisor/continue_v4j.out`). At model_6000 (about
+  20:55): CPU pre-flight `v4j/precheck_v4j.py` (log `_supervisor/precheck_v4j.log`; fail = v4i not stopped), then stop v4i,
+  construction check 256 robots (routes >= 100, `wall_contact_graded` in the reward table), start v4j, trial 31 iterations
+  (level >= 0.8 x, episode >= 0.4 x, turn rate >= 0.7 x), else `fallback_v4i.sh` + guard4i. Results in `_supervisor/launch.txt`.
+- Next check (about 21:15): launch.txt pre-flight, check and trial lines; then in metrics.jsonl the v4j keys: artefact/spawn_ext_homes (< 3%
+  wanted, was 23.5%), c10/*_ext_tight_spots (which body carries the 4 kN spikes), tunnel/*, end/*_ext_homes and
+  _ext_tight_spots, end/reached_*, wallspeed/near vs far; the turn rate and level against v4i.
+- Run dir `/mnt/filesystem-g4/tracks/hiking/runs/x2_parkour_v4/`; code `code/x2_port/` (v4j build in `v4j/`), live config
+  `code/hiking-in-the-wild/InstinctLab/source/instinctlab/instinctlab/tasks/parkour/config/x2/`.
+- Eval: model_4125 0/50 on the apparatus; model_4750 queued (flat gate and station legs first, on the plane-and-box floor).
+- Open: lean -16.7 deg (camera explanation; user / hardware decision); camera height and pelvis mass from the user.
+- Rules: no commits or pushes; one GPU job; never touch the desktop G1 reproduction.

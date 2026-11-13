@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 import mujoco
 import numpy as np
+import phys_floor
 
 HERE = pathlib.Path(__file__).resolve().parent
 SIM_DT = 0.0025
@@ -89,6 +90,32 @@ def _group_of(body_name: str):
     return "trunk"                         # pelvis, waist links, torso
 
 
+def model_note():
+    """'' for the standard eval model; a note when the second model (a robot self-contact pair excluded) is in use."""
+    ex = os.environ.get("X2_EXCLUDE_PAIRS", "")
+    s = "" if not ex else " | MODEL: self-contact excluded (%s), not the standard eval model" % ("pelvis-hip_roll both sides" if ex == "hip" else ex)
+    if _nocontact_walls():
+        s += " | COURSE TEST VARIANT: wall boxes %s without contact" % ",".join(sorted(_nocontact_walls()))
+    if os.environ.get("TEST_BOX_4X4") == "1":
+        s += " | TEST: 4x4s as boxes (height-field cells flattened)"
+    if os.environ.get("TEST_TERRAIN_SOLREF"):
+        s += " | TEST: terrain solref %s s" % os.environ["TEST_TERRAIN_SOLREF"]
+    if os.environ.get("TEST_GROUND_PLANE") == "1":
+        s += " | TEST: endless ground plane under the course (depth past the course edge sees floor)"
+    s += phys_floor.note()
+    if os.environ.get("DIAG_SCAN_DROP_CLAMP"):
+        s += " | DIAGNOSTIC: drops deeper than %s m hidden from the height scans on the landing (not a result)" % os.environ["DIAG_SCAN_DROP_CLAMP"]
+    return s
+
+
+def _nocontact_walls():
+    """APP_NOCONTACT_WALLS="202,..." (eval monitor, 2026-11-12): wall boxes kept in the scene but out of contact. Test variant
+    only: on our apparatus box 202 is the landing deck plate, whose top (1.118 m) duplicates the walk raster there, so the
+    sole spheres touch the deck twice."""
+    v = os.environ.get("APP_NOCONTACT_WALLS", "")
+    return {t.strip() for t in v.split(",") if t.strip()}
+
+
 def build(app=None, plant_override: dict | None = None, friction: float = 1.0, render_size=(1280, 720),
           wall_alpha: float = 1.0, cameras: list | None = None) -> X2:
     """app: apparatus.Apparatus or None (flat plane). plant_override: any of kp, kd, effort, armature, default_q (31,)."""
@@ -125,6 +152,15 @@ def build(app=None, plant_override: dict | None = None, friction: float = 1.0, r
         if g.type == mujoco.mjtGeom.mjGEOM_SPHERE and g.parent.name.endswith("ankle_roll_link"):
             g.pos = [g.pos[0], g.pos[1], g.pos[2] + SOLE_R - g.size[0]]
             g.size = [SOLE_R, 0, 0]
+    # Second eval model (prepared 2026-11-12, NOT the standard one until the coordinator says so): X2_EXCLUDE_PAIRS="hip"
+    # excludes the pelvis - hip_roll_link convex-hull contact on both sides (2.6 mm apart at the default pose, it carries
+    # about 400-700 N in stance with SSR r6b; suspected hull artefact). Any other "body1:body2,body1:body2" list also works.
+    _ex = os.environ.get("X2_EXCLUDE_PAIRS", "")
+    if _ex:
+        pairs = [("pelvis", "left_hip_roll_link"), ("pelvis", "right_hip_roll_link")] if _ex == "hip" else [tuple(p.split(":")) for p in _ex.split(",")]
+        for b1, b2 in pairs:
+            e = spec.add_exclude()
+            e.bodyname1, e.bodyname2 = b1, b2
     for g in spec.geoms:                                   # the MJCF's own floor plane goes; the apparatus is the floor
         if g.type == mujoco.mjtGeom.mjGEOM_PLANE:
             spec.delete(g)
@@ -134,18 +170,50 @@ def build(app=None, plant_override: dict | None = None, friction: float = 1.0, r
         g = spec.worldbody.add_geom(name="terrain", type=mujoco.mjtGeom.mjGEOM_PLANE, size=[20, 20, 0.1], material="deck")
     else:
         z = app.grid
+        box4 = os.environ.get("TEST_BOX_4X4") == "1" and bool(getattr(app, "route", {}).get("beam_lines") or getattr(app, "route", {}).get("beams"))
+        if box4:   # TEST (2026-11-12): the 4x4s as boxes, their cells flattened in the physics height field only (scans keep app.grid)
+            z = z.copy()
+            xs, ys = app.x0 + app.res * np.arange(app.nx), app.y0 + app.res * np.arange(app.ny)
+            XX, YY = np.meshgrid(xs, ys, indexing="ij")
+            for b in app.route.get("beam_lines") or app.route.get("beams"):
+                a_, b_ = np.array(b["a"], float), np.array(b["b"], float)
+                ab = b_ - a_; tt = np.clip(((XX - a_[0]) * ab[0] + (YY - a_[1]) * ab[1]) / (ab @ ab), 0, 1)
+                dist = np.hypot(XX - (a_[0] + tt * ab[0]), YY - (a_[1] + tt * ab[1]))
+                z[dist < 0.07] = np.median(z[(dist > 0.10) & (dist < 0.2)])
         zmin, top = float(z.min()), max(float(z.max() - z.min()), 1e-3)
         hf = spec.add_hfield(name="terrain", nrow=app.ny, ncol=app.nx, size=[(app.nx - 1) * app.res / 2, (app.ny - 1) * app.res / 2, top, 0.2])
         hf.userdata = ((z - zmin) / top).T.astype(np.float32).ravel().tolist()
         g = spec.worldbody.add_geom(name="terrain", type=mujoco.mjtGeom.mjGEOM_HFIELD, hfieldname="terrain", material="deck",
                                     pos=[app.x0 + (app.nx - 1) * app.res / 2, app.y0 + (app.ny - 1) * app.res / 2, zmin])
     g.group, g.contype, g.conaffinity = GROUP_TERRAIN, 1, 1
+    if app is not None and os.environ.get("TEST_TERRAIN_SOLREF"):
+        g.solref = [float(os.environ["TEST_TERRAIN_SOLREF"]), 1.0]    # TEST: stiffer floor contact (default 0.02 s time constant)
+    if app is not None and os.environ.get("TEST_BOX_4X4") == "1" and box4:
+        for k, b in enumerate(app.route.get("beam_lines") or app.route.get("beams")):
+            a_, b_ = np.array(b["a"], float), np.array(b["b"], float); c = (a_ + b_) / 2; L = float(np.linalg.norm(b_ - a_)); ang = math.atan2(*(b_ - a_)[::-1])
+            gz = float(app.height(c[0] + 0.15 * math.sin(ang), c[1] - 0.15 * math.cos(ang)))
+            bx = spec.worldbody.add_geom(name="test_4x4_%d" % k, type=mujoco.mjtGeom.mjGEOM_BOX, size=[L / 2, 0.0445, 0.0445],
+                                         pos=[c[0], c[1], gz + 0.0445], quat=[math.cos(ang / 2), 0, 0, math.sin(ang / 2)], material="deck")
+            bx.group, bx.contype, bx.conaffinity = GROUP_TERRAIN, 1, 1
+            bx.friction = [friction, 0.005, 0.0001]
+    if app is not None and os.environ.get("TEST_GROUND_PLANE") == "1":
+        # TEST option (eval monitor 2026-11-12): an endless floor 0.5 mm under the course's lowest cell, so depth rays that leave the
+        # 8 m height field still hit ground instead of reading "nothing" (a drop) at the course edge. Not used for results.
+        gp = spec.worldbody.add_geom(name="test_ground_plane", type=mujoco.mjtGeom.mjGEOM_PLANE, size=[50, 50, 0.1], material="deck",
+                                     pos=[0, 0, float(app.grid.min()) - 0.0005])
+        gp.group, gp.contype, gp.conaffinity = GROUP_TERRAIN, 1, 1
     g.friction = [friction, 0.005, 0.0001]
+    plates = set()
+    if app is not None and phys_floor.enabled():           # OPTION: solid physics floor; the height field is drawn and scanned only
+        g.contype, g.conaffinity = 0, 0
+        _, plates = phys_floor.add_to_spec(spec, app, friction)
     spec.add_material(name="wall", rgba=[0.80, 0.66, 0.45, wall_alpha])
     for i, b in enumerate(app.boxes if app is not None else []):
         w = spec.worldbody.add_geom(name="wall_%d" % i, type=mujoco.mjtGeom.mjGEOM_BOX, size=list(b["half"]), pos=list(b["center"]),
                                     quat=list(b["quat"]), material="wall")
         w.group, w.contype, w.conaffinity = GROUP_WALL, 1, 1
+        if str(i) in _nocontact_walls() or i in plates:     # test variant / solid floor: a box drawn but not in contact (see model_note)
+            w.contype, w.conaffinity = 0, 0
         w.friction = [friction, 0.005, 0.0001]
     spec.add_texture(name="sky", type=mujoco.mjtTexture.mjTEXTURE_SKYBOX, builtin=mujoco.mjtBuiltin.mjBUILTIN_GRADIENT,
                      rgb1=[0.70, 0.78, 0.88], rgb2=[0.25, 0.28, 0.33], width=256, height=256)

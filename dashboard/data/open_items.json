@@ -1,5 +1,37 @@
 [
  {
+  "id": "edge-station",
+  "item": "Last station on our apparatus (button 5) is 0.3 m from the open landing edge. ACP: 0 of 50 there, 30 of 50 with the station moved to the middle of the landing. Keep the station where the real button is and train for it, or move it?",
+  "who": "You",
+  "who_kind": "you",
+  "status": "Waiting",
+  "status_kind": "waiting"
+ },
+ {
+  "id": "strictstand",
+  "item": "Eval rule tightened to match your '1 s stand': a station now counts only if the feet carry load, the robot is nearly still and it is upright afterwards (one 'success' was scored while stepping off the landing). Earlier counts are kept beside the new ones. Confirm or change.",
+  "who": "You",
+  "who_kind": "you",
+  "status": "Waiting",
+  "status_kind": "waiting"
+ },
+ {
+  "id": "hipcol",
+  "item": "Robot model corrected: the pelvis and hip-roll collision shapes overlap in simulation but not on the real robot; all tracks move to a model without that contact (decided while you were away; old model and checkpoints kept)",
+  "who": "You",
+  "who_kind": "you",
+  "status": "Waiting",
+  "status_kind": "waiting"
+ },
+ {
+  "id": "actscale",
+  "item": "Action scale: ours is 0.485 rad per unit on ankle roll, shoulder yaw and elbow (from the plant rule) against the SSR paper's 0.25 legs / 0.2 arms; allow a test with the paper's scales?",
+  "who": "You",
+  "who_kind": "you",
+  "status": "Waiting",
+  "status_kind": "waiting"
+ },
+ {
   "id": "share",
   "item": "New terrain is 18 of 38 columns of the training map; confirm the share",
   "who": "You",

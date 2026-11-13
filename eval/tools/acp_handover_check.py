@@ -29,7 +29,12 @@ m = x.model
 d = mujoco.MjData(m)
 view = View(x, d, None)
 ok = True
-for fname, pair in (("mlp/obs_check_pair.npz", True), ("obs_check.npz", False)):
+_pair = next((f for f in ("mlp/obs_check_pair.npz", "pair_eval_40/obs_check_pair.npz") if os.path.exists(os.path.join(sys.argv[1], f))), "mlp/obs_check_pair.npz")
+for fname, pair in ((_pair, True), ("obs_check.npz", False)):
+    if not os.path.exists(os.path.join(D, fname)):
+        print("%s: NOT THERE (pair recording missing): the planner is not checked" % fname)
+        ok = False
+        continue
     z = np.load(os.path.join(D, fname), allow_pickle=True)
     T = z["qpos"].shape[0]
     worst = dict(history=0.0, planner_targets=0.0, planner_occ=0.0, actor_input=0.0, action=0.0, scan=0.0)

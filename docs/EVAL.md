@@ -13,6 +13,15 @@ the user's answers of 2026-11-11 are in). The code is `eval/` in this repo; ever
   the gains the policy was trained with (default: the X2 deploy plant, `eval/config/x2_plant.json`), the robot's own collision
   geometry against a 2 cm height field and the wall boxes. The 12 sole spheres per foot are 2 cm in radius instead of the
   MJCF's 5 mm, same lowest point (on a height field the small ones get tilted contact normals on flat ground).
+- **Solid floor is the default (coordinator's decision, 2026-11-12 19:00 UTC):** the feet collide with boxes (floor, steps, tilted
+  ramp slabs, 4x4s; `eval/phys_floor.py`), the height field is drawn and scanned only. Why: the height field trapped feet (audit,
+  `docs/findings/sim_artifact_audit.md`); ACP 7,000 seeds 1000-1049: solid 27/50 vs old 26/50, trapped-foot 0.1 s vs 8.3 s, flat x4 50/50.
+  Old floor for controls: `PHYS_FLOOR=heightfield`; results from it are marked "old floor". Regression reference re-recorded on it.
+  Ramp slabs trimmed (coordinator, 2026-11-12 ~21:15): each slab side and end sits where the raster crosses half-way (they stood
+  1-2 cm proud of the scanned edge); `PHYS_FLOOR_TRIM=0` gives the untrimmed solid floor, results from it are marked "untrimmed".
+- **Per-trial flags (measurement v2, `eval/harness.py`):** trapped-foot s, limb-clamp s, joint-limit s (any hinge more than
+  **0.15 rad** past its range; 0.05 until 2026-11-12 21:10 UTC, when it fired in nearly every trial), and **ankle-roll-past s** (either
+  ankle roll more than 0.05 rad past its +-0.262 rad range) as its own number (coordinator's decision, 2026-11-12). The last 1 s of a fall is excluded.
 
 ## Courses (held out of training)
 
@@ -330,3 +339,94 @@ and per-joint kp, kd); the harness default is only for test fixtures. Every summ
 A hand-over whose card does not state its plant and gains is refused. The 2 November baseline pair runs under
 `vendor_20260823` (its checkpoint's own setting; the exported gains equal that plant's exactly).
 
+
+## Strict stand (coordinator's decision of 2026-11-12, implementing the user's "a station is a 1 s stand"; confirmed by the user 2026-11-12)
+
+Found by the eval monitor: under the disc-only check a robot that walks slowly through a station's 0.20 m disc, or is airborne
+or stepping off the landing during the end stand, was scored as standing (our apparatus, ACP 4250, seed 1035: both feet off
+the deck with 0 N load at the instant it was scored a success). The rule is tightened to mean what the user's rule says:
+
+- **A station counts** when, for 1 s without a break: the pelvis is inside the 0.20 m disc (and within 0.30 m of standing
+  height), the two feet together carry at least **50 % of the robot's weight** (so never both at 0 N), and the pelvis'
+  horizontal speed stays **under 0.15 m/s**. The 1 s counts only while all three hold; the robot keeps the station command
+  until it has stood (so entering the disc at walking speed and then stopping is fine).
+- **The end stand** (1 s after the last waypoint): the same three conditions for the whole 1 s (when the last waypoint is
+  itself a station; on ladder tests that end without a station only "upright" is checked), and the robot still upright
+  **2 s after** the end stand (the trial runs on with a stand command). The other stations need no extra check: any fall
+  later in the trial fails it anyway.
+- **Reported:** the strict-stand success is the **main number** (`strict_successes`, `STAND_RULE=strict`, the harness default
+  from 2026-11-12). The old disc-only count (`STAND_RULE=disc`: stations advance on 1 s inside the disc, success = still up
+  1 s after the last waypoint) is reported beside it for every apparatus result, from its own run with the same seeds, so
+  earlier results stay comparable. A disc run also checks the strict conditions on the window that counted
+  (`strict_success` there is a lower bound, since a loose station is not retried). Every table says which rule each number uses;
+  results made before 2026-11-12 09:00 UTC are disc-only.
+- **Travel after a station** (the "does not stop" measure, in every apparatus and ladder output): the pelvis path length in
+  the 1 s after each station counted (`station_travel_1s` in the summary: per station, how many trials reached it, median,
+  maximum, and how many moved more than 0.2 m; `station_travel_1s_m` in trials.csv, `!` marks a station that failed the
+  strict check in a disc run).
+- Constants `STRICT_LOAD`, `STRICT_SPEED`, `STRICT_POST_END`, `TRAVEL_AFTER`, `STAND_RULE` in `eval/harness.py`.
+- Course decisions the same day: the question about button 5's distance from the landing's y edge is withdrawn (the end-stand
+  falls are at the west edge, x 9.74, after the robot fails to stop); the route is unchanged. The landing deck is in the
+  physics twice (walk raster and box `wall_202`, top 1.118 m); it stays, labelled: with the box out of contact
+  (`APP_NOCONTACT_WALLS=202`, a test option) ACP 4250 scored 13/50 against 17/50 with no systematic change.
+- **End stand with retry (coordinator's decision of 2026-11-12, 11:50 UTC; confirmed by the user 2026-11-12: "i think its fine to take corrective steps, but the 1s should count from after the step").** The end stand is treated
+  like a station: it counts once a continuous 1 s strict stand (in the last station's disc, feet carrying at least 50 % of the
+  weight, pelvis under 0.15 m/s) is reached at the last station at any time before the trial's time limit (and within 45 s of the
+  last waypoint counting), followed by 2 s upright; a re-balancing step restarts the 1 s, it does not fail the trial. Reason:
+  stations already work that way, and the user's rule is "a 1 s stand", not "2 s without a correction". Harness: `END_RETRY=1`
+  (made the default once the s2_v2 5750 200 + 200 run that started before it has finished); every result records `end_retry`
+  and the number of corrections (`end_breaks`). Results before this decision used the end stand without retry.
+
+## Ladder courses padded with flat floor (eval monitor, coordinator's decision of 2026-11-12)
+
+Every ladder course (steps 1 and 2) was an 8 m height field that ended in nothing. A depth camera reads the missing ground as a
+drop about 1 m ahead of a station near the course end, which a policy trained on large terrain never sees on flat ground. Found on
+SSR r7 2250 (corridor level 1: 0/50, stops 0.21 m short of the last station, 1.1 m from the course edge; 119 of 1,296 depth pixels
+read "nothing"). TEST with an endless ground plane under the course: SSR corridor L1 0/50 -> 20/20 (standard and floor40), Hiking
+3000 street 37/50 -> 10/10. Fix from 2026-11-12 ~16:40 UTC: every ladder course is padded with flat floor 3 m beyond its edge (the
+median height of the border cells), in the physics height field and in the scans / depth, which all read the same grid
+(`eval/ladder.py`, `PAD_M`, `LADDER_PAD_M=0` reproduces the old courses). Each ladder summary records `course_padding_m`; rows run
+before the fix carry no such field and are marked "before the edge fix" in reports. ACP's height scan was not affected (scan lookups
+clamp to the last row of the raster, which continues the floor). The two apparatuses are walled rooms and are unchanged.
+
+## Station legs (user, 2026-11-12; being implemented by the eval monitor)
+
+The user: "instead of just the full route success rate, we should spawn, with some randomness, the robot at each manipulation and
+see if it can make up to the next station successfully. This gives better view of the progress." Beside the full route, every
+scored checkpoint is run on each leg of an apparatus on its own: start to button 1, button 1 to 2, 2 to 3, 3 to 4, 4 to 5 (the
+full route's waypoints between those stations). The robot is spawned standing at the leg's first station with a random position
+inside the 0.20 m disc and a heading within 20 degrees of the station's, gets 1 s of stand command, and must reach the next
+station and hold the strict stand there. 50 trials per leg, seeds 1000-1049. Reported per leg with falls, stalls and where; the
+product of the leg rates is shown beside the full-route rate. The full route remains the result against the 99 % goal. The eval
+monitor fills in the final spawn rule and constants here when the first runs are done.
+
+**Order (user, 2026-11-12):** "we should do the full route only after the model runs pass all of the individual stations." The
+full route is run only when every leg passes (45 of 50 on each leg, the coordinator's mark, to be confirmed by the user);
+otherwise the checkpoint is reported by its leg scores with "full route not run".
+
+## Station legs (user, 2026-11-12)
+
+The user: "instead of just the full route success rate, we should spawn, with some randomness, the robot at each manipulation and see
+if it can make up to the next station successfully. This gives better view of the progress." and "May be we should do the full route
+only after the model runs pass all of the individual stations." Implemented in `eval/legs.py` (constants at its top).
+
+- **Legs (ours):** start -> button 1, button 1 -> 2, 2 -> 3, 3 -> 4, 4 -> 5, over the full route's own waypoints between those
+  stations (NIST: its stations likewise). A 4x4 crossed by a leg's own path has to be stepped over.
+- **Spawn:** leg 1 as a full trial (route start, nominal jitter). Legs 2-5: standing at the leg's first station, position uniform in
+  its 0.20 m arrival disc, heading = the station heading +- 20 deg, drawn per seed (seeds 1000-1049); a draw is rejected and redrawn
+  (up to 200 times) if the ground under the soles is not one plane (residual over a 0.26 x 0.40 m sole area > 2 cm; buttons 3 and 4
+  stand on the 15 degree ramps, so "level" means no edge or step under the feet) or a wall / post box is within 0.25 m of the pelvis.
+  Share of clean draws at the stations: button 1 51 %, button 2 31 %, button 3 37 %, button 4 66 % (the rest are redrawn). The rest of
+  the nominal protocol is unchanged. Before the first waypoint the robot gets 1 s of stand command at its spawn pose (target where it
+  stands, its spawn heading, hold), so every adapter's history fills with real standing frames: ACP's proprio history and its
+  planner input (history, goal = stand, scan), SSR's 5-frame history and GRU (zero at reset, then 1 s of standing), Hiking's 8-step
+  proprio and depth histories. Adapters reset exactly as at a route start.
+- **Success:** the leg's last station counts under the strict rule (1 s stand, corrective steps allowed, the 1 s counted after the
+  step); for the last leg the end stand as in a full trial. Falls, stalls (45 s) and leaving the course as in a full trial. Time limit
+  per leg: 180 s x leg length / route length, at least 60 s, plus the 1 s stand.
+- **Report:** per leg successes / 50 with the 95 % interval, falls, stalls and where; the product of the five leg rates beside the
+  full-route rate.
+- **Order per checkpoint (user):** flat gate and gait numbers, level 1, routes, then the five station legs; the full route (50, then
+  200 for a candidate) only when every leg passes. Pass mark (coordinator's recommendation, to be confirmed by the user): 45 of 50 on
+  each leg. A checkpoint that fails a leg is reported by its leg scores with "full route not run: leg X at N/50". Exceptions: ACP
+  7000's 200 started before this rule finishes; an ACP pair gets 50 full-route trials if ACP's stage-3 rule needs the number.
