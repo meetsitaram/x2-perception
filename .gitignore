@@ -8,3 +8,6 @@ agentic/dashboard/snapshot/
 eval/metrics/cache/
 eval/metrics/out/
 release/
+
+# Hiking deploy: downloaded model files
+deploy/hiking/models/
