@@ -62,10 +62,10 @@ Policy exports with model cards on Hugging Face (simulation-trained; not yet tes
 | Track | Hugging Face | Checkpoint | Licence |
 |---|---|---|---|
 | ACP (planner + tracker) | [tinkerbuggy/x2-acp-contact-planner-tracker](https://huggingface.co/tinkerbuggy/x2-acp-contact-planner-tracker) | `pair_s3_v2_023000` (99% route) | Apache 2.0 |
-| Hiking in the Wild (X2) | [tinkerbuggy/x2-hiking-in-the-wild](https://huggingface.co/tinkerbuggy/x2-hiking-in-the-wild) | iteration 25,500 | CC BY-NC 4.0 |
+| Hiking in the Wild (X2) | [tinkerbuggy/x2-hiking-in-the-wild](https://huggingface.co/tinkerbuggy/x2-hiking-in-the-wild) | iteration 24,500 (best) | CC BY-NC 4.0 |
 | SSR | [tinkerbuggy/x2-ssr](https://huggingface.co/tinkerbuggy/x2-ssr) | `r7_v20x_032000` (final) | CC BY-NC 4.0 |
 
-Each repo holds the ONNX / numpy weights, `adapter_card.json` (input and output specification) and `obs_check.npz` (recorded
+Each repo holds the ONNX / numpy weights, the full training checkpoint and configs under `checkpoint/` (for fine-tuning), `adapter_card.json` (input and output specification) and `obs_check.npz` (recorded
 inputs and outputs). The evaluation adapters in `eval/adapters/` show how to run them in MuJoCo.
 
 **Data credits.** Motion references include **BONES-SEED by Bones Studio** (retargeted to the X2) and the author's own Pico

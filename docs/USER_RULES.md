@@ -332,3 +332,10 @@ User: "i think its time to figure out how to get that height map from the intels
 
 ## Pause training for real-robot tests (2026-11-15)
 User: "Let's pause the training runs at the moment and stop the nodes. I want to try something on the real robot, may be hiking run. We need to check how they do with normal simple walk on flat ground and minor slopes as well as see if it can actually step over a single 4x4 right in front of it while in a gantry. We need to do this before we burn another $1000 on gpu compute." ACP and Hiking stop at their next save; latest checkpoints backed up read-only on the shared FS; the user shuts the nodes down.
+
+## Model release licences (2026-11-15)
+User: "I want to just keep as open as possible - so Apache license unless restricted otherwise." Findings (coordinator, web check 2026-11-15, not legal advice):
+- InstinctLab / Hiking in the Wild release: CC BY-NC 4.0, "commercial use not permitted, including demos to advertise commercial products" (mirror and fork READMEs; official repo github.com/project-instinct/instinctlab to confirm). Hiking was trained with InstinctLab code and the release's reference motions; SSR's final style set (amp_v5) contains the same reference -> both models: CC BY-NC 4.0.
+- BONES-SEED (huggingface.co/datasets/bones-studio/seed): licence text is behind a gated Hugging Face page; Bones Studio describes it as open for academic research and qualifying startups, commercial licensing separate; questions to licensing@bones.studio. ACP (and earlier SSR/Hiking segments) trained on BONES-SEED-derived clips -> ACP can be Apache 2.0 only if the BONES-SEED licence allows releasing trained models; to be confirmed by the user.
+- The user's own Pico captures: no restriction.
+- (2026-11-15) User decision: "upload Hiking and SSR as CC BY-NC 4.0, and ACP as Apache 2.0 -- sure. For boneseed usage, we just mention it in the readme and can use for commercial usage as well". ACP model: Apache 2.0; BONES-SEED credited in the README and model cards (user's statement that commercial use is allowed); Hiking and SSR models: CC BY-NC 4.0.
