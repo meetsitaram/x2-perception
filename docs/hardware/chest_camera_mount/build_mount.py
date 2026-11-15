@@ -1,4 +1,3 @@
-import os
 """Chest depth-camera mount for the AgiBot X2 Ultra (Hiking and SSR policies). Builds the 3D-printable brackets, checks them,
 and draws the pictures in this folder.
 
@@ -25,16 +24,24 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 POSES = {
     # release/hf/x2-hiking-in-the-wild/adapter_card.json "depth" and env.yaml scene.camera.offset (Isaac, convention world):
     # pos (0.131, 0, 0.259) m, quat wxyz (0.85896, 0, 0.51204, 0) = 61.6 deg pitch down about y.
-    "hiking": dict(p=(131.0, 0.0, 259.0), pitch=61.6, src="x2-hiking-in-the-wild adapter_card.json depth.pos_in_body / quat_wxyz",
-                   pad_z=(200.0, 265.0)),
+    "hiking": dict(p=(131.0, 0.0, 259.0), pitch=61.6, src="x2-hiking-in-the-wild adapter_card.json depth.pos_in_body / quat_wxyz"),
     # release/hf/x2-ssr/adapter_card.json observation.depth and models/ssr/code/ssr/x2.py CAMERAS["chest_rs"]:
     # pos (0.126, 0, 0.16) m, 59.5 deg pitch down.
     # At exactly this pose the camera's back-bottom edge would sit 3.1 mm inside the chest shell (the trained pose was never
     # checked against the camera body), so the mount puts the camera 5 mm further forward (x 131 mm): inside the +-20 mm
     # forward mount randomisation SSR trained with (dr_pos 0.02 m).
+    # The camera sits in front of the detachable lower chest panel, so the bracket reaches up to the fixed shell above the panel
+    # seam with two rails that stay clear of the panel and of the sensor window (2026-11-15).
     "ssr": dict(p=(126.0, 0.0, 160.0), pitch=59.5, src="x2-ssr adapter_card.json observation.depth / ssr/x2.py chest_rs",
-                pad_z=(105.0, 172.0), build_shift=(5.0, 0.0, 0.0)),
+                build_shift=(5.0, 0.0, 0.0), cradle_y=(-50.0, 40.0), rails=((-50.0, -23.0), (23.0, 40.0))),
 }
+# Both pads bond only to the fixed upper chest shell above the seam of the detachable lower chest panel (user, 2026-11-15:
+# "that part of the x2 body is detachable so the part might not stick well"). The seam is found on the mesh (panel_seam()).
+PAD_Y = (-60.0, 45.0)    # pad width (robot y)
+PAD_TOP = 292.0          # pad upper edge (the shell rounds over to the shoulder top at z ~ 300 on the centreline)
+SEAM_MARGIN = 4.0        # pad lower edge this far above the seam's upper lip (the gap itself is ~3.5 mm on the centreline)
+CLEAR_PANEL = 2.5        # every bracket surface off the bond area stays this far from the shell (>= 2 mm from the panel)
+RAIL_T = 8.0             # SSR rail thickness (normal to the chest)
 
 # ---------------------------------------------------------------- Intel RealSense D435 / D435i (datasheet 337029-005)
 CAM_W, CAM_H, CAM_D = 90.0, 25.0, 25.0   # Table 3-44: width 90, height 25, depth 25 mm (drawing: height 25.05)
@@ -47,7 +54,7 @@ HFOV, VFOV = 87.0, 58.0                  # depth field of view used in training 
 # ---------------------------------------------------------------- bracket parameters (mm)
 TAPE = 1.1          # 3M VHB 5952 thickness
 PAD_T = 3.0         # minimum pad thickness above the tape
-PAD_Y = (-47.5, 22.5)   # pad and cradle width (robot y), both ends of the camera stay free (case spans -62.5 .. 27.5)
+CRADLE_Y = (-47.5, 22.5)   # cradle width (robot y), both ends of the camera stay free (case spans -62.5 .. 27.5)
 CLEAR = 0.3         # clearance around the camera body
 WALL = 3.2          # back wall thickness (M3x6 screw: 3.2 wall + 2.8 into the camera, <= 3 mm allowed)
 FLOOR = 4.0         # floor (under the camera) thickness
@@ -91,6 +98,42 @@ def shell_heightmap(mesh_path):
     np.savez_compressed(cache, ys=ys, zs=zs, X=X.astype(np.float32),
                         note="front surface x (mm) of torso_plus_link.STL at (y, z), torso_link frame; NaN = no shell")
     return ys, zs, X
+
+
+def panel_seam(mesh_path, ys):
+    """Seam between the detachable lower chest panel and the fixed upper shell, per y (mm): (seam_lo, seam_hi) = upper edge
+    of the lower panel's front face and lower edge of the upper shell's front face. In torso_plus_link.STL the two are
+    separate connected pieces (lower: z 38-247 mm, upper: z 139-374 mm) with a gap between them that lets rays through.
+    Cached in shell_heightmap.npz (seam_lo, seam_hi) so the brackets can be rebuilt without the mesh."""
+    cache = os.path.join(HERE, "shell_heightmap.npz")
+    d = dict(np.load(cache))
+    if "seam_hi" in d:
+        return d["seam_lo"], d["seam_hi"]
+    from trimesh.graph import connected_component_labels
+    m = trimesh.load(mesh_path)
+    m.apply_scale(1000.0)
+    lab = connected_component_labels(m.face_adjacency, node_count=len(m.faces))
+    zz = np.arange(100.0, 300.01, 0.25)
+    Y, Z = np.meshgrid(ys, zz)
+    O = np.stack([np.full(Y.size, 500.0), Y.ravel(), Z.ravel()], 1)
+    loc, ir, it = m.ray.intersects_location(O, np.tile([-1.0, 0, 0], (Y.size, 1)), multiple_hits=False)
+    Xs = np.full(Y.size, np.nan); Xs[ir] = loc[:, 0]; Xs = Xs.reshape(Y.shape)
+    C = np.full(Y.size, -1); C[ir] = lab[it]; C = C.reshape(Y.shape)
+    j0 = int(np.argmin(abs(ys)))
+    low = C[np.argmin(abs(zz - 120.0)), j0]; up = C[np.argmin(abs(zz - 275.0)), j0]   # lower panel / upper shell pieces
+    front = Xs > 40.0
+    lo = np.full(len(ys), np.nan); hi = np.full(len(ys), np.nan)
+    for j in range(len(ys)):
+        a = zz[(C[:, j] == low) & front[:, j]]
+        if len(a):
+            lo[j] = a.max()
+        b = zz[(C[:, j] == up) & front[:, j] & (zz > (lo[j] if len(a) else 0.0))]
+        if len(b):
+            hi[j] = b.min()
+    d.update(seam_lo=lo.astype(np.float32), seam_hi=hi.astype(np.float32),
+             seam_note="per ys: top of the lower (detachable) chest panel's front face, bottom of the fixed upper shell's front face, mm")
+    np.savez_compressed(cache, **d)
+    return lo, hi
 
 
 def interp_shell(ys, zs, X, y, z):
@@ -153,7 +196,19 @@ def cyl_local(R, p, start_local, axis_local, length, radius):
 
 
 # ---------------------------------------------------------------- build one variant
-def build(name, cfg, ys, zs, X):
+def normal_factor(F, h):
+    """x-offset per mm of normal offset for a height field x = F(z, y) on a grid of spacing h (clipped at 3, i.e. 70 deg)."""
+    gz, gy = np.gradient(F, h)
+    return np.clip(np.sqrt(1 + gy ** 2 + gz ** 2), 1.0, 3.0)
+
+
+def pad_lower_edge(ys, seam_hi, y):
+    """Pad lower edge z(y): the seam's upper lip (running max over +-2 mm) plus SEAM_MARGIN."""
+    s = np.array([np.nanmax(seam_hi[max(0, j - 2):j + 3]) for j in range(len(seam_hi))])
+    return np.interp(y, ys, s) + SEAM_MARGIN
+
+
+def build(name, cfg, ys, zs, X, seam_hi):
     R = cam_axes(cfg["pitch"])
     p = np.array(cfg["p"], float) + np.array(cfg.get("build_shift", (0.0, 0.0, 0.0)))
     a, u = R[:, 0], R[:, 2]
@@ -173,29 +228,67 @@ def build(name, cfg, ys, zs, X):
     Sw = p + np.array(S) @ R.T
     cam_clear = float(np.min(Sw[:, 0] - interp_shell(ys, zs, X, Sw[:, 1], Sw[:, 2])))
 
-    # pad (conformal, above the tape) over the footprint
-    pz = cfg["pad_z"]
-    pys = np.arange(PAD_Y[0], PAD_Y[1] + 0.01, 0.5); pzs = np.arange(pz[0], pz[1] + 0.01, 0.5)
+    # pad (conformal, above the tape): only on the fixed upper shell, lower edge SEAM_MARGIN above the panel seam
+    pys = np.arange(PAD_Y[0], PAD_Y[1] + 0.01, 0.5)
+    zlo = pad_lower_edge(ys, seam_hi, pys)
+    pzs = np.arange(np.floor(zlo.min() * 2) / 2, PAD_TOP + 0.01, 0.5)
     PY, PZ = np.meshgrid(pys, pzs)
     shell = interp_shell(ys, zs, X, PY, PZ)
-    shell_b = np.where(in_window(PY, PZ, WIN_MARGIN), np.maximum(shell, WIN_BRIDGE), shell)
-    pad = heightfield_solid(pys, pzs, shell_b + TAPE, shell_b + TAPE + PAD_T)
+    f = normal_factor(shell, 0.5)      # offsets are normal to the shell (it tilts back up to ~45 deg near the pad's top)
+    slab = heightfield_solid(pys, pzs, shell + TAPE * f, shell + (TAPE + PAD_T) * f)
+    outline = np.concatenate([np.stack([pys, zlo], 1), [[PAD_Y[1], PAD_TOP], [PAD_Y[0], PAD_TOP]]])
+    prism = mf.CrossSection([outline]).extrude(300.0).transform([[0, 0, 1, -50.0], [1, 0, 0, 0], [0, 1, 0, 0]])
+    pad = slab ^ prism
+    bond = (PZ >= np.interp(PY, pys, zlo)) & (PZ <= PAD_TOP)
+    bond_area = float((0.25 * f * bond).sum()) / 100.0     # cm2 on the curved shell (cell-centred, +-1 %)
 
-    # chest keep-out (shell + tape, window bridged) over a larger area
-    kys = np.arange(-80.0, 80.01, 1.0); kzs = np.arange(pz[0] - 30, pz[1] + 40.01, 1.0)
+    def in_bond(y, z, dil):
+        return (y >= PAD_Y[0] - dil) & (y <= PAD_Y[1] + dil) & (z >= pad_lower_edge(ys, seam_hi, y) - dil) & (z <= PAD_TOP + dil)
+
+    # chest keep-out (window bridged): shell + tape (normal) on the bond area; everywhere else the shell grown by a ball of
+    # radius CLEAR_PANEL, so edges such as the panel's lip at the seam keep the clearance too
+    h = 0.5
+    kys = np.arange(-80.0, 80.01, h); kzs = np.arange(zs[0], zs[-1] + 0.01, h)
     KY, KZ = np.meshgrid(kys, kzs)
-    ks = interp_shell(ys, zs, X, KY, KZ)
+    ks = np.maximum(interp_shell(ys, zs, X, KY, KZ), -40.0)
     ks = np.where(in_window(KY, KZ, WIN_MARGIN), np.maximum(ks, WIN_BRIDGE), ks)
-    keep = heightfield_solid(kys, kzs, np.full_like(ks, -120.0), np.maximum(ks, -40.0) + TAPE)
+    r = CLEAR_PANEL; n = int(np.ceil(r / h)); kp = np.pad(ks, n, mode="edge"); ball = np.full_like(ks, -1e9)
+    for di in range(-n, n + 1):
+        for dj in range(-n, n + 1):
+            dd = h * np.hypot(di, dj)
+            if dd <= r:
+                ball = np.maximum(ball, kp[n + di:n + di + ks.shape[0], n + dj:n + dj + ks.shape[1]] + np.sqrt(r * r - dd * dd))
+    kx = np.where(in_bond(KY, KZ, 1.5), ks + TAPE * normal_factor(ks, h), ball)
+    keep = heightfield_solid(kys, kzs, np.full_like(ks, -120.0), kx)
 
     # cradle: floor under the camera and back wall behind it
-    y0, y1 = PAD_Y[0], PAD_Y[1]
+    y0, y1 = cfg.get("cradle_y", CRADLE_Y)
     floor_pts = box_local(R, p, [-ORIGIN_FROM_BACK - WALL, y0, -CAM_H / 2 - CLEAR - FLOOR], [FLOOR_FRONT, y1, -CAM_H / 2 - CLEAR])
-    wall_pts = box_local(R, p, [-ORIGIN_FROM_BACK - CLEAR - WALL, y0, -CAM_H / 2 - CLEAR - FLOOR], [-ORIGIN_FROM_BACK - CLEAR, y1, WALL_TOP])
-    pad_top = np.stack([shell_b + TAPE + PAD_T, PY, PZ], -1).reshape(-1, 3)[::7]
-    pad_top = np.concatenate([pad_top, np.stack([shell_b + TAPE + PAD_T, PY, PZ], -1)[[0, -1]].reshape(-1, 3)])
-    body = mf.Manifold.hull_points(np.concatenate([floor_pts, wall_pts, pad_top]).tolist())
-    part = body + pad
+    wall_lo = [-ORIGIN_FROM_BACK - CLEAR - WALL, y0, -CAM_H / 2 - CLEAR - FLOOR]
+    wall_hi = [-ORIGIN_FROM_BACK - CLEAR, y1, WALL_TOP]
+    wall_pts = box_local(R, p, wall_lo, wall_hi)
+    top = np.stack([shell + (TAPE + PAD_T) * f, PY, PZ], -1)
+    if "rails" not in cfg:
+        # camera close under the pad (Hiking): one solid hull from the cradle to the pad's central part
+        zc = float(pad_lower_edge(ys, seam_hi, np.arange(y0, y1 + 0.01, 0.5)).max())
+        sel = (PY >= y0) & (PY <= y1) & (PZ >= zc)
+        edge = sel & ~(np.roll(sel, 1, 0) & np.roll(sel, -1, 0) & np.roll(sel, 1, 1) & np.roll(sel, -1, 1))
+        pad_top = np.concatenate([top[sel][::7], top[edge]])
+        part = mf.Manifold.hull_points(np.concatenate([floor_pts, wall_pts, pad_top]).tolist()) + pad
+    else:
+        # camera far below the pad (SSR): cradle hull, two rails off the panel up to the pad, a gusset from each rail to the wall
+        part = mf.Manifold.hull_points(np.concatenate([floor_pts, wall_pts]).tolist()) + pad
+        wz = wall_pts[:, 2]
+        for ry0, ry1 in cfg["rails"]:
+            rys = np.arange(ry0, ry1 + 0.01, 0.5); rzs = np.arange(np.floor(wz.mean()), PAD_TOP + 0.01, 0.5)
+            RY, RZ = np.meshgrid(rys, rzs)
+            rs = interp_shell(ys, zs, X, RY, RZ)
+            rs = np.where(in_window(RY, RZ, WIN_MARGIN), np.maximum(rs, WIN_BRIDGE), rs)
+            part = part + heightfield_solid(rys, rzs, rs + CLEAR_PANEL, rs + CLEAR_PANEL + RAIL_T)
+            band = (RZ >= wz.max() - 5) & (RZ <= wz.max() + 30)
+            gp = np.concatenate([np.stack([rs + CLEAR_PANEL + RAIL_T, RY, RZ], -1)[band], np.stack([rs + CLEAR_PANEL, RY, RZ], -1)[band],
+                                 box_local(R, p, [wall_lo[0], max(ry0, y0), wall_lo[2]], [wall_hi[0], min(ry1, y1), wall_hi[2]])])
+            part = part + mf.Manifold.hull_points(gp.tolist())
     part = part - keep
     # camera pocket (with clearance, extended forward so nothing is left in front of the camera)
     part = part - mf.Manifold.hull_points(box_local(R, p, cam_lo - CLEAR, [80.0, cam_hi[1] + CLEAR, cam_hi[2] + 40.0]).tolist())
@@ -205,13 +298,16 @@ def build(name, cfg, ys, zs, X):
         part = part - cyl_local(R, p, [-ORIGIN_FROM_BACK + 1.0, hy, 0.0], [-1, 0, 0], WALL + CLEAR + 2.0, M3_HOLE / 2)
         part = part - cyl_local(R, p, [-ORIGIN_FROM_BACK - CLEAR - WALL, hy, 0.0], [-1, 0, 0], 80.0, M3_HEAD / 2)
     # alignment notches on the robot centreline (left imager / sensor window centreline), lower and upper pad edges
+    pz = (float(pad_lower_edge(ys, seam_hi, np.array([0.0]))[0]), PAD_TOP)
     for zc, sgn in ((pz[0], 1), (pz[1], -1)):
-        tri = np.array([[-NOTCH, zc], [NOTCH, zc], [0.0, zc + sgn * NOTCH]])
+        tri = np.array([[-NOTCH, zc - sgn], [NOTCH, zc - sgn], [0.0, zc + sgn * NOTCH]])
         pts = [[x, yy, zz] for x in (60.0, 200.0) for yy, zz in tri]
         part = part - mf.Manifold.hull_points(pts)
     part = part.as_original()
     tm = to_trimesh(part)
     comps = tm.split(only_watertight=False)
+    dropped = [[round(c.volume / 1000, 2), np.round(c.centroid, 0).tolist()] for c in sorted(comps, key=lambda c: -c.volume)[1:]
+               if c.volume > 10.0]   # pieces > 0.01 cm3 cut off by the screw channels (degenerate zero-volume bits not listed)
     if len(comps) > 1:     # drop slivers, keep the main body
         tm = max(comps, key=lambda c: c.volume)
 
@@ -221,8 +317,11 @@ def build(name, cfg, ys, zs, X):
     ang_v = np.degrees(np.arctan2(np.abs(L[:, 2]), np.maximum(L[:, 0], 1e-9)))
     ang_h = np.degrees(np.arctan2(np.abs(L[:, 1]), np.maximum(L[:, 0], 1e-9)))
     in_fov = vis & (ang_v < VFOV / 2 + 4) & (ang_h < HFOV / 2 + 4)
-    shell_gap = tm.vertices[:, 0] - interp_shell(ys, zs, X, tm.vertices[:, 1], tm.vertices[:, 2])
-    near = (tm.vertices[:, 2] > pz[0] - 1) & (tm.vertices[:, 2] < pz[1] + 1)
+    V = np.concatenate([tm.vertices, tm.sample(40000)])
+    shell_gap = V[:, 0] - interp_shell(ys, zs, X, V[:, 1], V[:, 2])
+    near = shell_gap < 30.0
+    below = near & (V[:, 2] < np.interp(V[:, 1], ys, seam_hi))       # in front of the detachable panel (or its seam)
+    offb = near & ~in_bond(V[:, 1], V[:, 2], 2.0)
     info = dict(
         variant=name, source=cfg["src"], trained_optical_centre_mm=list(cfg["p"]),
         mount_shift_from_trained_mm=list(cfg.get("build_shift", (0.0, 0.0, 0.0))),
@@ -233,7 +332,13 @@ def build(name, cfg, ys, zs, X):
         camera_min_clearance_to_shell_mm=round(cam_clear, 1),
         bracket_vertices_in_fov=int(in_fov.sum()),
         bracket_min_gap_to_shell_mm=round(float(shell_gap[near].min()), 2),
-        pad_z_mm=list(pz), pad_y_mm=list(PAD_Y),
+        bracket_min_gap_off_bond_area_mm=round(float(shell_gap[offb].min()), 2),
+        bracket_min_gap_below_seam_mm=round(float(shell_gap[below].min()), 2) if below.any() else None,
+        pad_y_mm=list(PAD_Y), pad_z_centreline_mm=[round(pz[0], 1), pz[1]],
+        pad_lower_edge_z_mm={"y%+.0f" % yy: round(float(pad_lower_edge(ys, seam_hi, np.array([yy]))[0]), 1)
+                              for yy in (PAD_Y[0], -40.0, -20.0, 0.0, 20.0, PAD_Y[1])},
+        bonded_area_cm2=round(bond_area, 1), cradle_y_mm=[y0, y1], rails_y_mm=[list(r) for r in cfg.get("rails", [])],
+        dropped_fragments_cm3=dropped,
         volume_cm3=round(tm.volume / 1000, 1), mass_g_petg=round(tm.volume / 1000 * 1.27, 0),
         bounds_mm=np.round(tm.bounds, 1).tolist(), watertight=bool(tm.is_watertight),
     )
@@ -251,18 +356,94 @@ def build(name, cfg, ys, zs, X):
     return tm, info, R, p
 
 
-def print_orientation(tm):
-    """Lay the part on its flat side face (y = PAD_Y[1]) for printing without supports."""
-    t = tm.copy()
-    # rotate so that +y points down (side face y = max on the bed)
-    Rx = trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0])   # y -> z
-    t.apply_transform(Rx)
-    t.apply_translation(-t.bounds[0])
-    return t
+def cam_surface(R, p, n=25):
+    """Points on the D435 body surface (torso_link, mm)."""
+    cy = -IMAGER_Y
+    lo = np.array([-ORIGIN_FROM_BACK, cy - CAM_W / 2, -CAM_H / 2]); hi = np.array([ORIGIN_BEHIND_GLASS, cy + CAM_W / 2, CAM_H / 2])
+    g = np.linspace(0, 1, n); S = []
+    for i in g:
+        for j in g:
+            for f in ([i, j, 0], [i, j, 1], [i, 0, j], [i, 1, j], [0, i, j], [1, i, j]):
+                S.append(lo + (hi - lo) * np.array(f))
+    return p + np.array(S) @ R.T
+
+
+def mesh_clearances(tm, R, p, mesh_path):
+    """Exact distances to the chest mesh: to the detachable lower panel (its piece of torso_plus_link.STL plus the sensor-window
+    inserts in it) and to the rest of the torso."""
+    from trimesh.graph import connected_component_labels
+    m = trimesh.load(mesh_path); m.apply_scale(1000.0)
+    lab = connected_component_labels(m.face_adjacency, node_count=len(m.faces))
+    _, _, it = m.ray.intersects_location([[500.0, 0.0, 120.0]], [[-1.0, 0, 0]], multiple_hits=False)
+    low = lab[it[0]]
+    fz = m.vertices[m.faces][:, :, 2].max(1); fx = m.vertices[m.faces][:, :, 0].max(1)
+    cmax_z = np.zeros(lab.max() + 1); cmax_x = np.zeros(lab.max() + 1)
+    np.maximum.at(cmax_z, lab, fz); np.maximum.at(cmax_x, lab, fx)
+    panel = (lab == low) | ((cmax_z[lab] <= 248.0) & (cmax_x[lab] > 90.0))
+    Bp = np.concatenate([tm.vertices, tm.sample(60000)]); Cp = cam_surface(R, p, 40)
+    out = {}
+    for key, fmask in (("panel", panel), ("rest_of_torso", ~panel)):
+        cen = m.triangles_center
+        box = np.concatenate([Bp, Cp])
+        lo, hi = box.min(0) - 15, box.max(0) + 15
+        sel = fmask & np.all((cen > lo) & (cen < hi), 1)
+        if not sel.any():
+            out["bracket_min_dist_to_%s_mm" % key] = None; out["camera_min_dist_to_%s_mm" % key] = None; continue
+        sub = m.submesh([np.where(sel)[0]], append=True)
+        for nm, P in (("bracket", Bp), ("camera", Cp)):
+            _, dist, _ = trimesh.proximity.closest_point(sub, P)
+            out["%s_min_dist_to_%s_mm" % (nm, key)] = round(float(dist.min()), 2)
+    return out
+
+
+def head_clearance(tm, R, p, mjcf, mesh_dir):
+    """Smallest distance from the head (head_yaw_link + head_pitch_link visual meshes) to the bracket and camera, at the default
+    head pose and over the head joints' full range (corners and centre of the yaw x pitch range)."""
+    import mujoco
+    from scipy.spatial import cKDTree
+    spec = mujoco.MjSpec.from_file(mjcf); spec.meshdir = mesh_dir
+    m = spec.compile(); d = mujoco.MjData(m)
+    tree = cKDTree(np.concatenate([tm.vertices, tm.sample(60000), cam_surface(R, p, 40)]) / 1000.0)
+    hb = {m.body(n).id for n in ("head_yaw_link", "head_pitch_link")}
+    tb = m.body("torso_link").id
+    jy, jp = m.joint("head_yaw_joint"), m.joint("head_pitch_joint")
+    res = {}
+    for qy in (jy.range[0], 0.0, jy.range[1]):
+        for qp in (jp.range[0], 0.0, jp.range[1]):
+            d.qpos[:] = m.qpos0; d.qpos[jy.qposadr[0]] = qy; d.qpos[jp.qposadr[0]] = qp
+            mujoco.mj_forward(m, d)
+            Pt, Rt = d.xpos[tb], d.xmat[tb].reshape(3, 3)
+            best = np.inf
+            for gi in range(m.ngeom):
+                if m.geom_bodyid[gi] in hb and m.geom_type[gi] == mujoco.mjtGeom.mjGEOM_MESH:
+                    mi = m.geom_dataid[gi]; vv = m.mesh_vert[m.mesh_vertadr[mi]:m.mesh_vertadr[mi] + m.mesh_vertnum[mi]]
+                    w = d.geom_xpos[gi] + vv @ d.geom_xmat[gi].reshape(3, 3).T
+                    best = min(best, float(tree.query((w - Pt) @ Rt)[0].min()))
+            res[(round(float(qy), 3), round(float(qp), 3))] = best * 1000.0
+    return dict(head_min_dist_default_pose_mm=round(res[(0.0, 0.0)], 1),
+                head_min_dist_over_range_mm=round(min(res.values()), 1),
+                head_worst_pose_yaw_pitch_rad=list(min(res, key=res.get)))
+
+
+def print_orientation(tm, R):
+    """Pick the print orientation with the least overhang (faces steeper than 45 deg facing down, not on the bed) among the
+    robot axes and the camera axes; returns the placed mesh, the direction (torso_link) that points down, the overhang area."""
+    cands = {"+x": [1, 0, 0], "-x": [-1, 0, 0], "+y": [0, 1, 0], "-y": [0, -1, 0], "+z": [0, 0, 1], "-z": [0, 0, -1],
+             "+optical axis": R[:, 0], "-optical axis": -R[:, 0], "+camera up": R[:, 2], "-camera up": -R[:, 2]}
+    best = None
+    for k, dvec in cands.items():
+        t = tm.copy()
+        t.apply_transform(trimesh.geometry.align_vectors(np.asarray(dvec, float), [0, 0, -1]))
+        t.apply_translation(-t.bounds[0])
+        fz = t.vertices[t.faces][:, :, 2].min(1)
+        ov = float(t.area_faces[(t.face_normals[:, 2] < -0.7071) & (fz > 0.3)].sum()) / 100.0
+        if best is None or ov < best[2]:
+            best = (t, k, ov)
+    return best
 
 
 # ---------------------------------------------------------------- drawing
-def drawing(name, tm, info, R, p, ys, zs, X):
+def drawing(name, tm, info, R, p, ys, zs, X, seam):
     import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.patches import Polygon, Circle
@@ -291,12 +472,16 @@ def drawing(name, tm, info, R, p, ys, zs, X):
                arrowprops=dict(arrowstyle="<->", color="b"))
     A.text((p[0] + info["shell_point_behind_centre_mm"][0]) / 2, p[2] - 9, "%.1f mm" % info["centre_ahead_of_shell_mm"], color="b",
            ha="center", fontsize=9)
-    A.axhline(info["pad_z_mm"][0], color="g", lw=0.6, ls=":"); A.axhline(info["pad_z_mm"][1], color="g", lw=0.6, ls=":")
-    A.text(40, info["pad_z_mm"][0] + 1, "pad lower edge z = %.0f" % info["pad_z_mm"][0], color="g", fontsize=8)
-    A.text(40, info["pad_z_mm"][1] + 1, "pad upper edge z = %.0f" % info["pad_z_mm"][1], color="g", fontsize=8)
+    zl, zt = float(np.interp(yc, ys, seam[1])) + SEAM_MARGIN, PAD_TOP
+    A.axhline(zl, color="g", lw=0.6, ls=":"); A.axhline(zt, color="g", lw=0.6, ls=":")
+    A.text(40, zl + 1, "pad lower edge z = %.0f (here)" % zl, color="g", fontsize=8)
+    A.text(40, zt + 1, "pad upper edge z = %.0f" % zt, color="g", fontsize=8)
+    s0, s1 = float(np.interp(yc, ys, seam[0])), float(np.interp(yc, ys, seam[1]))
+    A.axhspan(s0, s1, color="m", alpha=0.5); A.axhspan(70, s0, xmin=0, xmax=0.02, color="m", alpha=0.5)
+    A.text(41, s0 - 7, "panel seam z %.0f-%.0f\nbelow: detachable panel" % (s0, s1), color="m", fontsize=8)
     A.axhspan(WIN_Z[0], WIN_Z[1], xmin=0, xmax=0.04, color="c")
-    A.text(41, (WIN_Z[0] + WIN_Z[1]) / 2, "sensor window\nz %.0f-%.0f" % WIN_Z, color="c", fontsize=8, va="center")
-    A.set_aspect("equal"); A.set_xlim(35, 215); A.set_ylim(p[2] - 110, p[2] + 70); A.grid(alpha=0.3)
+    A.text(45, (WIN_Z[0] + WIN_Z[1]) / 2, "sensor window\nz %.0f-%.0f" % WIN_Z, color="c", fontsize=8, va="center")
+    A.set_aspect("equal"); A.set_xlim(35, 215); A.set_ylim(min(p[2] - 60, 150), PAD_TOP + 25); A.grid(alpha=0.3)
     A.set_xlabel("x forward (mm, torso_link)"); A.set_ylabel("z up (mm, torso_link)")
     A.set_title("%s: side section through the camera case centre (y = %.1f mm)" % (name, yc)); A.legend(loc="lower right", fontsize=8)
     # front view (looking back at the chest): pad, window, camera, holes
@@ -308,9 +493,19 @@ def drawing(name, tm, info, R, p, ys, zs, X):
     capsule = np.concatenate([np.stack([WIN_HALF_W * np.cos(th[:50]), zc1 + WIN_HALF_W * np.sin(th[:50])], 1),
                               np.stack([WIN_HALF_W * np.cos(th[50:]), zc0 + WIN_HALF_W * np.sin(th[50:])], 1)])
     B.add_patch(Polygon(capsule, closed=True, fc="c", alpha=0.3, ec="c", label="chest sensor window"))
-    py, pz = info["pad_y_mm"], info["pad_z_mm"]
-    B.add_patch(Polygon([[py[0], pz[0]], [py[1], pz[0]], [py[1], pz[1]], [py[0], pz[1]]], closed=True, fc="#e8893a", alpha=0.35,
-                        ec="#e8893a", lw=2, label="VHB pad %.0f x %.0f mm" % (py[1] - py[0], pz[1] - pz[0])))
+    py, pz = info["pad_y_mm"], info["pad_z_centreline_mm"]
+    pys = np.arange(py[0], py[1] + 0.01, 0.5)
+    outline = np.concatenate([np.stack([pys, pad_lower_edge(ys, seam[1], pys)], 1), [[py[1], PAD_TOP], [py[0], PAD_TOP]]])
+    B.add_patch(Polygon(outline, closed=True, fc="#e8893a", alpha=0.35, ec="#e8893a", lw=2,
+                        label="VHB pad (%.0f cm2), %.0f mm wide" % (info["bonded_area_cm2"], py[1] - py[0])))
+    ok = np.isfinite(seam[0])
+    B.fill_between(ys[ok], seam[0][ok], seam[1][ok], color="m", alpha=0.6, label="panel seam (gap in the mesh)")
+    B.fill_between(ys[ok], np.full(ok.sum(), 60.0), seam[0][ok], color="m", alpha=0.07, label="detachable lower panel")
+    for ry0, ry1 in info["rails_y_mm"]:
+        B.add_patch(Polygon([[ry0, p[2] + 15], [ry1, p[2] + 15], [ry1, PAD_TOP], [ry0, PAD_TOP]], closed=True, fc="none", ec="k",
+                            ls="--", lw=1.2))
+    if info["rails_y_mm"]:
+        B.plot([], [], "k--", lw=1.2, label="rails, %.1f mm off the panel" % CLEAR_PANEL)
     cc = np.array(info["case_centre_mm"])
     B.add_patch(Polygon([[cc[1] - CAM_W / 2, cc[2] - 6], [cc[1] + CAM_W / 2, cc[2] - 6], [cc[1] + CAM_W / 2, cc[2] + 6],
                          [cc[1] - CAM_W / 2, cc[2] + 6]], closed=True, fc="0.25", alpha=0.5, label="D435 (projected, approx.)"))
@@ -324,14 +519,16 @@ def drawing(name, tm, info, R, p, ys, zs, X):
     for zz in pz:
         B.plot([-NOTCH, 0, NOTCH], [zz, zz + (NOTCH if zz == pz[0] else -NOTCH), zz], "k", lw=1.5)
     B.invert_xaxis()   # looking at the robot from the front: robot's left on the right of the picture
-    B.set_aspect("equal"); B.set_xlim(75, -75); B.set_ylim(min(pz[0], WIN_Z[0]) - 20, max(pz[1], p[2]) + 25); B.grid(alpha=0.3)
+    B.set_aspect("equal"); B.set_xlim(80, -80); B.set_ylim(min(p[2] - 40, WIN_Z[0] - 10), PAD_TOP + 25); B.grid(alpha=0.3)
     B.set_xlabel("y (mm; robot's left is +y, shown on the right as seen from the front)"); B.set_ylabel("z (mm)")
     B.set_title("front view (looking at the robot)"); B.legend(loc="lower left", fontsize=8)
     txt = ("optical centre (left imager, 4.2 mm behind glass): x %.0f, y 0, z %.0f mm in torso_link; pitch %.1f deg down; "
            "case centre y = -17.5 mm;  shell under the centre: x %.1f mm (centre %.1f mm ahead), surface normal tilted %.0f deg up;  "
-           "camera clearance to shell %.1f mm;  pad gap for VHB %.1f mm;  part %.1f cm3" %
+           "camera clearance to shell %.1f mm;  pad gap for VHB %.1f mm, bonded area %.1f cm2, all above the panel seam;  "
+           "bracket to detachable panel >= %s mm;  part %.1f cm3" %
            (p[0], p[2], info["pitch_down_deg"], info["shell_point_behind_centre_mm"][0], info["centre_ahead_of_shell_mm"],
-            info["shell_tilt_back_deg"], info["camera_min_clearance_to_shell_mm"], TAPE, info["volume_cm3"]))
+            info["shell_tilt_back_deg"], info["camera_min_clearance_to_shell_mm"], TAPE, info["bonded_area_cm2"],
+            info.get("bracket_min_dist_to_panel_mm", info["bracket_min_gap_below_seam_mm"]), info["volume_cm3"]))
     fig.text(0.01, 0.01, txt, fontsize=8, wrap=True)
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     out = os.path.join(HERE, "drawing_%s.png" % name)
@@ -438,7 +635,7 @@ def render(name, stl_path, info, R, p, mjcf, mesh_dir):
     for A, (title, im) in zip(axs.ravel(), imgs):
         A.imshow(im); A.set_title(title); A.axis("off")
     fig.suptitle("X2 Ultra with the %s chest mount and RealSense D435: depth origin (%.0f, 0, %.0f) mm on torso_link, %.1f deg down; "
-                 "red = 87 x 58 deg depth frustum to the floor, yellow = optical axis" % (name, p[0], p[2], info["pitch_down_deg"]), fontsize=10)
+                 "\nred = 87 x 58 deg depth frustum to the floor, yellow = optical axis" % (name, p[0], p[2], info["pitch_down_deg"]), fontsize=10)
     fig.tight_layout()
     out = os.path.join(HERE, "render_%s.png" % name)
     fig.savefig(out, dpi=90); plt.close(fig)
@@ -453,13 +650,23 @@ def main():
     ap.add_argument("--no-render", action="store_true")
     args = ap.parse_args()
     ys, zs, X = shell_heightmap(args.mesh)
-    summary = {}
+    seam = panel_seam(args.mesh, ys)
+    summary = {"panel_seam": {"note": "z (mm, torso_link) of the gap between the detachable lower chest panel (below) and the fixed "
+                                      "upper shell (above), from torso_plus_link.STL",
+                              **{"y%+.0f" % yy: [round(float(np.interp(yy, ys, seam[0])), 1), round(float(np.interp(yy, ys, seam[1])), 1)]
+                                 for yy in (-80, -70, -60, -50, -40, -30, -20, 0, 20, 30, 40, 50, 60, 70, 80)}}}
     for name, cfg in POSES.items():
-        tm, info, R, p = build(name, cfg, ys, zs, X)
+        tm, info, R, p = build(name, cfg, ys, zs, X, seam[1])
         f_robot = os.path.join(HERE, "chest_mount_%s_robot_frame.stl" % name)
         f_print = os.path.join(HERE, "chest_mount_%s_print.stl" % name)
-        tm.export(f_robot); print_orientation(tm).export(f_print)
-        drawing(name, tm, info, R, p, ys, zs, X)
+        tp, down, ov = print_orientation(tm, R)
+        tm.export(f_robot); tp.export(f_print)
+        info.update(print_side_down=down, print_overhang_cm2=round(ov, 1))
+        if os.path.exists(args.mesh):
+            info.update(mesh_clearances(tm, R, p, args.mesh))
+        if os.path.exists(args.mjcf):
+            info.update(head_clearance(tm, R, p, args.mjcf, args.meshdir))
+        drawing(name, tm, info, R, p, ys, zs, X, seam)
         if not args.no_render:
             render(name, f_robot, info, R, p, args.mjcf, args.meshdir)
         summary[name] = info

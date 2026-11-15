@@ -1,4 +1,67 @@
 {
+ "panel_seam": {
+  "note": "z (mm, torso_link) of the gap between the detachable lower chest panel (below) and the fixed upper shell (above), from torso_plus_link.STL",
+  "y-80": [
+   176.8,
+   177.0
+  ],
+  "y-70": [
+   200.0,
+   200.2
+  ],
+  "y-60": [
+   222.5,
+   223.0
+  ],
+  "y-50": [
+   235.5,
+   237.5
+  ],
+  "y-40": [
+   241.2,
+   244.2
+  ],
+  "y-30": [
+   244.2,
+   247.8
+  ],
+  "y-20": [
+   245.8,
+   249.8
+  ],
+  "y+0": [
+   246.8,
+   251.0
+  ],
+  "y+20": [
+   245.8,
+   249.8
+  ],
+  "y+30": [
+   244.2,
+   247.8
+  ],
+  "y+40": [
+   241.0,
+   244.2
+  ],
+  "y+50": [
+   235.2,
+   237.2
+  ],
+  "y+60": [
+   222.8,
+   223.0
+  ],
+  "y+70": [
+   200.0,
+   200.2
+  ],
+  "y+80": [
+   176.8,
+   177.0
+  ]
+ },
  "hiking": {
   "variant": "hiking",
   "source": "x2-hiking-in-the-wild adapter_card.json depth.pos_in_body / quat_wxyz",
@@ -42,27 +105,53 @@
   ],
   "camera_min_clearance_to_shell_mm": 15.9,
   "bracket_vertices_in_fov": 0,
-  "bracket_min_gap_to_shell_mm": 0.68,
-  "pad_z_mm": [
-   200.0,
-   265.0
-  ],
+  "bracket_min_gap_to_shell_mm": 1.17,
+  "bracket_min_gap_off_bond_area_mm": 10.06,
+  "bracket_min_gap_below_seam_mm": null,
   "pad_y_mm": [
+   -60.0,
+   45.0
+  ],
+  "pad_z_centreline_mm": [
+   255.0,
+   292.0
+  ],
+  "pad_lower_edge_z_mm": {
+   "y-60": 230.8,
+   "y-40": 249.0,
+   "y-20": 254.0,
+   "y+0": 255.0,
+   "y+20": 254.0,
+   "y+45": 246.8
+  },
+  "bonded_area_cm2": 50.5,
+  "cradle_y_mm": [
    -47.5,
    22.5
   ],
-  "volume_cm3": 69.2,
-  "mass_g_petg": 88.0,
+  "rails_y_mm": [],
+  "dropped_fragments_cm3": [
+   [
+    0.17,
+    [
+     97.0,
+     -47.0,
+     290.0
+    ]
+   ]
+  ],
+  "volume_cm3": 67.9,
+  "mass_g_petg": 86.0,
   "bounds_mm": [
    [
-    90.3,
-    -47.5,
-    200.0
+    71.4,
+    -60.0,
+    230.8
    ],
    [
     129.8,
-    22.5,
-    285.1
+    45.0,
+    292.0
    ]
   ],
   "watertight": true,
@@ -80,6 +169,18 @@
   "shell_tilt_back_deg": 20.8,
   "shell_lateral_sag_over_60mm": 3.0,
   "shell_lateral_radius_mm": 151.0,
+  "print_side_down": "+y",
+  "print_overhang_cm2": 10.3,
+  "bracket_min_dist_to_panel_mm": 4.27,
+  "camera_min_dist_to_panel_mm": 18.37,
+  "bracket_min_dist_to_rest_of_torso_mm": 1.06,
+  "camera_min_dist_to_rest_of_torso_mm": 14.54,
+  "head_min_dist_default_pose_mm": 30.6,
+  "head_min_dist_over_range_mm": 30.6,
+  "head_worst_pose_yaw_pitch_rad": [
+   0.366,
+   -0.384
+  ],
   "render_base_pitch_deg": -7.4,
   "render_camera_height_m": 1.09,
   "render_toe_tip_ahead_of_lens_m": 0.104,
@@ -128,27 +229,53 @@
   ],
   "camera_min_clearance_to_shell_mm": 1.9,
   "bracket_vertices_in_fov": 0,
-  "bracket_min_gap_to_shell_mm": 1.09,
-  "pad_z_mm": [
-   105.0,
-   172.0
-  ],
+  "bracket_min_gap_to_shell_mm": 1.17,
+  "bracket_min_gap_off_bond_area_mm": 2.5,
+  "bracket_min_gap_below_seam_mm": 2.5,
   "pad_y_mm": [
-   -47.5,
-   22.5
+   -60.0,
+   45.0
   ],
-  "volume_cm3": 37.8,
-  "mass_g_petg": 48.0,
+  "pad_z_centreline_mm": [
+   255.0,
+   292.0
+  ],
+  "pad_lower_edge_z_mm": {
+   "y-60": 230.8,
+   "y-40": 249.0,
+   "y-20": 254.0,
+   "y+0": 255.0,
+   "y+20": 254.0,
+   "y+45": 246.8
+  },
+  "bonded_area_cm2": 50.5,
+  "cradle_y_mm": [
+   -50.0,
+   40.0
+  ],
+  "rails_y_mm": [
+   [
+    -50.0,
+    -23.0
+   ],
+   [
+    23.0,
+    40.0
+   ]
+  ],
+  "dropped_fragments_cm3": [],
+  "volume_cm3": 73.3,
+  "mass_g_petg": 93.0,
   "bounds_mm": [
    [
-    95.7,
-    -47.5,
-    105.0
+    71.4,
+    -60.0,
+    152.8
    ],
    [
     128.9,
-    22.5,
-    186.0
+    45.0,
+    292.0
    ]
   ],
   "watertight": true,
@@ -166,6 +293,18 @@
   "shell_tilt_back_deg": 15.5,
   "shell_lateral_sag_over_60mm": -3.3,
   "shell_lateral_radius_mm": Infinity,
+  "print_side_down": "+z",
+  "print_overhang_cm2": 9.8,
+  "bracket_min_dist_to_panel_mm": 2.27,
+  "camera_min_dist_to_panel_mm": 1.84,
+  "bracket_min_dist_to_rest_of_torso_mm": 1.05,
+  "camera_min_dist_to_rest_of_torso_mm": 26.99,
+  "head_min_dist_default_pose_mm": 30.6,
+  "head_min_dist_over_range_mm": 30.6,
+  "head_worst_pose_yaw_pitch_rad": [
+   0.366,
+   -0.384
+  ],
   "render_base_pitch_deg": -7.4,
   "render_camera_height_m": 0.992,
   "render_toe_tip_ahead_of_lens_m": 0.091,
