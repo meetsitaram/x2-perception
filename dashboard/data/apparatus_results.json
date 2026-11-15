@@ -521,5 +521,60 @@
   "trials": 200,
   "success_pct": 99.0,
   "note": "198 of 200 (96-100%; headline = strict 0.2 m + stopped short; strict 198/200). Outcomes success 198, fall 2. Sections door 200/200 4x4s 199/200 ramps 199/199 wall 199/199 stairs 198/199 landing 198/198. Station legs 50 / 50 / 49 / 49 / 50 (product 0.960). Automatic scorer, not yet reviewed."
+ },
+ {
+  "id": "auto-acp-pair-s3-v2-023500-trim",
+  "date": "2026-11-15",
+  "track": "ACP",
+  "checkpoint": "pair_s3_v2_023500; strict stand check; solid floor (trimmed); automatic scorer",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU",
+  "trials": 200,
+  "success_pct": 95.0,
+  "note": "190 of 200 (91-97%; headline = strict 0.2 m + stopped short; strict 190/200). Outcomes success 190, fall 10. Sections door 200/200 4x4s 198/200 ramps 194/198 wall 194/194 stairs 190/194 landing 190/190. Station legs 50 / 47 / 49 / 50 / 50 (product 0.921). Automatic scorer, not yet reviewed."
+ },
+ {
+  "id": "auto-acp-pair-s3-v2-024500-trim",
+  "date": "2026-11-15",
+  "track": "ACP",
+  "checkpoint": "pair_s3_v2_024500; strict stand check; solid floor (trimmed); automatic scorer",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU",
+  "trials": 200,
+  "success_pct": 84.5,
+  "note": "169 of 200 (79-89%; headline = strict 0.2 m + stopped short; strict 169/200). Outcomes success 169, fall 30, stalled 1. Sections door 200/200 4x4s 175/200 ramps 174/175 wall 174/174 stairs 174/174 landing 169/174. Station legs 48 / 45 / 45 / 50 / 47 (product 0.731). Automatic scorer, not yet reviewed."
+ },
+ {
+  "id": "auto-acp-pair-s3-v2-025000-trim",
+  "date": "2026-11-15",
+  "track": "ACP",
+  "checkpoint": "pair_s3_v2_025000; strict stand check; solid floor (trimmed); automatic scorer",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU",
+  "trials": 200,
+  "success_pct": 81.5,
+  "note": "163 of 200 (76-86%; headline = strict 0.2 m + stopped short; strict 163/200). Outcomes success 163, fall 37. Sections door 200/200 4x4s 188/200 ramps 184/188 wall 184/184 stairs 163/184 landing 163/163. Station legs 49 / 48 / 49 / 50 / 45 (product 0.830). Automatic scorer, not yet reviewed."
+ },
+ {
+  "id": "auto-acp-pair-s3-v2-026000-trim",
+  "date": "2026-11-15",
+  "track": "ACP",
+  "checkpoint": "pair_s3_v2_026000; strict stand check; solid floor (trimmed); automatic scorer",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU",
+  "trials": 200,
+  "success_pct": 88.0,
+  "note": "176 of 200 (83-92%; headline = strict 0.2 m + stopped short; strict 176/200). Outcomes success 176, fall 23, stalled 1. Sections door 200/200 4x4s 182/200 ramps 179/182 wall 179/179 stairs 176/179 landing 176/176. Station legs 49 / 45 / 46 / 50 / 50 (product 0.811). Automatic scorer, not yet reviewed."
+ },
+ {
+  "id": "auto-acp-pair-s3-v2-026500-trim",
+  "date": "2026-11-15",
+  "track": "ACP",
+  "checkpoint": "pair_s3_v2_026500; strict stand check; solid floor (trimmed); automatic scorer",
+  "apparatus": "ours",
+  "simulator": "MuJoCo CPU",
+  "trials": 200,
+  "success_pct": 95.5,
+  "note": "191 of 200 (92-98%; headline = strict 0.2 m + stopped short; strict 191/200). Outcomes success 191, fall 9. Sections door 200/200 4x4s 197/200 ramps 197/197 wall 197/197 stairs 193/197 landing 191/193. Station legs 50 / 50 / 50 / 50 / 48 (product 0.960). Automatic scorer, not yet reviewed."
  }
 ]

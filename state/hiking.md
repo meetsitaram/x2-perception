@@ -1951,3 +1951,16 @@ Open: root cause (unclipped actions) not fixed; propose an env action clip (+-10
   level 6.05 at 22,125), crashguard_v9b running (tmux guard9), levels_hist/tl_22125.pt written. First guarded iteration 22,125:
   rollout maxima obs / critic obs / action 28.4, reward 0.415 (bounds 1e4 / 1e3 / 1e4), no skip. Level 5.05 in the first row
   is restart warm-up; check that it returns to ~5.9-6.0 by ~01:45.
+
+## HOW TO RESUME (2026-11-15 13:10 node clock; supersedes the 00:55 block where they differ)
+- v9 training (tmux hiking_x2) resumed by the supervisor at 11:51 from model_25750 after the guard raised on a full runaway at
+  25,858-25,860 (waist_pitch, column 5); iteration 26,163 at 13:06; crashguard_v9b in tmux guard9. Unchanged by this session.
+- Action clip (user 2026-11-15 "Cap at 20 like others"; FINDINGS H7c): built + CPU pre-flight PASS in code/x2_port/v9/aclip/
+  (new/vecenv_wrapper.py, preflight_aclip.log, install_aclip.sh, probe/). NOT installed: +-20 binds on waist_pitch in 12-56% of
+  normal MuJoCo steps (policy holds it at ~-18..-28; physically inert above 5.8); all other joints never exceed 18.1. Per the
+  user's instruction this went to the coordinator before restarting. Recommendation: +-20 with waist_pitch +-50.
+- To install once decided: `tmux new -d -s inst_ac "bash /mnt/filesystem-g4/tracks/hiking/code/x2_port/v9/aclip/install_aclip.sh 20 5:50"`
+  (or `... install_aclip.sh 20` for uniform +-20); it waits for the next checkpoint (+125), STOPs, installs, restarts with the
+  clip, re-arms crashguard_v9b, and writes "v9 aclip installed" to _supervisor/launch.txt. Then 100 iterations later read the
+  [ACLIP] lines in _supervisor/train.log (clipped % per joint, window and total) and the ledger row 35c / FINDINGS H7c.
+- Eval: if uniform +-20 is chosen, the MuJoCo eval adapter (adapters/hiking.py) must clip a_prev the same way (eval monitor).

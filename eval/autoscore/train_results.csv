@@ -1102,3 +1102,319 @@ acp,pair_s3_v2_023000,corridor,2,20,20,1.00,acp_corridor_L2,approximation: close
 acp,pair_s3_v2_023000,corridor,3,20,20,1.00,acp_corridor_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 06:03,20,0
 acp,pair_s3_v2_023000,box_step,15,16,20,0.80,acp_box_15,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 06:03,16,0
 acp,pair_s3_v2_023000,box_step,25,14,20,0.70,acp_box_25,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 06:03,14,0
+ssr,r7_v20x_032000,ramp,5,20,20,1.00,ssr_ramp_L5,exact walkable raster from the track's generator (side walls and stations left out),heightfield,2026-11-15 07:32,0,20
+ssr,r7_v20x_032000,ramp,10,20,20,1.00,ssr_ramp_L10,exact walkable raster from the track's generator (side walls and stations left out),heightfield,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,ramp,15,20,20,1.00,ssr_ramp_L15,exact walkable raster from the track's generator (side walls and stations left out),heightfield,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,ramp,19,19,20,0.95,ssr_ramp_L19,exact walkable raster from the track's generator (side walls and stations left out),heightfield,2026-11-15 07:32,14,5
+ssr,r7_v20x_032000,stairs,5,20,20,1.00,ssr_stairs_L5,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,stairs,10,7,20,0.35,ssr_stairs_L10,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,7,0
+ssr,r7_v20x_032000,stairs,15,0,20,0.00,ssr_stairs_L15,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,0,0
+ssr,r7_v20x_032000,stairs,19,0,20,0.00,ssr_stairs_L19,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,0,0
+ssr,r7_v20x_032000,beam,5,20,20,1.00,ssr_beam_L5,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,beam,10,20,20,1.00,ssr_beam_L10,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,beam,15,20,20,1.00,ssr_beam_L15,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,beam,19,20,20,1.00,ssr_beam_L19,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,platform,5,20,20,1.00,ssr_platform_L5,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,platform,10,18,20,0.90,ssr_platform_L10,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,18,0
+ssr,r7_v20x_032000,platform,15,1,20,0.05,ssr_platform_L15,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,1,0
+ssr,r7_v20x_032000,platform,19,0,20,0.00,ssr_platform_L19,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,0,0
+ssr,r7_v20x_032000,flat,0,20,20,1.00,ssr_flat_L0,exact walkable raster from the track's generator (side walls and stations left out),solid,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,ext_log_single,4,20,20,1.00,ext_log_single,exact copy of the extended_v1 tile and route,solid,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,ext_wedges,3,19,20,0.95,ext_wedges,exact copy of the extended_v1 tile and route,solid,2026-11-15 07:32,19,0
+ssr,r7_v20x_032000,ext_stairs_up,3,0,20,0.00,ext_stairs_up,exact copy of the extended_v1 tile and route,solid,2026-11-15 07:32,0,0
+ssr,r7_v20x_032000,ext_stairs_down,3,20,20,1.00,ext_stairs_down,exact copy of the extended_v1 tile and route,solid,2026-11-15 07:32,20,0
+ssr,r7_v20x_032000,ext_corridor,3,20,20,1.00,ext_log_corridor_walls,exact copy of the extended_v1 tile and route,solid,2026-11-15 07:32,20,0
+hiking,x2_parkour_v4_23500,stairs_up,2,20,20,1.00,hik_stairs_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,stairs_up,5,20,20,1.00,hik_stairs_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,stairs_up,8,20,20,1.00,hik_stairs_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,stairs_down,2,20,20,1.00,hik_stairs_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,stairs_down,5,20,20,1.00,hik_stairs_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,19,1
+hiking,x2_parkour_v4_23500,stairs_down,8,19,20,0.95,hik_stairs_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,18,1
+hiking,x2_parkour_v4_23500,platform_up,2,20,20,1.00,hik_platform_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,platform_up,5,20,20,1.00,hik_platform_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,platform_up,8,0,20,0.00,hik_platform_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,0,0
+hiking,x2_parkour_v4_23500,platform_down,2,20,20,1.00,hik_platform_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,platform_down,5,20,20,1.00,hik_platform_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,platform_down,8,20,20,1.00,hik_platform_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,slope_up,2,20,20,1.00,hik_slope_up_L2,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,slope_up,5,20,20,1.00,hik_slope_up_L5,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,slope_up,8,0,20,0.00,hik_slope_up_L8,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 08:03,0,0
+hiking,x2_parkour_v4_23500,boxes,2,20,20,1.00,hik_boxes_L2,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,boxes,5,20,20,1.00,hik_boxes_L5,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,boxes,8,0,20,0.00,hik_boxes_L8,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 08:03,0,0
+hiking,x2_parkour_v4_23500,small_boxes,2,13,20,0.65,hik_small_boxes_L2,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 08:03,13,0
+hiking,x2_parkour_v4_23500,small_boxes,5,14,20,0.70,hik_small_boxes_L5,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 08:03,14,0
+hiking,x2_parkour_v4_23500,small_boxes,8,12,20,0.60,hik_small_boxes_L8,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 08:03,12,0
+hiking,x2_parkour_v4_23500,rough,2,20,20,1.00,hik_rough_L2,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,rough,5,20,20,1.00,hik_rough_L5,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,rough,8,20,20,1.00,hik_rough_L8,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,gap,2,19,20,0.95,hik_gap_L2,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 08:03,19,0
+hiking,x2_parkour_v4_23500,gap,5,0,20,0.00,hik_gap_L5,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 08:03,0,0
+hiking,x2_parkour_v4_23500,gap,8,0,20,0.00,hik_gap_L8,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 08:03,0,0
+hiking,x2_parkour_v4_23500,ext_log_single,4,20,20,1.00,ext_log_single,exact copy of the extended_v1 tile and route,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,ext_wedges,3,20,20,1.00,ext_wedges,exact copy of the extended_v1 tile and route,solid,2026-11-15 08:03,0,20
+hiking,x2_parkour_v4_23500,ext_stairs_up,3,20,20,1.00,ext_stairs_up,exact copy of the extended_v1 tile and route,solid,2026-11-15 08:03,20,0
+hiking,x2_parkour_v4_23500,ext_stairs_down,3,17,20,0.85,ext_stairs_down,exact copy of the extended_v1 tile and route,solid,2026-11-15 08:03,11,6
+hiking,x2_parkour_v4_23500,ext_corridor,3,20,20,1.00,ext_log_corridor_walls,exact copy of the extended_v1 tile and route,solid,2026-11-15 08:03,20,0
+acp,pair_s3_v2_023500,log,1,20,20,1.00,acp_log_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,log,2,20,20,1.00,acp_log_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,log,3,20,20,1.00,acp_log_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,wedge,1,20,20,1.00,acp_wedge_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,wedge,2,20,20,1.00,acp_wedge_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,wedge,3,20,20,1.00,acp_wedge_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,stairs_up,1,19,20,0.95,acp_stairs_up_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,19,0
+acp,pair_s3_v2_023500,stairs_up,2,20,20,1.00,acp_stairs_up_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,stairs_up,3,19,20,0.95,acp_stairs_up_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,19,0
+acp,pair_s3_v2_023500,stairs_down,1,19,20,0.95,acp_stairs_down_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,19,0
+acp,pair_s3_v2_023500,stairs_down,2,20,20,1.00,acp_stairs_down_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,stairs_down,3,20,20,1.00,acp_stairs_down_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,corridor,1,20,20,1.00,acp_corridor_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,corridor,2,20,20,1.00,acp_corridor_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,corridor,3,20,20,1.00,acp_corridor_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,box_step,15,20,20,1.00,acp_box_15,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 08:16,20,0
+acp,pair_s3_v2_023500,box_step,25,18,20,0.90,acp_box_25,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 08:16,18,0
+hiking,x2_parkour_v4_24500,stairs_up,2,20,20,1.00,hik_stairs_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,stairs_up,5,20,20,1.00,hik_stairs_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,stairs_up,8,20,20,1.00,hik_stairs_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,stairs_down,2,20,20,1.00,hik_stairs_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,stairs_down,5,20,20,1.00,hik_stairs_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,stairs_down,8,20,20,1.00,hik_stairs_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,platform_up,2,20,20,1.00,hik_platform_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,platform_up,5,20,20,1.00,hik_platform_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,platform_up,8,0,20,0.00,hik_platform_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,0,0
+hiking,x2_parkour_v4_24500,platform_down,2,20,20,1.00,hik_platform_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,platform_down,5,20,20,1.00,hik_platform_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,platform_down,8,20,20,1.00,hik_platform_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,slope_up,2,20,20,1.00,hik_slope_up_L2,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,slope_up,5,20,20,1.00,hik_slope_up_L5,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,slope_up,8,0,20,0.00,hik_slope_up_L8,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 08:53,0,0
+hiking,x2_parkour_v4_24500,boxes,2,20,20,1.00,hik_boxes_L2,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,boxes,5,20,20,1.00,hik_boxes_L5,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,boxes,8,0,20,0.00,hik_boxes_L8,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 08:53,0,0
+hiking,x2_parkour_v4_24500,small_boxes,2,19,20,0.95,hik_small_boxes_L2,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 08:53,19,0
+hiking,x2_parkour_v4_24500,small_boxes,5,5,20,0.25,hik_small_boxes_L5,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 08:53,5,0
+hiking,x2_parkour_v4_24500,small_boxes,8,9,20,0.45,hik_small_boxes_L8,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 08:53,9,0
+hiking,x2_parkour_v4_24500,rough,2,20,20,1.00,hik_rough_L2,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,rough,5,20,20,1.00,hik_rough_L5,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,rough,8,20,20,1.00,hik_rough_L8,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,gap,2,20,20,1.00,hik_gap_L2,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,gap,5,9,20,0.45,hik_gap_L5,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 08:53,9,0
+hiking,x2_parkour_v4_24500,gap,8,0,20,0.00,hik_gap_L8,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 08:53,0,0
+hiking,x2_parkour_v4_24500,ext_log_single,4,20,20,1.00,ext_log_single,exact copy of the extended_v1 tile and route,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,ext_wedges,3,6,20,0.30,ext_wedges,exact copy of the extended_v1 tile and route,solid,2026-11-15 08:53,1,5
+hiking,x2_parkour_v4_24500,ext_stairs_up,3,20,20,1.00,ext_stairs_up,exact copy of the extended_v1 tile and route,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,ext_stairs_down,3,20,20,1.00,ext_stairs_down,exact copy of the extended_v1 tile and route,solid,2026-11-15 08:53,20,0
+hiking,x2_parkour_v4_24500,ext_corridor,3,20,20,1.00,ext_log_corridor_walls,exact copy of the extended_v1 tile and route,solid,2026-11-15 08:53,20,0
+acp,pair_s3_v2_024500,log,1,2,20,0.10,acp_log_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,2,0
+acp,pair_s3_v2_024500,log,2,5,20,0.25,acp_log_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,5,0
+acp,pair_s3_v2_024500,log,3,19,20,0.95,acp_log_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,19,0
+acp,pair_s3_v2_024500,wedge,1,18,20,0.90,acp_wedge_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,18,0
+acp,pair_s3_v2_024500,wedge,2,19,20,0.95,acp_wedge_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,19,0
+acp,pair_s3_v2_024500,wedge,3,9,20,0.45,acp_wedge_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,9,0
+acp,pair_s3_v2_024500,stairs_up,1,20,20,1.00,acp_stairs_up_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,20,0
+acp,pair_s3_v2_024500,stairs_up,2,16,20,0.80,acp_stairs_up_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,16,0
+acp,pair_s3_v2_024500,stairs_up,3,19,20,0.95,acp_stairs_up_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,19,0
+acp,pair_s3_v2_024500,stairs_down,1,7,20,0.35,acp_stairs_down_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,7,0
+acp,pair_s3_v2_024500,stairs_down,2,10,20,0.50,acp_stairs_down_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,10,0
+acp,pair_s3_v2_024500,stairs_down,3,6,20,0.30,acp_stairs_down_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,6,0
+acp,pair_s3_v2_024500,corridor,1,0,20,0.00,acp_corridor_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,0,0
+acp,pair_s3_v2_024500,corridor,2,4,20,0.20,acp_corridor_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,4,0
+acp,pair_s3_v2_024500,corridor,3,1,20,0.05,acp_corridor_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 09:06,1,0
+acp,pair_s3_v2_024500,box_step,15,9,20,0.45,acp_box_15,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 09:06,9,0
+acp,pair_s3_v2_024500,box_step,25,5,20,0.25,acp_box_25,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 09:06,5,0
+hiking,x2_parkour_v4_25000,stairs_up,2,20,20,1.00,hik_stairs_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,stairs_up,5,20,20,1.00,hik_stairs_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,stairs_up,8,20,20,1.00,hik_stairs_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,stairs_down,2,20,20,1.00,hik_stairs_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,stairs_down,5,20,20,1.00,hik_stairs_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,stairs_down,8,20,20,1.00,hik_stairs_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,platform_up,2,20,20,1.00,hik_platform_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,platform_up,5,20,20,1.00,hik_platform_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,platform_up,8,16,20,0.80,hik_platform_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,16,0
+hiking,x2_parkour_v4_25000,platform_down,2,20,20,1.00,hik_platform_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,platform_down,5,20,20,1.00,hik_platform_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,platform_down,8,20,20,1.00,hik_platform_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,slope_up,2,20,20,1.00,hik_slope_up_L2,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,slope_up,5,20,20,1.00,hik_slope_up_L5,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,slope_up,8,0,20,0.00,hik_slope_up_L8,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 10:18,0,0
+hiking,x2_parkour_v4_25000,boxes,2,20,20,1.00,hik_boxes_L2,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,boxes,5,20,20,1.00,hik_boxes_L5,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,boxes,8,0,20,0.00,hik_boxes_L8,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 10:18,0,0
+hiking,x2_parkour_v4_25000,small_boxes,2,20,20,1.00,hik_small_boxes_L2,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,small_boxes,5,10,20,0.50,hik_small_boxes_L5,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 10:18,10,0
+hiking,x2_parkour_v4_25000,small_boxes,8,9,20,0.45,hik_small_boxes_L8,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 10:18,9,0
+hiking,x2_parkour_v4_25000,rough,2,20,20,1.00,hik_rough_L2,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,rough,5,20,20,1.00,hik_rough_L5,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,rough,8,20,20,1.00,hik_rough_L8,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,gap,2,20,20,1.00,hik_gap_L2,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,gap,5,20,20,1.00,hik_gap_L5,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,gap,8,15,20,0.75,hik_gap_L8,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 10:18,15,0
+hiking,x2_parkour_v4_25000,ext_log_single,4,20,20,1.00,ext_log_single,exact copy of the extended_v1 tile and route,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,ext_wedges,3,19,20,0.95,ext_wedges,exact copy of the extended_v1 tile and route,solid,2026-11-15 10:18,6,13
+hiking,x2_parkour_v4_25000,ext_stairs_up,3,20,20,1.00,ext_stairs_up,exact copy of the extended_v1 tile and route,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,ext_stairs_down,3,20,20,1.00,ext_stairs_down,exact copy of the extended_v1 tile and route,solid,2026-11-15 10:18,20,0
+hiking,x2_parkour_v4_25000,ext_corridor,3,20,20,1.00,ext_log_corridor_walls,exact copy of the extended_v1 tile and route,solid,2026-11-15 10:18,20,0
+acp,pair_s3_v2_025000,log,1,9,20,0.45,acp_log_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,9,0
+acp,pair_s3_v2_025000,log,2,0,20,0.00,acp_log_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,0,0
+acp,pair_s3_v2_025000,log,3,20,20,1.00,acp_log_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,20,0
+acp,pair_s3_v2_025000,wedge,1,20,20,1.00,acp_wedge_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,20,0
+acp,pair_s3_v2_025000,wedge,2,19,20,0.95,acp_wedge_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,19,0
+acp,pair_s3_v2_025000,wedge,3,12,20,0.60,acp_wedge_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,12,0
+acp,pair_s3_v2_025000,stairs_up,1,16,20,0.80,acp_stairs_up_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,16,0
+acp,pair_s3_v2_025000,stairs_up,2,10,20,0.50,acp_stairs_up_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,10,0
+acp,pair_s3_v2_025000,stairs_up,3,19,20,0.95,acp_stairs_up_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,19,0
+acp,pair_s3_v2_025000,stairs_down,1,18,20,0.90,acp_stairs_down_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,18,0
+acp,pair_s3_v2_025000,stairs_down,2,14,20,0.70,acp_stairs_down_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,14,0
+acp,pair_s3_v2_025000,stairs_down,3,6,20,0.30,acp_stairs_down_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,6,0
+acp,pair_s3_v2_025000,corridor,1,0,20,0.00,acp_corridor_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,0,0
+acp,pair_s3_v2_025000,corridor,2,1,20,0.05,acp_corridor_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,1,0
+acp,pair_s3_v2_025000,corridor,3,0,20,0.00,acp_corridor_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 10:31,0,0
+acp,pair_s3_v2_025000,box_step,15,3,20,0.15,acp_box_15,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 10:31,3,0
+acp,pair_s3_v2_025000,box_step,25,17,20,0.85,acp_box_25,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 10:31,17,0
+hiking,x2_parkour_v4_25500,stairs_up,2,20,20,1.00,hik_stairs_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,stairs_up,5,20,20,1.00,hik_stairs_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,stairs_up,8,20,20,1.00,hik_stairs_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,stairs_down,2,20,20,1.00,hik_stairs_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,stairs_down,5,20,20,1.00,hik_stairs_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,stairs_down,8,19,20,0.95,hik_stairs_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,19,0
+hiking,x2_parkour_v4_25500,platform_up,2,20,20,1.00,hik_platform_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,platform_up,5,20,20,1.00,hik_platform_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,platform_up,8,0,20,0.00,hik_platform_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,0,0
+hiking,x2_parkour_v4_25500,platform_down,2,20,20,1.00,hik_platform_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,platform_down,5,20,20,1.00,hik_platform_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,platform_down,8,20,20,1.00,hik_platform_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,slope_up,2,20,20,1.00,hik_slope_up_L2,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,slope_up,5,20,20,1.00,hik_slope_up_L5,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,slope_up,8,0,20,0.00,hik_slope_up_L8,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 11:38,0,0
+hiking,x2_parkour_v4_25500,boxes,2,20,20,1.00,hik_boxes_L2,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,boxes,5,20,20,1.00,hik_boxes_L5,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,boxes,8,0,20,0.00,hik_boxes_L8,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 11:38,0,0
+hiking,x2_parkour_v4_25500,small_boxes,2,20,20,1.00,hik_small_boxes_L2,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,small_boxes,5,14,20,0.70,hik_small_boxes_L5,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 11:38,14,0
+hiking,x2_parkour_v4_25500,small_boxes,8,13,20,0.65,hik_small_boxes_L8,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 11:38,13,0
+hiking,x2_parkour_v4_25500,rough,2,20,20,1.00,hik_rough_L2,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,rough,5,20,20,1.00,hik_rough_L5,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,rough,8,20,20,1.00,hik_rough_L8,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,gap,2,20,20,1.00,hik_gap_L2,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,gap,5,20,20,1.00,hik_gap_L5,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,gap,8,20,20,1.00,hik_gap_L8,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,ext_log_single,4,20,20,1.00,ext_log_single,exact copy of the extended_v1 tile and route,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,ext_wedges,3,7,20,0.35,ext_wedges,exact copy of the extended_v1 tile and route,solid,2026-11-15 11:38,0,7
+hiking,x2_parkour_v4_25500,ext_stairs_up,3,20,20,1.00,ext_stairs_up,exact copy of the extended_v1 tile and route,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,ext_stairs_down,3,20,20,1.00,ext_stairs_down,exact copy of the extended_v1 tile and route,solid,2026-11-15 11:38,20,0
+hiking,x2_parkour_v4_25500,ext_corridor,3,20,20,1.00,ext_log_corridor_walls,exact copy of the extended_v1 tile and route,solid,2026-11-15 11:38,20,0
+acp,pair_s3_v2_025500,log,1,18,20,0.90,acp_log_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,18,0
+acp,pair_s3_v2_025500,log,2,19,20,0.95,acp_log_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,19,0
+acp,pair_s3_v2_025500,log,3,16,20,0.80,acp_log_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,16,0
+acp,pair_s3_v2_025500,wedge,1,8,20,0.40,acp_wedge_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,8,0
+acp,pair_s3_v2_025500,wedge,2,20,20,1.00,acp_wedge_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,20,0
+acp,pair_s3_v2_025500,wedge,3,15,20,0.75,acp_wedge_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,15,0
+acp,pair_s3_v2_025500,stairs_up,1,19,20,0.95,acp_stairs_up_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,19,0
+acp,pair_s3_v2_025500,stairs_up,2,14,20,0.70,acp_stairs_up_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,14,0
+acp,pair_s3_v2_025500,stairs_up,3,18,20,0.90,acp_stairs_up_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,18,0
+acp,pair_s3_v2_025500,stairs_down,1,10,20,0.50,acp_stairs_down_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,10,0
+acp,pair_s3_v2_025500,stairs_down,2,11,20,0.55,acp_stairs_down_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,11,0
+acp,pair_s3_v2_025500,stairs_down,3,9,20,0.45,acp_stairs_down_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,9,0
+acp,pair_s3_v2_025500,corridor,1,20,20,1.00,acp_corridor_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,20,0
+acp,pair_s3_v2_025500,corridor,2,12,20,0.60,acp_corridor_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,12,0
+acp,pair_s3_v2_025500,corridor,3,11,20,0.55,acp_corridor_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 11:57,11,0
+acp,pair_s3_v2_025500,box_step,15,14,20,0.70,acp_box_15,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 11:57,14,0
+acp,pair_s3_v2_025500,box_step,25,7,20,0.35,acp_box_25,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 11:57,7,0
+hiking,x2_parkour_v4_26000,stairs_up,2,20,20,1.00,hik_stairs_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,stairs_up,5,20,20,1.00,hik_stairs_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,stairs_up,8,20,20,1.00,hik_stairs_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,stairs_down,2,20,20,1.00,hik_stairs_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,stairs_down,5,20,20,1.00,hik_stairs_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,stairs_down,8,20,20,1.00,hik_stairs_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,platform_up,2,20,20,1.00,hik_platform_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,platform_up,5,20,20,1.00,hik_platform_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,platform_up,8,8,20,0.40,hik_platform_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,8,0
+hiking,x2_parkour_v4_26000,platform_down,2,20,20,1.00,hik_platform_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,platform_down,5,20,20,1.00,hik_platform_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,platform_down,8,20,20,1.00,hik_platform_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,slope_up,2,20,20,1.00,hik_slope_up_L2,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,slope_up,5,20,20,1.00,hik_slope_up_L5,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,slope_up,8,0,20,0.00,hik_slope_up_L8,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 13:30,0,0
+hiking,x2_parkour_v4_26000,boxes,2,20,20,1.00,hik_boxes_L2,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,boxes,5,20,20,1.00,hik_boxes_L5,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,boxes,8,0,20,0.00,hik_boxes_L8,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 13:30,0,0
+hiking,x2_parkour_v4_26000,small_boxes,2,16,20,0.80,hik_small_boxes_L2,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 13:30,16,0
+hiking,x2_parkour_v4_26000,small_boxes,5,13,20,0.65,hik_small_boxes_L5,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 13:30,13,0
+hiking,x2_parkour_v4_26000,small_boxes,8,12,20,0.60,hik_small_boxes_L8,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 13:30,12,0
+hiking,x2_parkour_v4_26000,rough,2,20,20,1.00,hik_rough_L2,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,rough,5,20,20,1.00,hik_rough_L5,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,rough,8,20,20,1.00,hik_rough_L8,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,gap,2,20,20,1.00,hik_gap_L2,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,gap,5,20,20,1.00,hik_gap_L5,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,gap,8,20,20,1.00,hik_gap_L8,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,ext_log_single,4,20,20,1.00,ext_log_single,exact copy of the extended_v1 tile and route,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,ext_wedges,3,15,20,0.75,ext_wedges,exact copy of the extended_v1 tile and route,solid,2026-11-15 13:30,4,11
+hiking,x2_parkour_v4_26000,ext_stairs_up,3,20,20,1.00,ext_stairs_up,exact copy of the extended_v1 tile and route,solid,2026-11-15 13:30,20,0
+hiking,x2_parkour_v4_26000,ext_stairs_down,3,19,20,0.95,ext_stairs_down,exact copy of the extended_v1 tile and route,solid,2026-11-15 13:30,19,0
+hiking,x2_parkour_v4_26000,ext_corridor,3,20,20,1.00,ext_log_corridor_walls,exact copy of the extended_v1 tile and route,solid,2026-11-15 13:30,20,0
+acp,pair_s3_v2_026000,log,1,6,20,0.30,acp_log_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,6,0
+acp,pair_s3_v2_026000,log,2,0,20,0.00,acp_log_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,0,0
+acp,pair_s3_v2_026000,log,3,18,20,0.90,acp_log_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,18,0
+acp,pair_s3_v2_026000,wedge,1,0,20,0.00,acp_wedge_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,0,0
+acp,pair_s3_v2_026000,wedge,2,6,20,0.30,acp_wedge_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,6,0
+acp,pair_s3_v2_026000,wedge,3,1,20,0.05,acp_wedge_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,1,0
+acp,pair_s3_v2_026000,stairs_up,1,19,20,0.95,acp_stairs_up_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,19,0
+acp,pair_s3_v2_026000,stairs_up,2,16,20,0.80,acp_stairs_up_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,16,0
+acp,pair_s3_v2_026000,stairs_up,3,20,20,1.00,acp_stairs_up_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,20,0
+acp,pair_s3_v2_026000,stairs_down,1,4,20,0.20,acp_stairs_down_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,4,0
+acp,pair_s3_v2_026000,stairs_down,2,9,20,0.45,acp_stairs_down_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,9,0
+acp,pair_s3_v2_026000,stairs_down,3,14,20,0.70,acp_stairs_down_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,14,0
+acp,pair_s3_v2_026000,corridor,1,13,20,0.65,acp_corridor_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,13,0
+acp,pair_s3_v2_026000,corridor,2,2,20,0.10,acp_corridor_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,2,0
+acp,pair_s3_v2_026000,corridor,3,0,20,0.00,acp_corridor_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 13:56,0,0
+acp,pair_s3_v2_026000,box_step,15,15,20,0.75,acp_box_15,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 13:56,15,0
+acp,pair_s3_v2_026000,box_step,25,17,20,0.85,acp_box_25,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 13:56,17,0
+hiking,x2_parkour_v4_26500,stairs_up,2,20,20,1.00,hik_stairs_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,stairs_up,5,20,20,1.00,hik_stairs_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,stairs_up,8,20,20,1.00,hik_stairs_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,stairs_down,2,20,20,1.00,hik_stairs_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,stairs_down,5,19,20,0.95,hik_stairs_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,19,0
+hiking,x2_parkour_v4_26500,stairs_down,8,20,20,1.00,hik_stairs_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,platform_up,2,20,20,1.00,hik_platform_up_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,platform_up,5,20,20,1.00,hik_platform_up_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,platform_up,8,20,20,1.00,hik_platform_up_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,platform_down,2,20,20,1.00,hik_platform_down_L2,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,platform_down,5,20,20,1.00,hik_platform_down_L5,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,platform_down,8,20,20,1.00,hik_platform_down_L8,exact step geometry; training's +-2 cm Perlin noise on the treads left out,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,slope_up,2,20,20,1.00,hik_slope_up_L2,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,slope_up,5,20,20,1.00,hik_slope_up_L5,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,slope_up,8,0,20,0.00,hik_slope_up_L8,"exact (generator geometry, no noise in training either)",heightfield,2026-11-15 14:49,0,0
+hiking,x2_parkour_v4_26500,boxes,2,20,20,1.00,hik_boxes_L2,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,boxes,5,20,20,1.00,hik_boxes_L5,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,boxes,8,0,20,0.00,hik_boxes_L8,"same generator and parameters, one sampled layout chosen so the route crosses a box",solid,2026-11-15 14:49,0,0
+hiking,x2_parkour_v4_26500,small_boxes,2,17,20,0.85,hik_small_boxes_L2,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 14:49,17,0
+hiking,x2_parkour_v4_26500,small_boxes,5,10,20,0.50,hik_small_boxes_L5,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 14:49,10,0
+hiking,x2_parkour_v4_26500,small_boxes,8,0,20,0.00,hik_small_boxes_L8,"approximation (mesh generator not ported: 0.40 m blocks, 30 % of cells, mean height as training)",solid,2026-11-15 14:49,0,0
+hiking,x2_parkour_v4_26500,rough,2,20,20,1.00,hik_rough_L2,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,rough,5,20,20,1.00,hik_rough_L5,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,rough,8,20,20,1.00,hik_rough_L8,"same generator and parameters (InstinctLab Perlin code), one sampled field",heightfield,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,gap,2,20,20,1.00,hik_gap_L2,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,gap,5,20,20,1.00,hik_gap_L5,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,gap,8,20,20,1.00,hik_gap_L8,"exact (generator geometry; depth 0.5 m, training 0.4-0.6)",solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,ext_log_single,4,20,20,1.00,ext_log_single,exact copy of the extended_v1 tile and route,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,ext_wedges,3,18,20,0.90,ext_wedges,exact copy of the extended_v1 tile and route,solid,2026-11-15 14:49,15,3
+hiking,x2_parkour_v4_26500,ext_stairs_up,3,20,20,1.00,ext_stairs_up,exact copy of the extended_v1 tile and route,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,ext_stairs_down,3,20,20,1.00,ext_stairs_down,exact copy of the extended_v1 tile and route,solid,2026-11-15 14:49,20,0
+hiking,x2_parkour_v4_26500,ext_corridor,3,20,20,1.00,ext_log_corridor_walls,exact copy of the extended_v1 tile and route,solid,2026-11-15 14:49,20,0
+acp,pair_s3_v2_026500,log,1,20,20,1.00,acp_log_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,20,0
+acp,pair_s3_v2_026500,log,2,19,20,0.95,acp_log_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,19,0
+acp,pair_s3_v2_026500,log,3,20,20,1.00,acp_log_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,20,0
+acp,pair_s3_v2_026500,wedge,1,20,20,1.00,acp_wedge_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,20,0
+acp,pair_s3_v2_026500,wedge,2,20,20,1.00,acp_wedge_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,20,0
+acp,pair_s3_v2_026500,wedge,3,20,20,1.00,acp_wedge_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,20,0
+acp,pair_s3_v2_026500,stairs_up,1,0,20,0.00,acp_stairs_up_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,0,0
+acp,pair_s3_v2_026500,stairs_up,2,15,20,0.75,acp_stairs_up_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,15,0
+acp,pair_s3_v2_026500,stairs_up,3,20,20,1.00,acp_stairs_up_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,20,0
+acp,pair_s3_v2_026500,stairs_down,1,20,20,1.00,acp_stairs_down_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,20,0
+acp,pair_s3_v2_026500,stairs_down,2,20,20,1.00,acp_stairs_down_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,20,0
+acp,pair_s3_v2_026500,stairs_down,3,20,20,1.00,acp_stairs_down_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,20,0
+acp,pair_s3_v2_026500,corridor,1,20,20,1.00,acp_corridor_L1,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,20,0
+acp,pair_s3_v2_026500,corridor,2,19,20,0.95,acp_corridor_L2,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,19,0
+acp,pair_s3_v2_026500,corridor,3,19,20,0.95,acp_corridor_L3,approximation: closest eval course to ACP's per-clip prop scenes,solid,2026-11-15 15:47,19,0
+acp,pair_s3_v2_026500,box_step,15,13,20,0.65,acp_box_15,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 15:47,13,0
+acp,pair_s3_v2_026500,box_step,25,13,20,0.65,acp_box_25,approximation: closest course to ACP's box props (clip scenes not rebuilt),solid,2026-11-15 15:47,13,0

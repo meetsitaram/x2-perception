@@ -32,3 +32,4 @@ Added after the audit (same columns as the table above):
 - (2026-11-13) ACP depth student (teacher-student DAgger, depth -> height map under the ACP policy): revisit once ACP performs well with the perfect height map (user). Needs a GPU node (SSR's frees at 20,000) and a teacher checkpoint.
 - (2026-11-14, user) Stall penalty: penalise staying in one place for a long time while a forward command is active (Hiking first; SSR has a similar candidate). Not implemented yet; owner Hiking agent, after v9's first judgement.
 - (2026-11-15, user, after waking) Depth camera -> height map for ACP: run the literature review (last 12 months, depth-camera terrain mapping for legged/humanoid robots), then decide the approach. Paused 2026-11-15 ~06:45 UTC; plan in docs/USER_RULES.md "Depth camera -> height map for ACP".
+- (2026-11-15) Depth camera -> height map notes, survey summary and draft plan: docs/TODO_depth_to_heightmap.md (parked by the user).

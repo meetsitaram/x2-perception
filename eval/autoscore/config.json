@@ -17,7 +17,7 @@
  "hiking_port": "eval/autoscore/port",
  "tracks": {
   "acp": {
-   "enabled": true,
+   "enabled": false,
    "policy": "newest",
    "pattern": "pair_*",
    "skip": [],
@@ -43,7 +43,7 @@
    "priority": []
   },
   "hiking": {
-   "enabled": true,
+   "enabled": false,
    "policy": "newest",
    "pattern": "x2_parkour_v4_*",
    "skip": [],

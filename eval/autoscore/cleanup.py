@@ -16,7 +16,7 @@ BULKY_NAMES = ("obs_check.npz",)
 DRY = "--dry-run" in sys.argv
 # Never touched: the eval's fixed references (eval/regression.py CASES and baselines). 2026-11-13: the first cleanup run removed
 # acp_s1v2_4250's planner and broke the regression check, so every training-terrain job failed until it was restored.
-PROTECT = ("acp_s1v2_4250", "acp", "acp_2250", "baseline")
+PROTECT = ("acp_s1v2_4250", "acp", "acp_2250", "baseline", "acp_s3v2_23000", "hiking_v4_24500")  # 2026-11-15: best checkpoints of ACP and Hiking
 
 
 def _disabled_tracks():

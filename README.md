@@ -8,6 +8,37 @@ definition and the current status. A new session can pick the work up from here 
 **Goal (set by the user, 2026-11-11):** take the apparatus walk from about 25% success (the user's figure; the first job of the eval
 agent is to re-measure it under `docs/EVAL.md`) to close to 99%. X2 only for this round.
 
+
+## Results so far (2026-11-15)
+
+All numbers are from the held-out MuJoCo apparatus eval (`docs/EVAL.md`), not the training simulator. Renders: MuJoCo,
+not the training simulator.
+
+| Track | Best checkpoint | Full apparatus route (ours) | NIST apparatus | Notes |
+|---|---|---|---|---|
+| ACP (contact planner + tracker) | `pair_s3_v2_023000` (stage 3) | **198/200 (99%)**; 193/200 (96.5%) on 200 fresh seeds | 155/200 (77.5%) | perfect height map (simulator); falls on NIST mostly on the ramps |
+| Hiking in the Wild (X2 port) | `x2_parkour_v4_24500` (v9) | not yet qualified (legs 48/49/42/37/41 of 50) | - | depth camera; stair refusals fixed (FINDINGS H8-H9) |
+| SSR | `r7_v20_final_26000` | not qualified (legs 49/50/49/44/5) | - | stopped; refuses high stairs (FINDINGS E8-E8c) |
+
+| ACP: full route | ACP: homes (big block, small blocks) |
+|---|---|
+| ![ACP full route](docs/media/acp_full_route.gif) | ![ACP homes](docs/media/acp_homes_blocks.gif) |
+| **Hiking: apparatus stairs (leg 5)** | **Hiking: extended map, L-shaped stairs** |
+| ![Hiking stairs](docs/media/hiking_apparatus_stairs.gif) | ![Hiking L stairs](docs/media/hiking_map_stairs_L.gif) |
+| **SSR: apparatus stairs (leg 5)** | **SSR: extended map, C-shaped stairs** |
+| ![SSR stairs](docs/media/ssr_apparatus_stairs.gif) | ![SSR C stairs](docs/media/ssr_map_stairs_C.gif) |
+
+Review page (status, training curves, paper-vs-code audits, renders): open `docs/site/index.html` (self-contained; the training
+curves are in `docs/site/training_plots.html`).
+
+Model checkpoints: see "Models" below.
+
+## Models
+
+Released checkpoints and their model cards: to be linked here once uploaded to Hugging Face (pending the user's account login
+and licence check: the training data includes BONES-SEED-derived clips and, for Hiking and SSR, a style reference derived from
+the Hiking in the Wild release (CC BY-NC 4.0)).
+
 ## The team
 
 | Role | Agent definition | Where it works | Owns |

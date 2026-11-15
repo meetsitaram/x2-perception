@@ -1,38 +1,25 @@
 {
- "updated": "2026-11-15T06:18Z",
+ "updated": "2026-11-15T16:16Z",
  "pid": 4660,
- "running": [
-  "ssr:r7_v20x_032000 train.ssr_stairs_L15.c0",
-  "ssr:r7_v20x_032000 train.ssr_stairs_L15.c1",
-  "ssr:r7_v20x_032000 train.ssr_stairs_L15.c2",
-  "ssr:r7_v20x_032000 train.ssr_stairs_L15.c3",
-  "ssr:r7_v20x_032000 train.ssr_stairs_L19.c0",
-  "ssr:r7_v20x_032000 train.ssr_stairs_L19.c1",
-  "ssr:r7_v20x_032000 train.ssr_stairs_L19.c2",
-  "ssr:r7_v20x_032000 train.ssr_stairs_L19.c3"
- ],
- "active": [
-  "ssr:r7_v20x_032000",
-  "hiking:x2_parkour_v4_23500",
-  "acp:pair_s3_v2_023500"
- ],
+ "running": [],
+ "active": [],
  "done": [
-  "acp:pair_s3_v2_021500",
-  "ssr:r7_v21_028500",
-  "hiking:x2_parkour_v4_21500",
-  "acp:pair_s3_v2_022000",
-  "ssr:r7_v21_029500",
-  "hiking:x2_parkour_v4_22000",
-  "acp:pair_s3_v2_022500",
-  "ssr:r7_v20x_031000",
-  "hiking:x2_parkour_v4_23000",
-  "acp:pair_s3_v2_023000"
+  "hiking:x2_parkour_v4_24500",
+  "acp:pair_s3_v2_024500",
+  "hiking:x2_parkour_v4_25000",
+  "acp:pair_s3_v2_025000",
+  "hiking:x2_parkour_v4_25500",
+  "acp:pair_s3_v2_025500",
+  "hiking:x2_parkour_v4_26000",
+  "acp:pair_s3_v2_026000",
+  "hiking:x2_parkour_v4_26500",
+  "acp:pair_s3_v2_026500"
  ],
  "last_rows": [
-  "hiking x2_parkour_v4_22000 train courses passed 22/32 (>= 80 % of 20) | flat NOT PASSED, gate -, legs 50/50/45/38/31 (product 0.424), route not run | strict 0.2 m: flat 50/50/42/50, legs 50/49/3/1/31 (product 0.001), route -; stopped short 96",
-  "acp pair_s3_v2_022500 train courses passed 11/17 (>= 80 % of 20) | flat NOT PASSED, gate PASS 5/5 (turn-around 3/3), legs 47/48/50/50/50 (product 0.902), route 174/200 | strict 0.2 m: flat 50/50/50/46, legs 47/48/50/50/50 (product 0.902), route 174/200; stopped short 0",
-  "ssr r7_v20x_031000 train courses passed 17/22 (>= 80 % of 20) | flat NOT PASSED, gate -, legs 49/50/49/50/0 (product 0.000), route not run | strict 0.2 m: flat 50/50/39/50, legs 49/50/49/49/0 (product 0.000), route -; stopped short 20",
-  "hiking x2_parkour_v4_23000 train courses passed 24/32 (>= 80 % of 20) | flat PASSED, gate -, legs 50/49/34/25/33 (product 0.220), route not run | strict 0.2 m: flat 50/50/50/50, legs 50/48/6/2/33 (product 0.003), route -; stopped short 74",
-  "acp pair_s3_v2_023000 train courses passed 12/17 (>= 80 % of 20) | flat PASSED, gate PASS 5/5 (turn-around 3/3), legs 50/50/49/49/50 (product 0.960), route 198/200 | strict 0.2 m: flat 50/50/50/50, legs 50/50/49/49/50 (product 0.960), route 198/200; stopped short 0"
+  "acp pair_s3_v2_025500 train courses passed 7/17 (>= 80 % of 20) | flat PASSED, gate FAIL 4/5 (turn-around 2/3), legs 50/48/48/50/43 (product 0.793), route not run | strict 0.2 m: flat 50/50/50/50, legs 50/48/48/50/43 (product 0.793), route -; stopped short 0",
+  "hiking x2_parkour_v4_26000 train courses passed 26/32 (>= 80 % of 20) | flat NOT PASSED, gate -, legs 50/48/38/19/28 (product 0.155), route not run | strict 0.2 m: flat 50/50/42/50, legs 50/48/0/1/28 (product 0.000), route -; stopped short 67",
+  "acp pair_s3_v2_026000 train courses passed 5/17 (>= 80 % of 20) | flat PASSED, gate PASS 5/5 (turn-around 3/3), legs 49/45/46/50/50 (product 0.811), route 176/200 | strict 0.2 m: flat 50/50/50/50, legs 49/45/46/50/50 (product 0.811), route 176/200; stopped short 0",
+  "hiking x2_parkour_v4_26500 train courses passed 28/32 (>= 80 % of 20) | flat NOT PASSED, gate -, legs 50/47/24/20/33 (product 0.119), route not run | strict 0.2 m: flat 50/50/25/50, legs 50/47/0/0/33 (product 0.000), route -; stopped short 50",
+  "acp pair_s3_v2_026500 train courses passed 13/17 (>= 80 % of 20) | flat PASSED, gate PASS 4/5 (turn-around 3/3), legs 50/50/50/50/48 (product 0.960), route 191/200 | strict 0.2 m: flat 50/50/50/50, legs 50/50/50/50/48 (product 0.960), route 191/200; stopped short 0"
  ]
 }

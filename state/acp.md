@@ -2437,6 +2437,18 @@ faults above the warn level after the 2h data / DR switch; gate B (+400, it 10,7
   iteration, s3_start (no new warm-up), curriculum levels, optimisers; the planner TileReplay is not checkpointed and refills (~100 its,
   as after any resume). Cost: a few minutes of start-up. GO not created (user's decision; it is a stop of the run).
 
+### 17n. Route decline 99 -> 82 after 23,000: checkpoint oscillation, not training drift (CPU analysis, 2026-11-15)
+- Route (200 trials, same seeds s1000-s1199): 21,000 80.5%, 21,500 79.5%, 22,500 87%, 23,000 99%, 23,500 95%, 24,500 84.5%, 25,000 81.5%;
+  pooled 86.7%. Between-checkpoint spread is real (chi2 ~59, 6 dof), but non-monotone: 23,000-23,500 is a peak above an ~80-87% level.
+- Failures are falls (pelvis tilt > 60 deg) at changing places: 4x4s at 21,000/21,500/24,500 (25-34 of 39), stairs at 25,000 (21 of 37).
+  Failing seeds overlap between checkpoints at chance level (e.g. 39 x 41 -> 7 shared; 8 of 130 seeds fail in >= 3): no hard-seed set.
+- Training metrics (runs/s3_v2/metrics.jsonl, 500-it bins 20,000-25,250) are smooth with no break: goal success 0.55 -> 0.63, fall
+  0.032 -> 0.024, reference finish 0.823 -> 0.845, term_diverged 0.135 -> 0.116, action std 0.226 -> 0.219, KL 0.013 flat, lr ~6e-5,
+  value loss goal 3.9 -> 3.0, planner occupancy loss 0.039 -> 0.028, affordance 3.13 -> 3.09, goal levels saturated (~8.99 of 9 for
+  blocks/stairs_up since 21,000; ext_stairs 8.1 -> 8.34), replay full at 1.5e6 with stable shares. Spawnfix switch was at ~20,300.
+- Reading: per-checkpoint PPO jitter on an out-of-training route; 99% is the best of 7 draws (winner's curse likely). Keep 23,000 as the
+  deliverable; confirm it on 200 fresh seeds; fixed selection rule in the report.
+
 ## HOW TO RESUME (current at 2026-11-14 16:10 UTC node clock)
 - Running: s3_v2 stage 3 (tmux acp, 19,218 -> 34,218, at ~20,300); acp-s3auto (crash/stale only); acp-export; acp-backup;
   acp-spawnfix = armed data switch, waiting for runs/s3_v2/GO_spawnfix (17m). Its log lines: [spawnfix] in runs/s2_v5/restart.log.
