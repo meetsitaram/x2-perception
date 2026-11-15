@@ -19,7 +19,7 @@ Status labels:
 - **ADDED**: not in the paper
 - **UNVERIFIED**: could not be checked (says why)
 
-Prior audit `state/ssr_port_audit.md` (2026-11-12) was used as a checklist. Where it differs from this one: (1) it called the
+Prior audit `agentic/state/ssr_port_audit.md` (2026-11-12) was used as a checklist. Where it differs from this one: (1) it called the
 orientation term a deviation, but the paper's Table 6 has the squared norm, exp(-norm(g_xy)^2/sigma_g), which is what the code
 does (MATCH); (2) it accepted "data not released" for the motion prior, but the paper's Table 11 sizes and composition can be
 followed with our own data and are not (section 12); (3) it did not list the missing gap and discrete terrains, the 17-row base

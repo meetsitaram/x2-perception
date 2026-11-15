@@ -4,7 +4,7 @@
         [--out report.json] [--quick]
 
 Exit code 0 = all checks passed, 1 = a check failed, 2 = the build or a check crashed. The JSON report has one entry per
-check with its numbers and limits (simcheck.core). Must pass before every launch or restart (docs/TRACK_RULES.md,
+check with its numbers and limits (simcheck.core). Must pass before every launch or restart (agentic/docs/TRACK_RULES.md,
 "Simulator checks"). Use run_preflight.sh, which picks the track's venv, pins 4 CPU cores and hides the GPU."""
 from __future__ import annotations
 

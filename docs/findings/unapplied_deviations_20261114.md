@@ -1,15 +1,15 @@
 # Unapplied paper deviations, ACP and Hiking (2026-11-14)
 
 Asked by the user's rule "Fix every unapplied paper deviation" (USER_RULES, 2026-11-14, after SSR E8a). Read-only check, no run
-or node touched. Sources: `docs/findings/acp_paper_vs_code.md` (audit 2026-11-13), `state/acp.md` 17j-17m, `docs/runs/ledger_acp.md`
-rows 15-20, `docs/runs/recipe_acp.md`; for Hiking `docs/runs/recipe_hiking.md`, `docs/runs/ledger_hiking.md` rows 32-34c,
-`state/hiking.md` (2026-11-14 entries), `docs/FINDINGS.md` H7-H8, the X2 port configs in `tracks/hiking/x2_port/files_instinctlab/`,
-the user's G1 audit `hiking-in-the-wild/docs/PAPER_VS_CODE.md` and the paper text `tracks/hiking/x2_port/paper_v2.txt`
+or node touched. Sources: `docs/findings/acp_paper_vs_code.md` (audit 2026-11-13), `agentic/state/acp.md` 17j-17m, `models/acp/LEDGER.md`
+rows 15-20, `models/acp/RECIPE.md`; for Hiking `models/hiking/RECIPE.md`, `models/hiking/LEDGER.md` rows 32-34c,
+`agentic/state/hiking.md` (2026-11-14 entries), `docs/FINDINGS.md` H7-H8, the X2 port configs in `models/hiking/x2_port/files_instinctlab/`,
+the user's G1 audit `hiking-in-the-wild/docs/PAPER_VS_CODE.md` and the paper text `models/hiking/x2_port/paper_v2.txt`
 (arXiv 2601.07718 v2).
 
-**Caveat (affects both tracks):** the repo copies `tracks/acp/code` and `tracks/hiking/x2_port` were last synced 2026-11-12 21:07
+**Caveat (affects both tracks):** the repo copies `models/acp/code` and `models/hiking/x2_port` were last synced 2026-11-12 21:07
 PST (11-13 05:07 UTC). They hold neither ACP's `ACP_PAPER_DR` / `--s3-paper` code nor Hiking v6-v8. Everything after that date
-is taken from the state files and ledgers, not from the code. `scripts/sync_track_code.sh --commit` has not brought those changes
+is taken from the state files and ledgers, not from the code. `agentic/scripts/sync_track_code.sh --commit` has not brought those changes
 in since then (that is a coordinator item).
 
 ## ACP

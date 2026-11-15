@@ -14,7 +14,7 @@ CORNERS = [(100, 198), (72, 1248), (1790, 1240), (1812, 292)]
 W, H = 1280, 760          # rectified size
 PAD = 300                 # right-hand margin for labels
 
-# solve used by the coordinator (docs/USER_RULES.md, "Camera, final pose")
+# solve used by the coordinator (agentic/docs/USER_RULES.md, "Camera, final pose")
 CAM_H = 0.90              # camera height above the floor, m (estimate)
 CAM_BACK = 0.12           # lens behind the toe tips, m (estimate)
 VFOV = 58.0               # RealSense depth / infrared vertical field of view, deg

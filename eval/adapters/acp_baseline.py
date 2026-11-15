@@ -13,7 +13,7 @@ Tracker input (1817), from gear_sonic/supermimic (sim.policy_input, mdp.obs, net
                      heading still to turn (the station's facing when the waypoint is a station); 26 zeros
 Each block is normalised with its own running mean / variance (eps 0.01). Output: 31 actions in the deploy order, mapped
 to MuJoCo order, clipped to +-20; joint target = default pose + action scale * action; 50 Hz; PD at the plant's gains.
-Checked against the original code with tools/baseline_check.py (see state/eval.md for the numbers).
+Checked against the original code with tools/baseline_check.py (see agentic/state/eval.md for the numbers).
 """
 from __future__ import annotations
 

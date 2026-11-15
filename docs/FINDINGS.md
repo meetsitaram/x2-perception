@@ -3,8 +3,8 @@
 Kept by the coordinator (user, 2026-11-12: "the coordinator should take note of all these kind of interesting findings and log
 them somewhere for future reference. the agents report to the coordinator what things are going wrong and how they are
 addressing them"). One entry per finding: what was found, the evidence, what was done, what is still open, and where the
-detail is. Newest findings are added at the end of their section. The running timeline is `state/STATUS.md`; lessons shared
-between tracks are in `state/SHARED_LESSONS.md`; this file is the short list a reader starts from.
+detail is. Newest findings are added at the end of their section. The running timeline is `agentic/state/STATUS.md`; lessons shared
+between tracks are in `agentic/state/SHARED_LESSONS.md`; this file is the short list a reader starts from.
 
 Status words: **settled** (acted on and confirmed), **acted** (changed, result pending), **open** (no fix yet),
 **needs the user** (a decision is waiting).
@@ -15,7 +15,7 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
 - **Found:** in the shared X2 MuJoCo model the convex collision shapes of the pelvis and each hip-roll link overlap by up to
   10.9 mm; the real meshes keep 3.6-5 mm of clearance over the whole hip-roll range. The real stop is the joint limit
   (0.235 rad); the false contact stops the joint at about 0.057 rad.
-- **Evidence:** independent audit (`state/ssr_port_audit.md`, sections 5 and 7); the eval measured 750-800 N per side on that
+- **Evidence:** independent audit (`agentic/state/ssr_port_audit.md`, sections 5 and 7); the eval measured 750-800 N per side on that
   pair while ACP and SSR policies walked (the robot weighs about 425 N); with the pair excluded the same policies fell (ACP
   3,500 pair 0/50 on flat tests against 50/50 with it; SSR 2,000 7/50).
 - **Effect:** every ACP and SSR checkpoint before about 06:50 UTC stood on a contact the robot does not have. ACP's reference
@@ -61,7 +61,7 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
 ### A3. Action scale differs from the SSR paper (2026-11-12) — parked by the user
 - Ours is 0.485 rad per action unit on ankle roll, shoulder yaw and elbow (from the plant rule) against the paper's 0.25 legs
   and 0.2 arms; the other joints match. A test with the paper's scales is prepared behind a flag.
-- **User, 2026-11-12:** "for now, let it go as is". On the review-later list (`docs/REVIEW_LATER.md`); revisit if SSR's
+- **User, 2026-11-12:** "for now, let it go as is". On the review-later list (`agentic/docs/REVIEW_LATER.md`); revisit if SSR's
   sideways balance or arm motion looks jittery on the apparatus or the real robot.
 
 ## B. The eval
@@ -155,7 +155,7 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
 
 ### C1. Slow commands: standing pays (2026-11-11/12) — acted (SSR), partly open
 - The speed reward exp(-error^2 / 0.25) pays a stander 70% at a 0.3 m/s command. SSR stood at commands under 0.5 m/s; Hiking
-  never trains under 0.45 m/s. Detail and options: `state/SHARED_LESSONS.md`, "Slow commands".
+  never trains under 0.45 m/s. Detail and options: `agentic/state/SHARED_LESSONS.md`, "Slow commands".
 - SSR: command mix with slow and turn commands helped (0.2 m/s: 0.13-0.19 m/s); two tries of a relative-error kernel failed
   their checks (fast walking or slow turning collapsed).
 
@@ -243,7 +243,7 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
 - **Probe gate works against a frozen planner (2026-11-12 18:15):** the gate lowered the share of planner contacts in
   training from 0.35 to 0.15 after 7,000, partly on noise in its baseline; the planner-only probe dipped at 7,250 (4x4 set
   0.939 to 0.909), matching the gate failure. Fix written (`--gate-backoff 1`, `--gate-rebase`), applied at the next
-  restart. Selection is now by leg product among gate-passing pairs (champion 7,000). Detail: `state/acp.md` 17a.
+  restart. Selection is now by leg product among gate-passing pairs (champion 7,000). Detail: `agentic/state/acp.md` 17a.
 - **Leg 5 falls (7,000):** all four on the first stair steps while the yaw command is at its limit; the robot turns onto
   the flight beside the first riser. Traces asked of the eval. Open.
 - **7,000 on 200 trials: 125/200 = 62.5%** (5,750: 57.0%; ranges overlap): stairs 9 falls against 45, 11 turn-around stalls,
@@ -253,7 +253,7 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
   door side after the crossing; 1 on a wall before button 1. Mostly the tracker's motion around the turn-around.
 - **7,000 on 50 trials: 26/50** against 22 (5,750) and 18 (6,250) on the same seeds; 1 turn-around stall (8 at 6,250), 3 stair
   falls (19 at 5,750). Freezing the planner worked. The largest loss is now falls at the 4x4s (13 of 24 failures).
-- **Open:** the turn-around and the stair approach need the terrain stage (stage 3). Detail: `state/acp.md` 16q.
+- **Open:** the turn-around and the stair approach need the terrain stage (stage 3). Detail: `agentic/state/acp.md` 16q.
 
 ### D5. Extended map for stage 3: import built, one unexplained defect; contacts dropped on the ramp raster (2026-11-12) — open
 - The user's tiles are imported as one height raster with 197 routes for ACP's goal environments. In the first CPU closed loop
@@ -326,7 +326,7 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
 ## F. Hiking
 
 ### F1. Port defects (2026-11-12) — settled
-- Seven defects found by an independent audit (`state/hiking_port_audit.md`); run 4 has all the fixes.
+- Seven defects found by an independent audit (`agentic/state/hiking_port_audit.md`); run 4 has all the fixes.
 
 ### F2. Stopping, turning, overspeed (2026-11-12) — acted
 - No turn in place (the paper trains it on 5% of robots): 15% turn commands added; it now turns at the commanded rate.
@@ -363,7 +363,7 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
   also when standing; the reference leans 11.6 deg forward, where the camera would reach only about 1.0 m. Nothing in the reward
   resists the lean (the style reward sees only the 12 leg joints, which is also why the arms barely swing). The trained mount
   matches the eval's numbers. 2 m upright needs about 67 deg of vertical field against the camera's 58; pitching the camera up
-  about 5 deg gives toe tips to 2.0 m. **Needs the user** (the real mount): `docs/USER_TODO.md` 5.
+  about 5 deg gives toe tips to 2.0 m. **Needs the user** (the real mount): `agentic/docs/USER_TODO.md` 5.
 
 ### F2c. The extended map enters training (2026-11-12 16:25 UTC) — acted
 - v4h continues from `model_4500` on the paper's 20 columns plus 12 extended-map columns (all ten levels) and 2 velocity
@@ -402,10 +402,10 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
 
 - **Launch incident, SSR 14:14-14:17 UTC (2026-11-12):** a watcher script with a syntax error was started anyway because the
   syntax check and the launch were chained with `;`; killing its tmux session then killed the supervisor and left a trainer
-  running alone for a minute. Nothing lost. Rules now in `state/ssr.md`: `bash -n && tmux new-session`; never kill a tmux
+  running alone for a minute. Nothing lost. Rules now in `agentic/state/ssr.md`: `bash -n && tmux new-session`; never kill a tmux
   session that holds a supervisor; stop runs only through STOP. Applies to every track.
-- Track agents decide in their own track and report what went wrong and how they fixed it (`docs/USER_RULES.md`).
-- Agents' hand-back reports arrive once per turn; later ones are lost, so decisions are also written to `state/<track>.md`.
+- Track agents decide in their own track and report what went wrong and how they fixed it (`agentic/docs/USER_RULES.md`).
+- Agents' hand-back reports arrive once per turn; later ones are lost, so decisions are also written to `agentic/state/<track>.md`.
 - A rare skill can vanish between two checkpoints while every average holds: keep a frozen reference checkpoint and rerun
   its known failing and passing seeds on each new one (ACP, 2026-11-12).
 - Heartbeats do not show crashes; the refresh reads each supervisor log.
@@ -560,7 +560,7 @@ Catalogue at `terrain-park/catalog/` (135 takes, 6 props, 36 categories, 47 MuJo
   source, not the sizes or the composition. Result: about 4,700 s, BONES-SEED heavy, a separate flat group. SSR's style reward
   sits at 0.35 since iteration 1,600 (the user's G1 Hiking run climbed 0.39 -> 0.62).
 - Fix: amp_v5 to Table 11 (Pico + the paper's Hiking reference retargeted to X2; no BONES-SEED). And a pass over every deviation
-  in `state/ssr_port_audit.md`, separating "paper does not specify" from "paper specifies and we did not follow".
+  in `agentic/state/ssr_port_audit.md`, separating "paper does not specify" from "paper specifies and we did not follow".
 - Lesson: "data not released" is never a reason to drop a specification the paper does give.
 - **E3 evidence (02:05 UTC):** nearest-reference analysis of eval trajectories: SSR and Hiking policies sit 2.3-2.6x farther from
   any reference window than reference clips sit from each other; walking windows almost never come close (0-1%), turns and
@@ -677,7 +677,7 @@ Catalogue at `terrain-park/catalog/` (135 takes, 6 props, 36 categories, 47 MuJo
 - Proposed (not acted on, crash-level, awaiting coordinator): (1) guard7 must not treat a NaN-divergence exit as a code-error
   loop (or stop instead of falling back); (2) a finite guard in instinct_rl ppo.update (skip the minibatch / restore the last good
   critic when value_loss is non-finite or > 1e3, clamp returns), picked up at the next crash resume with no planned stop;
-  (3) dump the rollout's max |reward term| and max |critic obs| when value_loss > 1e3 to find the trigger. Detail: state/hiking.md.
+  (3) dump the rollout's max |reward term| and max |critic obs| when value_loss > 1e3 to find the trigger. Detail: agentic/state/hiking.md.
 - Done 02:39 UTC (coordinator decision): (a) finite guard in instinct_rl `algorithms/ppo.py` (one code folder; original in
   `_trash/2026-11-14/`): a minibatch with non-finite loss or value_loss > 1e3 is skipped and logged as `[GUARD] ...` in train.log
   with max |returns| / |values| / |critic obs| / |obs| and the top five critic-obs columns; returns clamped to +-1e4 (logged when
@@ -699,8 +699,8 @@ Catalogue at `terrain-park/catalog/` (135 takes, 6 props, 36 categories, 47 MuJo
   Goal envs: goal/success 0.26 -> 0.47 -> 0.25 while the curriculum climbs (level mean 0 -> 8.1 of 9); falls 0.04. But 63% of goal episodes end in a simulator fault (end/term_diverged 0.15 -> 0.32 of all episodes; heartbeat sim_fault_share 31.8%). Success among clean goal episodes ~0.43 at level 0 -> ~0.67 at level 8: learning.
 - Cause of the faults (CPU replay of latest.pt, 64 goal + 64 reference envs, 480 steps, random levels): 281 goal faults vs 18 reference; 219 of 281 (78%) within 10 steps of reset; 228 in ext_homes 79 / ext_log_corridors 82 / ext_tight_spots 67 (ACP's own six families: 6); causes depth > 5 cm 240 (77 deeper than 1 m, max 2.24 m), qvel 102, speed jump 70; no NaN. = goal spawns inside geometry on those tiles. Reference faults: 18 shallow depth (5-10 cm), as in stage 2.
 - Impact: small in steps (a spawn fault costs a few env steps, ~0.2% of the batch); no stop risk (watch_s3 watches crash/stale only; curriculum EMA excludes faulted episodes). Real cost: those tiles never train and finish_frac / sim_fault_share read as alarms.
-- Not crash-level, nothing changed in the run (user rule: no stops). Detail: state/acp.md 17l.
-- Fix prepared and ARMED (2026-11-14 16:10 UTC, state/acp.md 17m): spawn check of all 1,604 tiles: 80 fault (ext_homes 17, beam fields 15, tight spots 9, stairs 8, single beams 7, blocks 6, wedges 6, street 6, log corridors 5, stairs_down 1); goal_tiles_v2c: 62 spawns moved on the same tile, 20 tiles take a clean sibling, none dropped (cfg/stage3v2i_sets.json). Frozen-policy A/B, all tiles x 4 resets x 30 steps: 203 fault events (114 deep) -> 49 (8). Switch armed on runs/s3_v2/GO_spawnfix (resume from latest.pt, only DATA changes); GO is the user's call. Open: log corridors unchanged (7 events); outcome in training after a GO.
+- Not crash-level, nothing changed in the run (user rule: no stops). Detail: agentic/state/acp.md 17l.
+- Fix prepared and ARMED (2026-11-14 16:10 UTC, agentic/state/acp.md 17m): spawn check of all 1,604 tiles: 80 fault (ext_homes 17, beam fields 15, tight spots 9, stairs 8, single beams 7, blocks 6, wedges 6, street 6, log corridors 5, stairs_down 1); goal_tiles_v2c: 62 spawns moved on the same tile, 20 tiles take a clean sibling, none dropped (cfg/stage3v2i_sets.json). Frozen-policy A/B, all tiles x 4 resets x 30 steps: 203 fault events (114 deep) -> 49 (8). Switch armed on runs/s3_v2/GO_spawnfix (resume from latest.pt, only DATA changes); GO is the user's call. Open: log corridors unchanged (7 events); outcome in training after a GO.
 - E8a (2026-11-14 17:00, coordinator miss): the SSR audit of 2026-11-13 (docs/findings/ssr_paper_vs_code.md line 157, priority item 9) DID list the curriculum as DEV-P with the paper's rule and the fix (promote at TILE_X/2), but described the impact only as 'slow commands never promote' and nobody applied it, although the user ruled on 2026-11-13 that SSR goes back to the paper on every paper-specified item. No owner or date was set; the coordinator did not track the DEV-P list into v17-v19. Action: check every remaining DEV-P row against the running v20 flags and give each an owner and date.
 - **E8b (SSR agent, 2026-11-14 17:00 UTC): all 26 DEV-P rows checked against the live v20 command line (`/proc` of the trainer) and code: 8 applied before (v17 prior Table 11, v20 curriculum, phases over, waist-scale code fix), 5 user overrides, 7 fixed now in ONE resume (v21), 6 deferred (D1).** Table: `docs/findings/ssr_paper_vs_code_status_20261114.md` (also every ADDED row kept / dropped with its reason).
   - v21 = v20 + separate advantage normalisation and sigma_v 0.25 (blended over 300 its from the resume), no vy clamp, base-frame foothold targets, omni commands only after the top level, Table 5 omni draw (`--omni_slow 0`; turn-in-place share kept: user rule), beam (the gap stand-in) heading +-15 deg (new `--beam_hmax`). Flags `runs/r7_flags_v21.txt`; queue39 (tmux `ssr39`) waits for v20's +250 stairs probe, then stops v20 at its next save; quality gate +150/+350/+500 (vx_ratio >= 0.75 x v20, ep_len >= 0.7 x) -> v21b (only norm / sigma / beam heading) -> v20; crash loop -> v20 flags.
@@ -734,7 +734,7 @@ Catalogue at `terrain-park/catalog/` (135 takes, 6 props, 36 categories, 47 MuJo
   (`v9/guard2/install_guard2.sh`, tmux inst_g2).
 - Open: the root cause (unbounded actions) is not fixed; an action clip in the env (e.g. +-100) would change dynamics only on
   outliers - proposal pending the logged normal maxima. Check the guard_rollout maxima after an hour to confirm the bounds never
-  touch normal rollouts. Detail: state/hiking.md 2026-11-15 00:55.
+  touch normal rollouts. Detail: agentic/state/hiking.md 2026-11-15 00:55.
 
 ### H7c. Hiking v9: the policy holds waist_pitch at |action| ~18-28 (joint range +-0.31 rad, std 2.92); a +-20 action clip (user, 2026-11-15) would bind on 12-56% of normal steps on that joint (2026-11-15 13:10 UTC, hiking agent) - clip built and pre-flighted, restart held for the coordinator
 - Evidence: tensorboard Train/guard_rollout_action_absmax_max, 3,990 iterations since 22,125: median 50, p99 331, 12 iterations > 1e3 (25,169: 6.8e5; 25,691-25,692; 25,858-25,860 full runaway -> guard raise -> resume from 25,750); the guard's top column is always 5 (waist_pitch), then 24 (right_wrist_yaw). Checkpoint 26,000 action std per joint: waist_pitch 2.92, wrist yaw 2.06, wrist pitch 2.56, shoulder roll 1.32, all others 0.06-0.76.
@@ -744,7 +744,7 @@ Catalogue at `terrain-park/catalog/` (135 takes, 6 props, 36 categories, 47 MuJo
 - Open (coordinator / user): (a) uniform +-20 anyway (physically inert, waist_pitch obs shift ~30% of steps), or (b) +-20 on 28 joints and +-50 on waist_pitch (never binds in the probe; still bounds the runaway ~20x below the guard's 1e3). Hiking agent recommends (b). Eval adapter: the MuJoCo eval feeds the unclipped action back; if the clip binds (a), the eval adapter should clip the same way (eval monitor).
 
 ### H9. Hiking: the touchdown term t (ours) pays marking time at the foot of a row-8 obstacle more than climbing; stumble and graded contact do not decide the refusal (2026-11-14 17:25 UTC) - v9 armed, GO after the 19:00 data
-- Evidence: CPU replay of every v8 reward term in MuJoCo (exports 20,000 and 19,250; 4-8 trials per course; table in state/hiking.md 17:25). Per second: stairs L8 foot-stepping 8.2 (touchdown +4.4), platform L8 7.3 (+3.7), against climbing stairs L5 5.2 and platform L5 6.1-6.6 (touchdown +0.9-1.8). Without t: refusal 3.5-3.8 /s, climb 4.3-4.9 /s. v8's progress weighting does not stop it (vx oscillates, positive at touchdown). Gap L8 edge stepping also pays 2.4 /s.
+- Evidence: CPU replay of every v8 reward term in MuJoCo (exports 20,000 and 19,250; 4-8 trials per course; table in agentic/state/hiking.md 17:25). Per second: stairs L8 foot-stepping 8.2 (touchdown +4.4), platform L8 7.3 (+3.7), against climbing stairs L5 5.2 and platform L5 6.1-6.6 (touchdown +0.9-1.8). Without t: refusal 3.5-3.8 /s, climb 4.3-4.9 /s. v8's progress weighting does not stop it (vx oscillates, positive at touchdown). Gap L8 edge stepping also pays 2.4 /s.
 - feet_stumble and wall_contact_graded (user rules) cost 0.01-0.03 and 0.00-0.10 /s in real row-5 climbs (1-2% of the climb reward); the graded contact charges the row-8 foot-stepping (0.21 /s, knees on the platform face) more than any climb. No evidence that their weights make attempting cost more than refusing; proposal to the user: keep 1.0 (optional flag for 0.5 on the paper columns built, default off). Caveat: hard row-8 strikes are never seen because the policy never attempts.
 - Gap rows 0-1: the paper's score is the episode SUM of exp(-err^2/0.25) / max length, so early terminations and edge-stepping (about 0.37) both fail the 0.6 bar once FAIR counts only walking episodes; v9 logs per-type score / up / down / early-termination to separate them.
 - Done: v9 = v8 + release command mix (stand 0.05, no turn-in-place off the stand column, no slow forward / slow yaw, stand column vx 0 / vy 0 / wz +-1) + t removed (user decisions "Hiking v9 decisions"); CPU pre-flight PASS 17:20; tmux cont9 armed; the desktop script check1900.sh scores the 12 paper rows on exports 20,500 / 20,625 and then writes GO_v9. Fallback v9 -> v8.
@@ -758,7 +758,7 @@ Catalogue at `terrain-park/catalog/` (135 takes, 6 props, 36 categories, 47 MuJo
 - Style check: yes, the style group favours standing at the foot: r_s 0.33 per step standing vs 0.16 climbing (v20 D), v21 D 0.31 at the foot vs 0.21 in forced climbs; r_s rising 0.25 -> 0.32 over v21 is the policy moving to the style-paid stance.
 - The 5,050 -> 7,110 refusal jump (coordinator note) is not the extended map: at 5,050 (r7_v14_p250) 36/50 leg-5 trials stalled at "ramps, front side" and never reached the stairs (0 stair refusals for that reason); 7,110 is r8_v15_p100 = the first back-to-paper run (separate normalisation, sigma 0.25, fresh discriminators), 28/50 stair refusals - the same mechanism. Extended-map mechanics were not tested by this probe (own stairs tiles only); the remaining ext suspect is the fatal wall touch for route robots on ext stairs (v20's no-term applies only to stairs/platform tiles); check proposed, map kept (user 2026-11-14).
 - What went wrong earlier: E8's per-term check called env.step without the foot net, so r_f lacked the imagined-swing part (0.99 vs 0.91; with it 0.89 vs 0.60) and the foothold pull toward standing was missed; the `v21_d40_*` probes used `sig_v_to` = 0 from v21's args.json, so their lin_vel is 0 (their stall/pass counts are valid, their reward columns are not).
-- Proposed (not applied; user decides): smallest fix = `--adv_norm joint` on the v21 flags (keeps sigma_v 0.25 and the other paper items): attempting +1.4 (break-even fall 25 % natural, 14 % pushed). queue40's armed `extend_v20` (v20 flags) gives +2.0 and is consistent with this. Fallback only: stall penalty (patch `runs/refuse_diag/patch_stallpen.py`, default off, tested on a code copy) - see state/ssr.md 2026-11-14 23:45.
+- Proposed (not applied; user decides): smallest fix = `--adv_norm joint` on the v21 flags (keeps sigma_v 0.25 and the other paper items): attempting +1.4 (break-even fall 25 % natural, 14 % pushed). queue40's armed `extend_v20` (v20 flags) gives +2.0 and is consistent with this. Fallback only: stall penalty (patch `runs/refuse_diag/patch_stallpen.py`, default off, tested on a code copy) - see agentic/state/ssr.md 2026-11-14 23:45.
 - A5 (2026-11-15 12:00, ACP agent): stage-3 route by checkpoint 21,000 80.5%, 21,500 79.5%, 22,500 87%, 23,000 99%, 23,500 95%, 24,500 84.5%, 25,000 81.5% (pooled 86.7%). Spread beyond chance (chi2 about 59, 6 dof) but no trend and no change in training metrics (goal success 0.55 -> 0.63, std, KL, planner losses smooth; goal levels full at 8.99/9 since 21,000): checkpoint-to-checkpoint jitter; 23,000 is the top of the swing, its true rate probably lower. Failures are falls whose section moves (4x4s at 21,000/21,500/24,500, stairs at 25,000); no hard seeds. Training courses do not predict the route. Actions: re-score 23,000 on 200 fresh seeds (1200-1399, coordinator started 12:00 UTC); fixed final-checkpoint rule proposed (replace the best only if the new lower 95% bound exceeds the best's point estimate; confirm on fresh seeds); weight averaging of neighbouring checkpoints offline is an option for the user.
 - X1 (2026-11-15, cross-track hardware note; user: "Even in previous sonic training, the waist pitch joint caused problems because of its limited range and torque capacity"): the X2 waist pitch has a small range (about +-18 deg / +-0.31 rad) and a 24 N*m torque limit. Seen here: the v4 paper reference sits at its +18 deg limit on all stairs/blocks frames; Hiking v9 holds its action at -18 to -28 (torque saturated above |action| 5.8) and every runaway starts there; SSR does not drive the waist at all. Rule for new recipes: treat waist pitch as a constrained joint (clip, saturation penalty or excluded from the action space as SSR does), and check its saturation share in every pre-flight.
 - X2 (2026-11-15, coordinator re-read of the SSR paper, arXiv 2605.30770): the policy controls 21 joints - 6 per leg, 4 per arm, and ONE waist joint (waist yaw; App. D Table 14 lists only "Waist yaw", Kp 100, Kd 3, action scale 0.2); waist pitch and roll are not policy-controlled and the paper gives no reason or gains for them. The depth camera is "a forward-facing Intel RealSense D435i ... mounted at the waist" (Sec. 4.1, App. D), not the chest; the paper gives no reason for the mount. Our SSR (and Hiking) eval/training put the camera on torso_link (chest, above the waist pitch/roll joints), so with SSR's PD-held waist (kp 40, 24 N*m on the measured plant) the camera sways with the torso - a deviation not in the audit (missed). User's hypothesis (keep the camera fixed relative to the pelvis so its view of the ground ahead does not change when the torso leans on ramps or stairs) is consistent with the paper's design but is not stated in it. Open: decide the real-robot RealSense mount (pelvis/waist vs chest) before the depth-to-height-map work.

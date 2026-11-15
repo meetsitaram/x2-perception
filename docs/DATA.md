@@ -3,7 +3,7 @@
 Read this before asking the user where any data came from. Checked on the shared filesystem on 2026-11-12 05:00 UTC by the
 coordinator (file listings, clip-name patterns inside the pickles, and the build scripts on the desktop). Per-file sizes,
 sha256 values and build commands are in each track's manifest:
-`tracks/acp/code/MOTIONS.md`, `tracks/ssr/code/MOTIONS.md`, `tracks/hiking/x2_port/MOTIONS.md`.
+`models/acp/code/MOTIONS.md`, `models/ssr/code/MOTIONS.md`, `models/hiking/x2_port/MOTIONS.md`.
 
 **The motions themselves are never in this repo** (user, 2026-11-12: "we dont include the actual motions in the repo"). The repo
 holds this inventory, the manifests and the build scripts only.

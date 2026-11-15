@@ -3,7 +3,7 @@ weights, observation normalisation, a history buffer, the heading-frame height-s
 
 A track hands over a policy as an `.npz` (plain MLPs: tools/export_actor.py) or an `.onnx` (anything with a CNN or a
 recurrent part; run with onnxruntime) in `/mnt/filesystem-g4/tracks/<track>/eval/`, with an adapter card (see
-state/SHARED_LESSONS.md) that states what goes in and what comes out.
+agentic/state/SHARED_LESSONS.md) that states what goes in and what comes out.
 """
 from __future__ import annotations
 

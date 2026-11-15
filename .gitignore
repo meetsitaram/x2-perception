@@ -2,9 +2,9 @@
 eval/data/
 eval/out/
 __pycache__/
-config/nodes.local.json
+agentic/config/nodes.local.json
 renders/
-dashboard/snapshot/
+agentic/dashboard/snapshot/
 eval/metrics/cache/
 eval/metrics/out/
 release/

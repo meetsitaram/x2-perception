@@ -5,12 +5,12 @@
 
 Read-only on the nodes: one ssh call pipes remote_extract.py (stdlib, CPU) into python3 on the first reachable node; it
 returns only the bytes appended since the last sync (jsonl) or the scalars of new tfevents records. Nothing is written on
-the node. Node addresses / logins come from /tmp/pa_nodes.txt (scripts/node_check.sh) and are never printed or stored.
+the node. Node addresses / logins come from /tmp/pa_nodes.txt (agentic/scripts/node_check.sh) and are never printed or stored.
 
 Cache: eval/metrics/cache/ (git-ignored). Output: eval/metrics/out/training_plots.html (self-contained, opens offline).
 Lineage: one global iteration axis per track; inside a run folder a restart from an earlier checkpoint overwrites the rows it
-repeats (last written wins), and the ACP folders are cut at the lineage boundaries of docs/runs/ledger_acp.md. Vertical
-markers = rows of docs/runs/ledger_<track>.md (solid = kept segment, dashed = tried and discarded / fell back).
+repeats (last written wins), and the ACP folders are cut at the lineage boundaries of models/acp/LEDGER.md. Vertical
+markers = rows of models/<track>/LEDGER.md (solid = kept segment, dashed = tried and discarded / fell back).
 """
 import argparse, base64, csv, gzip, io, json, math, os, re, subprocess, sys, time
 from pathlib import Path
@@ -30,13 +30,13 @@ GLOBS = {
     "ssr": ["ssr/runs/r7/log.jsonl"],
     "hiking": ["hiking/runs/x2_parkour_v4/2026*/events.out.tfevents.*"],
 }
-# ACP lineage of the running tracker (docs/runs/ledger_acp.md "Lineage"): folder, first global iteration taken from it.
+# ACP lineage of the running tracker (models/acp/LEDGER.md "Lineage"): folder, first global iteration taken from it.
 # A folder listed with None starts at its own first logged iteration (for the next segment, e.g. s2_v5).
 ACP_LINEAGE = [("s1_v1", 0), ("s2_v1", 2250), ("s1_v2", 4000), ("s2_v2", 5500), ("s2_v3", 7000), ("s2_v4", 10356),
                ("s2_v5", None), ("s2_v6", None), ("s3_v1", None)]
 # Ledger rows that belong to the plotted lineage (SSR: r7 from row 23 on; Hiking: run 4 from row 9 on).
 LEDGER_FIRST_ROW = {"acp": 1, "ssr": 23, "hiking": 9}
-# SSR checkpoint names in the scorer -> global iteration (docs/runs/ledger_ssr.md, dashboard/data/apparatus_results.json).
+# SSR checkpoint names in the scorer -> global iteration (models/ssr/LEDGER.md, agentic/dashboard/data/apparatus_results.json).
 SSR_CKPT = {"r7_v12_last": 4300, "r7_v14_p250": 5050, "r8_v15_p100": 7110, "r9_v16_p300": 8260}
 
 # ----------------------------------------------------------------------------------------------------------------- sync
@@ -51,7 +51,7 @@ def sync():
     stf = CACHE / "sync_state.json"
     state = json.loads(stf.read_text()) if stf.exists() else {}
     if not NODES.exists():
-        print("sync: %s missing (run bash scripts/node_check.sh); using the cache" % NODES); return
+        print("sync: %s missing (run bash agentic/scripts/node_check.sh); using the cache" % NODES); return
     nodes = [l.split() for l in NODES.read_text().splitlines() if len(l.split()) >= 4]
     globs = [g for gs in GLOBS.values() for g in gs]
     arg = base64.b64encode(json.dumps({"globs": globs, "offsets": state}).encode()).decode()
@@ -339,7 +339,7 @@ def series_values(rows, bins, fn):
 
 
 def parse_ledger(track):
-    f = REPO / "docs" / "runs" / ("ledger_%s.md" % track)
+    f = REPO / "models" / track / "LEDGER.md"
     if not f.exists():
         return []
     lines = [l for l in f.read_text(encoding="utf-8").splitlines() if l.startswith("|")]

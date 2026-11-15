@@ -35,7 +35,7 @@ split into chunks of `chunk_trials` (5) fixed seeds (chunk k = seeds 1000+5k .. 
 (`ladder.py --chunk k` / `legs.py --legs K --chunk k`, writing `<course or legK>/chunks/c<k>.json` after every trial and
 `c<k>.done` at the end). When all chunks of a unit have ended, its merge job (the usual unchunked command) finds every seed on
 disk, runs nothing new and writes `summary.json` / `results.json`; the chunk folder is then removed. Per-trial results are identical
-to an unchunked run (checked 2026-11-14 on SSR ssr_platform_L10 and ACP leg 3, state/eval.md). Jobs: `train.<course>.c<k>`,
+to an unchunked run (checked 2026-11-14 on SSR ssr_platform_L10 and ACP leg 3, agentic/state/eval.md). Jobs: `train.<course>.c<k>`,
 `train.<course>`, `leg<K>.c<k>`, `leg<K>`; a `regress` job runs the regression check once per export, single-threaded, before
 any chunk (chunks run with `EVAL_REGRESSION=0`). Old `partial.json` trials are reused. Flat tests, the ACP gate and the route are
 not chunked (route: already 4 parallel jobs of 50).
@@ -55,13 +55,13 @@ eligibility (legs >= 45/50) and train passes use the headline count. The scorer 
   successes / trials), product of the leg rates, full route (k/200, Wilson 95 % interval, sections entered/completed), flags
   (hand-over check failure, joint-limit / trapped-foot / limb-clamp trial counts over legs and route, failed jobs, legs not run),
   finish time (UTC), minutes, output folder.
-- A full route also writes a row `auto-<track>-<name>-trim` into `dashboard/data/apparatus_results.json` and runs
-  `python prepare.py` in `dashboard/` (retried on OSError). The upload to the dashboard artifact (README steps 3-6) stays with the
+- A full route also writes a row `auto-<track>-<name>-trim` into `agentic/dashboard/data/apparatus_results.json` and runs
+  `python prepare.py` in `agentic/dashboard/` (retried on OSError). The upload to the dashboard artifact (README steps 3-6) stays with the
   coordinator. Legs-only results are not put on the dashboard: its bars mean full-route success. `tracks.json` is not touched.
 - `train_results.csv`: one row per track, checkpoint, terrain type and level: strict successes, trials, rate, course, exact or
   approximation, floor (an export scored again replaces its rows). `results.csv` column `train_summary`: courses passed (>= 80 %)
   and per type the highest level passed with levels passed / run. Log line `TRAIN`.
-- `dashboard/data/train_terrain.json`: the same rows for the review page (with highest level passed per type, Wilson interval),
+- `agentic/dashboard/data/train_terrain.json`: the same rows for the review page (with highest level passed per type, Wilson interval),
   rebuilt by the scorer after every export, or by hand: `python eval/autoscore/autoscore.py --build-train-dataset`. It is not a
   registered dataset yet (`prepare.py` ignores it); registering and uploading it is the coordinator's (dashboard README steps).
 - `status.json`: what is running now, active exports, the last rows. `state.json`: done / active exports (delete an entry

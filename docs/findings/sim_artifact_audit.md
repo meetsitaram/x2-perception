@@ -268,7 +268,7 @@ The artefact also acts in the other direction (a caged foot cannot slip), which 
 7. **Raster wedges** (B6 and the brace at (3.4, 1.1)): replace by their boxes when 3a is done.
 
 **Training simulators (inferred from `tracks/`, not measured; MuJoCo Warp was not run):** SSR trains on a height field with the
-same 2 cm sole spheres plus 2.2 cm guard spheres and no `solref` set (`tracks/ssr/code/ssr/x2.py`), so the same trap is
+same 2 cm sole spheres plus 2.2 cm guard spheres and no `solref` set (`models/ssr/code/ssr/x2.py`), so the same trap is
 possible there. ACP's height field collides with the MJCF's 5 mm sole spheres (conaffinity 1) and a foot box 1.5 cm above them
 (`gear_sonic/supermimic/assets.py`, `terrain.py`), 5 ms step; in the CPU micro-test 5 mm spheres on a 2 cm height field are
 caged even at 0.5 m/s and a box sole sticks partly. Worth a ten-minute drop test in each track's own simulator: a policy that

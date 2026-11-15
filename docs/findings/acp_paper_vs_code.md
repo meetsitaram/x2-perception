@@ -58,12 +58,12 @@ of u_obs, u_rew and N_ann are not given anywhere** (no table row; verified). Our
 | Robot | Unitree G1, 23 controlled joints (Methods, Tracker) | X2 Ultra, 31 hinges (`assets.py`, `ACP_PLANT=mc_20261024`) | DJ (X2) |
 | Retargeting | own constrained IK: landmark tracking, joint limits, foot unilateral, min-distance to obstacles, temporal reg. (Methods) | Bones-SEED X2 retargets, Pico captures, stair fits (`code/data_build`, cfg `stage2g_sets.json`) | DJ (different robot/data) |
 | Skills (Table S1) | box climb, stairs, ladder, sit, walk, get-up, vault, sparse terrains (AME rollouts) | flat/blocks loco, chains, stairs, gst, gs2dn, gs2lo, ramp, 4x4, Pico 2x2, stand_edge, turn_place (`cfg/stage2g_sets.json`) | DN (no ladder, vault, sit, get-up, sparse; apparatus scope) |
-| Data length | 13.2 min (Table 1) | about 196.7 min (state/acp.md section 6) | DN (more and different data) |
+| Data length | 13.2 min (Table 1) | about 196.7 min (agentic/state/acp.md section 6) | DN (more and different data) |
 | Reference contact labels | per frame "from simulated contact geometry", 9 bodies (Methods) | kinematic: gap < 4 cm feet / 2 cm others, speed < 0.5 m/s, runs < 4 frames absorbed (`data.py:31,187-222`) | DJ (thresholds silent) |
 | Oracle target | next contact location (Methods, Stage 1) | next onset, lowest-gap point within 25-frame settle, z = ground (`data.py:223-239`); no footprint clip | M (+settle A) |
 | Clip sampling, stages 1-2 | not given | per-set hand weights shared by duration (`data.py:105-112`) | DJ (silent) |
 | Data filters | whole reference set used | step-over > 0.30 m excluded, descents gs2dn_v1 out, leg-flip, ground_stance lift, 1 s stands prepended, arm-clearance fix (`armfix_stage2g_sets.pt`) | A |
-| Clips cut into 10 s segments | not in paper | state/acp.md departure 5 | A |
+| Clips cut into 10 s segments | not in paper | agentic/state/acp.md departure 5 | A |
 
 ## 2. Observations
 
@@ -291,7 +291,7 @@ of u_obs, u_rew and N_ann are not given anywhere** (no table row; verified). Our
 
 Rows in the tables above: **M 75, DJ 33, DN 25, A 18** (151 rows; rows marked "M (+A)" or "M (+settle A)" count as M).
 
-## Check of the "paper silent" notes in state/acp.md
+## Check of the "paper silent" notes in agentic/state/acp.md
 
 | note (location) | verdict |
 |---|---|

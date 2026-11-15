@@ -147,6 +147,9 @@ def render(run: pathlib.Path, seed: int, view: str, track: str, t0=None, t1=None
     label2 = ("%s | " % s["label"] if s.get("label") else "") + "plant %s | checkpoint: %s" % (s.get("plant", "?"), s["checkpoint"])
     if caption is not None:
         label, label2 = caption, ""
+    minimal = os.environ.get("RENDER_MINIMAL", "0") == "1"     # 2026-11-15, user: "one or two liner with least number of words"
+    if minimal and overlay is not None:
+        overlay.minimal = True
     frames = list(range(k0, k1, every))
     still_at = set(frames[int(i * (len(frames) - 1) / max(stills - 1, 1))] for i in range(stills)) if stills and frames else set()
     lk, yaw_s, side = None, None, 1.0
@@ -172,7 +175,8 @@ def render(run: pathlib.Path, seed: int, view: str, track: str, t0=None, t1=None
             cam.lookat[:] = [lk[0], lk[1], lk[2] - 0.38]
             cam.azimuth = math.degrees(yaw_s) + (90.0 if side > 0 else -90.0)
         else:
-            cam.distance, cam.elevation = 3.2, -22
+            cam.distance = float(os.environ.get("RENDER_CHASE_DIST", "3.2"))      # wider / higher: shows a staircase's shape
+            cam.elevation = float(os.environ.get("RENDER_CHASE_ELEV", "-22"))
             cam.lookat[:] = [lk[0], lk[1], lk[2] - 0.20]
             cam.azimuth = math.degrees(yaw_s) + 35.0             # behind and to the right
         ren.update_scene(d, cam, opt)
@@ -234,7 +238,17 @@ def render(run: pathlib.Path, seed: int, view: str, track: str, t0=None, t1=None
                         gm.rgba[3] = min(gm.rgba[3], 0.06)
         im = Image.fromarray(ren.render())
         dr = ImageDraw.Draw(im)
-        top = [(l_, font, (240, 240, 240)) for l_ in _wrap(dr, label, font, W - 20)] + [(l_, small, (200, 210, 220)) for l_ in _wrap(dr, label2, small, W - 20)]
+        if minimal:                                             # one short line on a thin strip; no footer, banners or legend
+            bar = LB + 6
+            dr.rectangle((0, 0, W, bar), fill=(15, 18, 24))
+            dr.text((10, 4), label, fill=(240, 240, 240), font=font)
+            if overlay is not None:
+                overlay.image(im, dr, t[k], bar, H, small)
+            wr.append_data(np.asarray(im))
+            if k in still_at:
+                im.save(out / ("%s_t%06.2f.jpg" % (name if out_path is None else pathlib.Path(out_path).stem, t[k])), quality=88)
+            continue
+        top =[(l_, font, (240, 240, 240)) for l_ in _wrap(dr, label, font, W - 20)] + [(l_, small, (200, 210, 220)) for l_ in _wrap(dr, label2, small, W - 20)]
         top_h = 6 + sum(LB if f_ is font else LSm for _, f_, _ in top)
         dr.rectangle((0, 0, W, top_h), fill=(15, 18, 24))
         y_ = 4

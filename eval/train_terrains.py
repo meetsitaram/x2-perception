@@ -3,7 +3,7 @@ want to see success on the terrain they are training on"). On the training terra
 
     python eval/ladder.py --adapter ... --step 20 --tests ssr_stairs_L10 hik_gap_L2 ... --trials 3 --out DIR
 
-SSR (`ssr_<type>_L<r>`): the track's own generator, tracks/ssr/code/ssr/terrain.py (`BUILD[type](tile, r / 19, rng)`, 20 levels),
+SSR (`ssr_<type>_L<r>`): the track's own generator, models/ssr/code/ssr/terrain.py (`BUILD[type](tile, r / 19, rng)`, 20 levels),
 one 8 x 4 m tile walked +x as in training. Exact walkable raster; the vision-only side walls and the stations of training are left out.
 Hiking (`hik_<type>_L<row>`): the paper's nine sub-terrain types at curriculum rows 2, 5, 8 of 0-9, rebuilt from the
 generator's own code (InstinctLab parkour_env_cfg.py + hf_terrains.py; see the Hiking section). Exact geometry except: no
@@ -61,7 +61,7 @@ def _ssr():
         had = sys.modules.get("torch")
         sys.modules["torch"] = _Stub("torch")
         try:
-            sp = importlib.util.spec_from_file_location("ssr_terrain_copy", REPO / "tracks" / "ssr" / "code" / "ssr" / "terrain.py")
+            sp = importlib.util.spec_from_file_location("ssr_terrain_copy", REPO / "models" / "ssr" / "code" / "ssr" / "terrain.py")
             _SSR = importlib.util.module_from_spec(sp)
             sp.loader.exec_module(_SSR)
         finally:

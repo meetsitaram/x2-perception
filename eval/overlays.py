@@ -185,6 +185,17 @@ class DepthOverlay:
         big = Image.fromarray(rgb).resize((sw, sh), Image.BILINEAR)
         i = int(np.clip(np.searchsorted(self.e["t"], t - 0.021), 0, len(self.e["t"]) - 1))
         pin = np.asarray(self.e["depth"][i], float)
+        if getattr(self, "minimal", False):                    # RENDER_MINIMAL (render.py): the depth view, a tiny label, the bar
+            y0 = bottom - 8 - 22 - sh
+            dr.rectangle((x0 - 4, y0 - 18, W - 4, bottom - 4), fill=(15, 18, 24))
+            dr.text((x0, y0 - 17), "depth", fill=(230, 230, 230), font=font)
+            im.paste(big, (x0, y0))
+            ramp = _cmap(np.linspace(0, 1, sw))[None].repeat(6, 0)
+            im.paste(Image.fromarray(ramp), (x0, y0 + sh + 2))
+            for mtr in (0.5, 1, 2, 3):
+                xx = x0 + int((mtr - self.NEAR) / (self.FAR - self.NEAR) * (sw - 1))
+                dr.text((xx - 8, y0 + sh + 8), "%g m" % mtr, fill=(230, 230, 230), font=font)
+            return
         tw = int(round(sw * 0.30))
         th = int(round(tw * pin.shape[0] / pin.shape[1]))
         ty = y0 - 40 - th - 8

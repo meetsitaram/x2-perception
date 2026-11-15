@@ -1,37 +1,39 @@
-# perception-agents
+# x2-perception
 
-A standing team of Claude agents that trains perceptive locomotion for the **AgiBot X2** on the IEEE loco-manipulation apparatus,
-with three methods run side by side. The final score is the walk on both humanoid-challenge apparatuses, ours and NIST's,
-which are held out of training (`docs/EVAL.md`). This repo is the team's memory: roles, node map, shared-filesystem layout, the eval
-definition and the current status. A new session can pick the work up from here alone.
-
-**Goal (set by the user, 2026-11-11):** take the apparatus walk from about 25% success (the user's figure; the first job of the eval
-agent is to re-measure it under `docs/EVAL.md`) to close to 99%. X2 only for this round.
-
+Three perceptive locomotion policies for the **AgiBot X2** humanoid, trained in simulation for the IEEE humanoid-challenge
+loco-manipulation apparatus: **ACP** (adaptive contact planning, height scans), **Hiking in the Wild** (depth camera) and
+**SSR** (depth camera + GRU), each ported to the X2 and trained on one GPU. All three are scored by the same held-out MuJoCo
+eval on two apparatuses, ours and NIST's, which never appear in training ([`docs/EVAL.md`](docs/EVAL.md)). Weights and full
+training states are on Hugging Face; code, recipes and run ledgers for each model are in [`models/`](models/). The models are
+simulation-trained and not yet tested on the real robot.
 
 ## Results so far (2026-11-15)
 
-All numbers are from the held-out MuJoCo apparatus eval (`docs/EVAL.md`), not the training simulator. Renders: MuJoCo,
-not the training simulator.
+All numbers are from the held-out MuJoCo apparatus eval ([`docs/EVAL.md`](docs/EVAL.md)), not the training simulator. Renders:
+MuJoCo, not the training simulator.
 
-| Track | Best checkpoint | Full apparatus route (ours) | NIST apparatus | Notes |
+| Model | Best checkpoint | Full apparatus route (ours) | NIST apparatus | Notes |
 |---|---|---|---|---|
 | ACP (contact planner + tracker) | `pair_s3_v2_023000` (stage 3) | **198/200 (99%)**; 193/200 (96.5%) on 200 fresh seeds | 155/200 (77.5%) | perfect height map (simulator); falls on NIST mostly on the ramps |
 | Hiking in the Wild (X2 port) | `x2_parkour_v4_24500` (v9) | not yet qualified (legs 48/49/42/37/41 of 50) | - | depth camera; stair refusals fixed (FINDINGS H8-H9) |
 | SSR | `r7_v20_final_26000` | not qualified (legs 49/50/49/44/5) | - | stopped; refuses high stairs (FINDINGS E8-E8c) |
 
-| ACP: full route | ACP: homes (big block, small blocks) |
+| ACP: full apparatus route | ACP: homes (big block, small blocks) |
 |---|---|
-| ![ACP full route](docs/media/acp_full_route.gif) | ![ACP homes](docs/media/acp_homes_blocks.gif) |
-| **Hiking: apparatus stairs (leg 5)** | **Hiking: extended map, L-shaped stairs** |
-| ![Hiking stairs](docs/media/hiking_apparatus_stairs.gif) | ![Hiking L stairs](docs/media/hiking_map_stairs_L.gif) |
-| **SSR: apparatus stairs (leg 5)** | **SSR: extended map, C-shaped stairs** |
-| ![SSR stairs](docs/media/ssr_apparatus_stairs.gif) | ![SSR C stairs](docs/media/ssr_map_stairs_C.gif) |
+| ![ACP: full apparatus route](docs/media/acp_full_route.gif) | ![ACP: homes (big block, small blocks)](docs/media/acp_homes_blocks.gif) |
+| **Hiking: apparatus stairs (leg 5)** | **Hiking: L-shaped staircase (extended map)** |
+| ![Hiking: apparatus stairs (leg 5)](docs/media/hiking_apparatus_stairs.gif) | ![Hiking: L-shaped staircase (extended map)](docs/media/hiking_map_stairs_L.gif) |
+| **SSR: apparatus stairs (leg 5)** | **SSR: U-shaped staircase (extended map)** |
+| ![SSR: apparatus stairs (leg 5)](docs/media/ssr_apparatus_stairs.gif) | ![SSR: U-shaped staircase (extended map)](docs/media/ssr_map_stairs_C.gif) |
 
+The Hiking staircase clip is from checkpoint 26,500.
 
-### Training setup and compute
+Review page (status, training curves, paper-vs-code audits, renders): open [`docs/site/index.html`](docs/site/index.html)
+(self-contained; the training curves are in `docs/site/training_plots.html`).
 
-Each track trained on its own Nebius node with **one NVIDIA RTX PRO 6000 Blackwell (96 GB)**; evaluation ran on a desktop CPU
+## Training setup and compute
+
+Each model trained on its own Nebius node with **one NVIDIA RTX PRO 6000 Blackwell (96 GB)**; evaluation ran on a desktop CPU
 (MuJoCo, chunked and parallel). All three started on 2026-11-11 about 20:00 UTC.
 
 | | ACP | Hiking in the Wild (X2) | SSR |
@@ -47,67 +49,86 @@ Each track trained on its own Nebius node with **one NVIDIA RTX PRO 6000 Blackwe
 | Wall-clock time | about 91.5 h (to 2026-11-15 15:32 UTC, paused) | about 91.5 h (paused 15:30 UTC) | about 82 h (stopped 06:01 UTC) |
 
 Total: about **265 GPU-hours** on three RTX PRO 6000 GPUs, including restarts, rollbacks and abandoned segments. Every
-segment, its settings and why it changed are in `docs/runs/ledger_<track>.md`; the single-run recipes are in
-`docs/runs/recipe_<track>.md`.
-
-Review page (status, training curves, paper-vs-code audits, renders): open `docs/site/index.html` (self-contained; the training
-curves are in `docs/site/training_plots.html`).
-
-Model checkpoints: see "Models" below.
+segment, its settings and why it changed are in `models/<model>/LEDGER.md`; the single-run recipes are in
+`models/<model>/RECIPE.md`.
 
 ## Models
 
 Policy exports with model cards on Hugging Face (simulation-trained; not yet tested on the real robot):
 
-| Track | Hugging Face | Checkpoint | Licence |
-|---|---|---|---|
-| ACP (planner + tracker) | [tinkerbuggy/x2-acp-contact-planner-tracker](https://huggingface.co/tinkerbuggy/x2-acp-contact-planner-tracker) | `pair_s3_v2_023000` (99% route) | Apache 2.0 |
-| Hiking in the Wild (X2) | [tinkerbuggy/x2-hiking-in-the-wild](https://huggingface.co/tinkerbuggy/x2-hiking-in-the-wild) | iteration 24,500 (best) | CC BY-NC 4.0 |
-| SSR | [tinkerbuggy/x2-ssr](https://huggingface.co/tinkerbuggy/x2-ssr) | `r7_v20x_032000` (final) | CC BY-NC 4.0 |
+| Model | Hugging Face | Checkpoint | Licence | In this repo |
+|---|---|---|---|---|
+| ACP (planner + tracker) | [tinkerbuggy/x2-acp-contact-planner-tracker](https://huggingface.co/tinkerbuggy/x2-acp-contact-planner-tracker) | `pair_s3_v2_023000` (99% route) | Apache 2.0 | [`models/acp/`](models/acp/) |
+| Hiking in the Wild (X2) | [tinkerbuggy/x2-hiking-in-the-wild](https://huggingface.co/tinkerbuggy/x2-hiking-in-the-wild) | iteration 24,500 (best) | CC BY-NC 4.0 | [`models/hiking/`](models/hiking/) |
+| SSR | [tinkerbuggy/x2-ssr](https://huggingface.co/tinkerbuggy/x2-ssr) | `r7_v20x_032000` (final) | CC BY-NC 4.0 | [`models/ssr/`](models/ssr/) |
 
-Each repo holds the ONNX / numpy weights, the full training checkpoint and configs under `checkpoint/` (for fine-tuning), `adapter_card.json` (input and output specification) and `obs_check.npz` (recorded
-inputs and outputs). The evaluation adapters in `eval/adapters/` show how to run them in MuJoCo.
+Each Hugging Face repo holds the ONNX / numpy weights, the full training checkpoint and configs under `checkpoint/` (for
+fine-tuning), `adapter_card.json` (input and output specification) and `obs_check.npz` (recorded inputs and outputs). The
+evaluation adapters in [`eval/adapters/`](eval/adapters/) show how to run them in MuJoCo.
 
-**Data credits.** Motion references include **BONES-SEED by Bones Studio** (retargeted to the X2) and the author's own Pico captures ([meetsitaram/terrain-park](https://github.com/meetsitaram/terrain-park): raw takes in `data/2026-10-29`, `data/2026-10-30`; X2 training sets in `data/train_sets`; style clips in `data/style`). Hiking and SSR also use the *Hiking in the Wild* (InstinctLab) release, licensed CC BY-NC 4.0, so those two models
-are non-commercial. Methods: Adaptive Contact Planning (arXiv 2610.31608), Hiking in the Wild (arXiv 2601.07718), SSR (arXiv 2605.30770).
+**Data credits.** Motion references include **BONES-SEED by Bones Studio** (retargeted to the X2) and the author's own Pico
+captures ([meetsitaram/terrain-park](https://github.com/meetsitaram/terrain-park): raw takes in `data/2026-10-29`,
+`data/2026-10-30`; X2 training sets in `data/train_sets`; style clips in `data/style`). Hiking and SSR also use the *Hiking in
+the Wild* (InstinctLab) release, licensed CC BY-NC 4.0, so those two models are non-commercial. Methods: Adaptive Contact
+Planning (arXiv 2610.31608), Hiking in the Wild (arXiv 2601.07718), SSR (arXiv 2605.30770). Data provenance:
+[`docs/DATA.md`](docs/DATA.md).
 
-## The team
+## Run a model in the MuJoCo eval
 
-| Role | Agent definition | Where it works | Owns |
-|---|---|---|---|
-| Coordinator | `CLAUDE.md` (the main session, opened in this repo) | the user's desktop | plan, priorities, status, talking to the user |
-| ACP track | `.claude/agents/acp-track.md` | node `acp` | adaptive contact planning on the X2 (`gwbc-v6`, `scripts/acp`) |
-| SSR track | `.claude/agents/ssr-track.md` | node `ssr` | SSR on the X2 (`ssr-x2`) |
-| Hiking track | `.claude/agents/hiking-track.md` | node `hiking` | Hiking in the Wild ported to the X2 (`hiking-in-the-wild`) |
-| Eval monitor | `.claude/agents/eval-monitor.md` | reads all three; runs evals on the track's own node when it is idle, or on the desktop CPU (MuJoCo) | the common apparatus eval, renders, reports to the coordinator |
+The eval runs on CPU with Python, `mujoco`, `numpy` and `onnxruntime`. It needs two inputs that are not in this repo: the X2
+MJCF (`PA_ROBOT_DIR` = a folder holding `mjcf/x2_ultra.xml`) and the apparatus rasters and routes (`PA_APPARATUS_DIR`, or
+`eval/data/apparatus/`); see [`docs/DATA.md`](docs/DATA.md). The NIST apparatus files are not published.
 
-Nodes are in `config/nodes.json`. Each track has one RTX 6000 node on Nebius and its own code checkout; all three mount one
-shared filesystem (`docs/SHARED_FS.md`).
+1. Download a model from Hugging Face into a folder, e.g. `huggingface-cli download tinkerbuggy/x2-ssr --local-dir hf/x2-ssr`.
+2. Point the model's adapter at that folder and run the harness (one attempt per seed at the full apparatus route) or the
+   station-to-station legs:
 
-## Rules that keep the three tracks apart
+```bash
+# ACP: folder with actor.npz, planner_attn.onnx, adapter_card.json
+ACP_HANDOVER_DIR=hf/x2-acp-contact-planner-tracker ACP_GOAL_R=0.2 ACP_LOOKAHEAD=0.3 X2_EXCLUDE_PAIRS=hip \
+  python eval/harness.py --adapter acp:ACPHandover --apparatus ours --trials 10 --out eval/out/acp_route
 
-- One track, one node, one code tree (`/mnt/filesystem-g4/tracks/<track>/code`), one Python environment, one run folder. A track never edits
-  another track's tree, and never imports from it.
-- Anything a track wants from another (a motion file, a terrain, a checkpoint) is **copied** through `/mnt/filesystem-g4/exchange/` with a
-  note in `state/STATUS.md`; never linked.
-- Shared, read-only inputs live in `/mnt/filesystem-g4/data` (motions, apparatus CAD rasters, terrain generators). Changes to them go
-  through the coordinator.
-- Every track is scored by the **same** eval (`docs/EVAL.md`), run by the eval monitor, not by the track itself.
+# Hiking: folder with policy.onnx, 0-depth_encoder.onnx, adapter_card.json, obs_check.npz
+HIKING_HANDOVER_DIR=hf/x2-hiking-in-the-wild HIKING_CMD=card X2_EXCLUDE_PAIRS=hip \
+  python eval/legs.py --adapter hiking:HikingHandover --apparatus ours --trials 50 --out eval/out/hiking_legs
 
-## Starting or resuming the team
+# SSR: folder with policy.onnx, adapter_card.json, obs_check.npz
+SSR_HANDOVER_DIR=hf/x2-ssr SSR_CMD=standard X2_EXCLUDE_PAIRS=hip \
+  python eval/legs.py --adapter ssr:SSRHandover --legs 5 --trials 20 --out eval/out/ssr_leg5
+```
 
-**Lost the session? Follow `docs/RUNBOOK.md`.** The user's rules and decisions are in `docs/USER_RULES.md`; every agent reads that file first.
+`eval/harness.py` options: `--adapter <module>:<Class>` (or `zero`, `stand`), `--apparatus ours|nist|flat`, `--trials N`,
+`--seed0 S`, `--protocol randomised|nominal`, `--seconds T`, `--stand`, `--kinematic` (route check without physics),
+`--keep-traj picked|all`, `--wall-limit S`, `--label TEXT`, `--out DIR` (required). `eval/legs.py` takes `--adapter`, `--out`,
+`--apparatus`, `--legs 1 2 ...`, `--trials` (default 50), `--seed0`, `--wall-limit`, `--label`, `--chunk K --chunk-size N`.
+Output: `results.json` (every trial), `summary.json` (the table row) and `traj/<seed>.npz`, which `eval/render.py` turns into
+videos. The environment variables above are the settings the automatic scorer uses (`eval/autoscore/autoscore.py`); every
+adapter's other options are in its module docstring. Training-terrain courses: `eval/ladder.py`.
 
-1. Open a Claude Code session in this folder; it becomes the coordinator (`CLAUDE.md`).
-2. Read `state/STATUS.md` (status and the decisions log).
-3. Check the nodes: `bash scripts/node_check.sh`.
-4. The user's review dashboard is https://claude.ai/artifact/JaZDeLFXXN28HLMd1Sia3V; its data files and page are in `dashboard/` (update the JSON, upload, rewrite the store documents).
-5. Start or resume each track agent with its definition; each one first reads its own `state/<track>.md`.
+## Fine-tune
 
-## Standing constraints (from the user)
+Each model folder has the training code, the recipe and the ledger, and its README says how to resume from the Hugging Face
+`checkpoint/`:
 
-- Nothing is bought; never search Amazon. Bones Studio credit on shown results; no dataset clip names on screen.
-- Robot videos come from the simulator's own camera and are checked against simulator data; anything else is labelled.
-- Do not commit or push unless the user asks. Large downloads are rate-capped and need the user's okay.
-- Long runs go through a supervisor with stall detection and auto-resume; one GPU job per node; every shell command has a timeout.
-- Do not wait on the user: take the recommended option, record it in `state/STATUS.md`, keep going.
+- ACP: [`models/acp/`](models/acp/) - MuJoCo Warp trainer in `code/`, stage 3 resumed from `checkpoint/ckpt_023000.pt`.
+- Hiking in the Wild: [`models/hiking/`](models/hiking/) - X2 port in `x2_port/`, applied onto the `hiking-in-the-wild` /
+  InstinctLab base code, resumed from `checkpoint/model_24500.pt`.
+- SSR: [`models/ssr/`](models/ssr/) - MuJoCo Warp trainer in `code/`, resumed from `checkpoint/r7_v20x_032750.pt`.
+
+## Repository layout
+
+| Path | What |
+|---|---|
+| `models/acp/`, `models/hiking/`, `models/ssr/` | per model: `README.md` (model card), `RECIPE.md`, `LEDGER.md` and the training code; `models/LAST_SYNC.txt` is the time of the last code sync |
+| `eval/` | the common MuJoCo eval: `harness.py` (full route), `legs.py`, `ladder.py` (training-terrain courses), `adapters/`, `render.py`, `autoscore/` (automatic scorer), `metrics/` (training curves) |
+| `docs/` | `EVAL.md` (eval definition), `DATA.md`, `FINDINGS.md` (defects found and fixed), `findings/` (paper-vs-code audits, surveys), `camera/` (training camera reference), `TODO_depth_to_heightmap.md`, `site/` (static review page), `media/` |
+| `tools/simcheck/` | simulator fault checks run before every training launch |
+| `agentic/` | the agent team that built this: instructions, rules, state, dashboard, node scripts |
+| `.claude/agents/` | the agent definitions (Claude Code reads them here) |
+
+## How this was built
+
+The three models were trained by a team of Claude agents (a coordinator, one agent per model on its own GPU node, and an eval
+monitor), with the user setting the goal and the rules. Everything about that workflow - roles, the user's decisions, state
+files, the review dashboard and the node scripts - is in [`agentic/`](agentic/), starting at
+[`agentic/README.md`](agentic/README.md).

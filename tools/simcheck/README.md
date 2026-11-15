@@ -3,7 +3,7 @@
 User goal (2026-11-12): "simulator faults must be caught by code, not discovered by agents". Two faults punished policies for
 hours that day: feet trapped in height-field cells under soft contact (FINDINGS B8) and MuJoCo Warp mis-colliding on one
 large height field (B10; 10.8 % of SSR's episode ends were such blow-ups, counted as terminations). Rules:
-`docs/TRACK_RULES.md`, "Simulator checks".
+`agentic/docs/TRACK_RULES.md`, "Simulator checks".
 
 Location: `/mnt/filesystem-g4/tools/simcheck/` (import as `simcheck` with `PYTHONPATH=/mnt/filesystem-g4/tools`); mirror in
 the repo at `tools/simcheck/`. No GPU, no training code is touched; patches are files, not applied.

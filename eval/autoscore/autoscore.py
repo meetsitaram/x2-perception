@@ -7,7 +7,7 @@ default floor (solid, trimmed) with the strict stand rule and the end retry:
   fetch + hand-over check -> [ACP: hold-out gate; legs only if it passes] -> flat gate (4 tests) -> station legs 1-5
   -> full route (4 x 50) only when every leg is at least route_min_leg of 50.
 Every run resumes from its partial.json / summary.json, so nothing finished is run again. One row per export goes to
-results.csv; a full route also updates dashboard/data/apparatus_results.json and runs dashboard/prepare.py.
+results.csv; a full route also updates agentic/dashboard/data/apparatus_results.json and runs agentic/dashboard/prepare.py.
 
   python eval/autoscore/autoscore.py                       # the long-running scorer (start detached, see README)
   python eval/autoscore/autoscore.py --test --only acp:pair_s2_v3_007250 --trials 5 --root autotest
@@ -466,7 +466,7 @@ COLS = ["track", "checkpoint", "floor", "trials_per_test", "train_summary"] + FL
 
 
 def build_train_dataset(src, dst):
-    """dashboard/data/train_terrain.json from train_results.csv: one row per track, checkpoint, terrain type and level, with
+    """agentic/dashboard/data/train_terrain.json from train_results.csv: one row per track, checkpoint, terrain type and level, with
     the type's highest level passed. Not a registered dashboard dataset yet (prepare.py ignores it); publishing is the coordinator's."""
     with open(src, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
@@ -658,12 +658,12 @@ class Scorer:
         log("TRAIN %s %s: %s" % (e.track, e.name, train_summary(rows, self.train_trials)))
         if not self.test:
             try:
-                build_train_dataset(self.trainf, REPO / "dashboard" / "data" / "train_terrain.json")
+                build_train_dataset(self.trainf, REPO / "agentic" / "dashboard" / "data" / "train_terrain.json")
             except Exception as ex:
                 log("train_terrain.json not written: %s" % ex)
 
     def dashboard(self, e, row, rk, rn, secs, outc):
-        f = REPO / "dashboard" / "data" / "apparatus_results.json"
+        f = REPO / "agentic" / "dashboard" / "data" / "apparatus_results.json"
         rows = json.load(open(f, encoding="utf-8"))
         rid = "auto-%s-%s-trim" % (e.track, e.name.replace("_", "-"))
         lo, hi = wilson(rk, rn)
@@ -676,7 +676,7 @@ class Scorer:
         rows = [x for x in rows if x["id"] != rid] + [r]
         json.dump(rows, open(f, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
         for i in range(6):
-            p = sh([PY, "prepare.py"], 300, cwd=REPO / "dashboard")
+            p = sh([PY, "prepare.py"], 300, cwd=REPO / "agentic" / "dashboard")
             if p is not None and p.returncode == 0:
                 log("dashboard row %s written, prepare.py ok" % rid); return
             txt = (p.stdout + p.stderr) if p else "timeout"
@@ -730,9 +730,9 @@ if __name__ == "__main__":
     ap.add_argument("--only", nargs="*", default=[])
     ap.add_argument("--trials", type=int, default=0)
     ap.add_argument("--train-trials", type=int, default=0, help="trials per training-terrain course (default config train_trials, 20)")
-    ap.add_argument("--build-train-dataset", action="store_true", help="only rebuild dashboard/data/train_terrain.json from train_results.csv")
+    ap.add_argument("--build-train-dataset", action="store_true", help="only rebuild agentic/dashboard/data/train_terrain.json from train_results.csv")
     ap.add_argument("--root", default="auto", help="sub-folder of eval/out/<track>/<checkpoint>/ for this scorer's runs")
     a = ap.parse_args()
     if a.build_train_dataset:
-        build_train_dataset(HERE / "train_results.csv", REPO / "dashboard" / "data" / "train_terrain.json"); sys.exit(0)
+        build_train_dataset(HERE / "train_results.csv", REPO / "agentic" / "dashboard" / "data" / "train_terrain.json"); sys.exit(0)
     Scorer(a).main()

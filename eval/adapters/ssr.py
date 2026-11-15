@@ -28,7 +28,7 @@ import numpy as np
 
 from .base import Adapter, Command, View
 
-# x2.OCCLUDERS of the SSR training code (tracks/ssr/code/ssr/x2.py, copied 2026-11-12): (body, offset in body frame, radius)
+# x2.OCCLUDERS of the SSR training code (models/ssr/code/ssr/x2.py, copied 2026-11-12): (body, offset in body frame, radius)
 OCCLUDERS = [(f"{s}_{b}", p, r) for s in ("left", "right") for b, p, r in (
     ("hip_yaw_link", (0.0, 0.0, -0.07), 0.08), ("hip_yaw_link", (0.0, 0.0, -0.20), 0.075), ("knee_link", (0.0, 0.0, 0.0), 0.07), ("knee_link", (0.0, 0.0, -0.10), 0.055),
     ("knee_link", (0.0, 0.0, -0.20), 0.05), ("ankle_roll_link", (-0.03, 0.0, -0.035), 0.05), ("ankle_roll_link", (0.06, 0.0, -0.04), 0.05), ("ankle_roll_link", (0.13, 0.0, -0.05), 0.04),

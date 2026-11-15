@@ -1,6 +1,6 @@
 """Hiking in the Wild (X2 port) hand-over adapter (eval monitor, 2026-11-12). Folder: HIKING_HANDOVER_DIR, as the Hiking
 track exports it (policy.onnx: obs (1, 10016) -> actions (1, 29); adapter_card.json; obs_check.npz). The observation is
-rebuilt as the track's own MuJoCo port does it (tracks/hiking/x2_port/sim2sim/sim2sim_mujoco_x2.py, X2Sim.observe and
+rebuilt as the track's own MuJoCo port does it (models/hiking/x2_port/sim2sim/sim2sim_mujoco_x2.py, X2Sim.observe and
 DepthCamera, read only), on the eval's model:
 
   proprio (800): per term 8 control steps [t-7 .. t], oldest first, term after term, filled with the first value at reset:

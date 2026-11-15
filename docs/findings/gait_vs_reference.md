@@ -151,7 +151,7 @@ is the closest to human cadence (1.1 steps/s, 0.31 m steps at 0.40 m/s).
 
 ## Checks still open
 
-- Score the Hiking discriminator itself (`tracks/hiking/x2_port/score_discriminator.py`) on reference flat-walk windows at 0.7
+- Score the Hiking discriminator itself (`models/hiking/x2_port/score_discriminator.py`) on reference flat-walk windows at 0.7
   m/s vs the policy's MuJoCo windows. That shows directly whether it rates the 2.9 steps/s gait as reference-like.
 - Side finding (eval): the local hand-over `eval/data/handover/hiking_v4_10375/run_params/` is the 4,750 copy (same md5). The
   autoscorer copies `hiking_run_params` when an export lacks it, so `hiking_check.py` reads the 4,750 env.yaml for 10,375.

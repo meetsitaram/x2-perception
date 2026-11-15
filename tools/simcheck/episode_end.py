@@ -1,6 +1,6 @@
 """simcheck.episode_end: tell a simulator fault from a policy failure at an episode end, and treat the fault as a truncation.
 
-THE RULE (docs/TRACK_RULES.md, "Simulator checks"; coordinator 2026-11-12 after FINDINGS B8-B10):
+THE RULE (agentic/docs/TRACK_RULES.md, "Simulator checks"; coordinator 2026-11-12 after FINDINGS B8-B10):
   A world's step is a SIMULATOR FAULT when any of these holds after the physics step:
     nan          any qpos or qvel is not finite
     qvel         max |qvel| over the track's own bound (ACP 200, SSR 60: what each already calls "diverged")

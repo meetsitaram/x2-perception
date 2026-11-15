@@ -431,7 +431,7 @@ only after the model runs pass all of the individual stations." Implemented in `
   each leg. A checkpoint that fails a leg is reported by its leg scores with "full route not run: leg X at N/50". Exceptions: ACP
   7000's 200 started before this rule finishes; an ACP pair gets 50 full-route trials if ACP's stage-3 rule needs the number.
 
-## Final-station stop (user, 2026-11-13; docs/USER_RULES.md "Final-station stop")
+## Final-station stop (user, 2026-11-13; agentic/docs/USER_RULES.md "Final-station stop")
 Every adapter commands toward the final station until within 0.2 m. A trial ending in a stable stand within 0.4 m of the final station
 (outside 0.2 m) is a success flagged "stopped short"; reports give the headline count (0.2 m + stopped short) and the strict 0.2 m count.
 
