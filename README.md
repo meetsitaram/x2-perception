@@ -68,8 +68,7 @@ Policy exports with model cards on Hugging Face (simulation-trained; not yet tes
 Each repo holds the ONNX / numpy weights, the full training checkpoint and configs under `checkpoint/` (for fine-tuning), `adapter_card.json` (input and output specification) and `obs_check.npz` (recorded
 inputs and outputs). The evaluation adapters in `eval/adapters/` show how to run them in MuJoCo.
 
-**Data credits.** Motion references include **BONES-SEED by Bones Studio** (retargeted to the X2) and the author's own Pico
-captures. Hiking and SSR also use the *Hiking in the Wild* (InstinctLab) release, licensed CC BY-NC 4.0, so those two models
+**Data credits.** Motion references include **BONES-SEED by Bones Studio** (retargeted to the X2) and the author's own Pico captures ([meetsitaram/terrain-park](https://github.com/meetsitaram/terrain-park): raw takes in `data/2026-10-29`, `data/2026-10-30`; X2 training sets in `data/train_sets`; style clips in `data/style`). Hiking and SSR also use the *Hiking in the Wild* (InstinctLab) release, licensed CC BY-NC 4.0, so those two models
 are non-commercial. Methods: Adaptive Contact Planning (arXiv 2610.31608), Hiking in the Wild (arXiv 2601.07718), SSR (arXiv 2605.30770).
 
 ## The team
