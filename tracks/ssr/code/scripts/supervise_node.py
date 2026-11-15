@@ -22,6 +22,8 @@ TRACK = ROOT.parent
 RUNS = TRACK / "runs"
 PY = str(TRACK / "env/venv/bin/python")
 STATUS = pathlib.Path("/mnt/filesystem-g4/status/ssr.json")
+sys.path.insert(0, "/mnt/filesystem-g4/tools")
+from simcheck import alarm  # sim_fault_share in the heartbeat (TRACK_RULES)
 
 
 def sh(cmd, timeout=30):
@@ -120,8 +122,9 @@ def main():
                 seen, seen_t = size, time.time()
             rec = last_rec(a.name)
             heartbeat(run=a.name, state="training", pid=pr.pid, iter=rec.get("it", -1), iters=a.iters, log_age_s=round(time.time() - seen_t),
-                      ep_len_s=rec.get("ep_len_s"), r_l=rec.get("r_l"), lvl_mean=rec.get("lvl_mean"), gait=rec.get("gait"), restarts=restarts,
-                      newest_ckpt=newest_ckpt(a.name), last=str(last), log=str(out_log))
+                      ep_len_s=rec.get("ep_len_s"), r_l=rec.get("r_l"), r_f=rec.get("r_f"), r_s=rec.get("r_s"), style_by_group=rec.get("style_by_group"), omni_share=rec.get("omni_share"), critic_warmup=rec.get("critic_warmup"), lvl_mean=rec.get("lvl_mean"), gait=rec.get("gait"), restarts=restarts,
+                      newest_ckpt=newest_ckpt(a.name), last=str(last), log=str(out_log),
+                      **alarm.fields_from_shares(rec.get("done_share") or (rec.get("extra") or {}).get("done_share") or {}, sim_keys=("diverged",)))
             code = pr.poll()
             if code is not None:
                 res = "done" if code == 0 else "crash(%d)" % code

@@ -8,6 +8,7 @@ Resets: Curriculum State Initialization (Table S4). Randomisation: Table S2 (wha
 from __future__ import annotations
 
 import math
+import os
 import re
 
 import mujoco
@@ -19,6 +20,10 @@ from gear_sonic.supermimic.assets import DECIMATION, MJCF_PATH
 from gear_sonic.supermimic.kinematics import mtv3, mv3, quat_wxyz_to_mat
 
 from acp.data import Dataset
+
+import sys as _sys
+_sys.path.insert(0, "/mnt/filesystem-g4/tools")
+from simcheck.episode_end import FaultDetector, contact_depth_per_world  # simulator faults are truncations (TRACK_RULES)
 
 HIST = 5
 DT = 0.02
@@ -35,6 +40,20 @@ TERM_POS, TERM_ROT = 0.5, 1.0     # m, rad
 SOFT_LIMIT = 1.0                  # the MJCF joint range (the paper's "configured soft limits" are not given; 0.95 penalised the references themselves)
 FALL_H = 0.35                     # m: root this low over the lowest ground under root and feet = a fall (fall_rule)
 FORCE_MIN = 1.0                   # N: measured contact
+# Stage 3 (goal environments; Table 3 stage 3, Table S4). GOAL_R3 = 0.2 m arrival and goal-scaling radius: the user's eval rule
+# (paper: 0.5 m); listed as departure 13 in state/acp.md
+G = dict(move2goal=40.0, standatgoal=20.0, track_planned_contact=1.5, flat_orientation=-10.0, stumbling=-10.0, slippage=-10.0,
+         ang_vel_xy=-0.1, action_rate=-0.1, action_rate_2nd=-5e-2, joint_torque=-1e-5, torque_limits=-1e-3, dof_pos_limits=-10.0,
+         dof_vel_limits=-1.0, contact_acc=-0.01)
+GOAL_R3, GOAL_T, STATION_STEPS = 0.2, 750, 50     # m; 15 s episodes; a station = 1 s inside the arrival disc
+H_TOL, PSI_TOL, V_MIN = 0.2, 0.5, 0.1
+# Stage-3 paper rules (env.paper_s3 = True, set by the trainer with --s3-paper; state/acp.md 17k):
+S3_SUCC_XY, S3_SUCC_Z = 0.5, 0.1     # success / replay admission: within 0.5 m horizontally and 0.1 m vertically of the goal (Table S4, S5)
+S3_CUT = 0.2                         # goal segments recorded only up to the first step within 0.2 m of the goal (Table S5)
+S3_YAW = 0.4                         # goal-env reset yaw U(+-0.4 rad) (Table S2)
+S3_DEMOTE = 1.0                      # demote when the closest qualifying distance (vertical error < 0.1 m) exceeds 1.0 m (Table S4)
+STUMBLE_K, STUMBLE_C = 1.1, 1.0      # Table 3 stumbling: sum over feet 1[F_xy > 1.1 F_z + 1]
+SLIP_T, SLIP_V = 0.026, 0.5          # Table 3 slippage: sum over feet 1[contact time > 0.026 s] 1[|v_foot| > 0.5 m/s]
 
 
 def yaw_mat(R):
@@ -67,6 +86,9 @@ def _grid(nx, ny, x0, dev):
     ys = 0.1 * (torch.arange(ny, device=dev, dtype=torch.float32) - (ny - 1) / 2)
     gx, gy = torch.meshgrid(xs, ys, indexing="ij")
     return gx.flatten(), gy.flatten()
+
+
+PAPER_DR = os.environ.get("ACP_PAPER_DR", "0") == "1"   # data 2h: Table S2 items (state/acp.md 17d)
 
 
 class AcpEnv:
@@ -110,6 +132,11 @@ class AcpEnv:
         self.gainprm, self.biasprm = wp.to_torch(self.mm.actuator_gainprm), wp.to_torch(self.mm.actuator_biasprm)
         self.body_mass, self.body_inertia = wp.to_torch(self.mm.body_mass), wp.to_torch(self.mm.body_inertia)
         self.dof_arm = wp.to_torch(self.mm.dof_armature)
+        # simcheck (docs/TRACK_RULES.md "Simulator checks"): NaN, |qvel| > 200, a contact deeper than 5 cm or a body speed jump
+        # over 20 m/s is a simulator fault: the episode is truncated (bootstrapped), not terminated
+        root = int(m.body_rootid[1])
+        self.robot_b = torch.tensor([b for b in range(1, m.nbody) if int(m.body_rootid[b]) == root], device=dev)
+        self.fault_det = FaultDetector(N, dev, qvel_max=200.0, control_dt=m.opt.timestep * DECIMATION)
         # contacts (shared arrays over all worlds)
         c = self.dd.contact
         self.c_world, self.c_geom, self.c_frame = wp.to_torch(c.worldid), wp.to_torch(c.geom), wp.to_torch(c.frame)
@@ -146,6 +173,10 @@ class AcpEnv:
         self.delay = torch.zeros(N, 1, device=dev)
         if not eval_mode:
             self.friction[:, self.robot_geom_ids, 0] = u(N, 1, lo=0.3, hi=1.2)
+            if PAPER_DR:
+                mu = (self.friction[:, self.robot_geom_ids[:1], 0] + 1.0) * 0.5
+                self.friction[:, self.robot_geom_ids, 0] = mu
+                self.friction[:, ~robot_geom, 0] = mu
             leg = [bid(n) for n in x2_leg_bodies(m)]
             ms = u(N, len(leg), lo=0.85, hi=1.15)
             self.body_mass[:, leg] = self.body_mass[:, leg] * ms
@@ -177,6 +208,7 @@ class AcpEnv:
         self.tgt_prev = torch.zeros(N, 9, 3, device=dev)                 # commanded contact target (world) at the previous step
         self.occ_prev = torch.zeros(N, 9, dtype=torch.bool, device=dev)
         self.scan_off = torch.zeros(N, 1, device=dev)
+        self.odo_off = torch.zeros(N, 3, device=dev)
         self.phase = torch.full((N,), CSI_INIT, device=dev)       # Curriculum State Initialization, per environment
         self.PROP = 6 + 3 * NJ
         self.hist = torch.zeros(N, HIST, self.PROP, device=dev)
@@ -195,6 +227,31 @@ class AcpEnv:
         self.air = torch.zeros(N, 9, dtype=torch.long, device=dev)       # control steps since the body's last measured contact
         self.plan_stats = torch.zeros(4, device=dev)                     # sums: target-vs-reference error, its count, fed share, steps
         self.stats = {}
+        # stage 3: goal environments (set by setup_goals); per env: family, curriculum level and EMA, waypoint index, steps
+        # inside the disc, success latch, closest approach to the final waypoint
+        self.goal_env = torch.zeros(N, dtype=torch.bool, device=dev)
+        self.g_fam = torch.zeros(N, dtype=torch.long, device=dev)
+        self.g_level = torch.zeros(N, dtype=torch.long, device=dev)
+        self.g_ema = torch.zeros(N, device=dev)
+        self.g_wp = torch.zeros(N, dtype=torch.long, device=dev)
+        self.g_stand = torch.zeros(N, dtype=torch.long, device=dev)
+        self.g_reached = torch.zeros(N, dtype=torch.bool, device=dev)
+        self.g_best = torch.full((N,), 1e3, device=dev)
+        self.g_ptgt = torch.zeros(N, 9, 3, device=dev)
+        self.goal_critic_dim = self.PROP + 3 + 187 + 3 + 3 + 27
+        self.critic_goal = None
+        self.paper_s3 = False                                         # stage-3 paper rules (S3_* above); off = previous behaviour
+        self.g_succ = torch.zeros(N, dtype=torch.bool, device=dev)    # paper success latch (0.5 m / 0.1 m)
+        self.c_steps = torch.zeros(N, 9, dtype=torch.long, device=dev)  # consecutive measured-contact steps per body (slippage)
+
+    def setup_goals(self, share):
+        """Stage 3: a share of the environments (spread evenly over the ids, so the recorder's first ids hold both kinds)
+        become goal environments; families round-robin; levels start at 0."""
+        assert bool(self.data.is_goal.any()), "the data cfg has no goal tiles"
+        i = torch.arange(self.N, device=self.dev, dtype=torch.float64)
+        self.goal_env = torch.floor((i + 1) * share) > torch.floor(i * share)
+        k = torch.cumsum(self.goal_env.long(), 0) - 1
+        self.g_fam = torch.where(self.goal_env, k % len(self.data.goal_families), torch.zeros_like(k))
 
     # ------------------------------------------------------------ helpers
     def _u(self, *shape, lo=-1.0, hi=1.0):
@@ -259,6 +316,14 @@ class AcpEnv:
         if n == 0:
             return
         clip = torch.multinomial(self.data.clip_w, n, replacement=True, generator=self.gen)
+        gsel = self.goal_env[ids]
+        if bool(gsel.any()):                                         # stage 3: a tile of the env's family at its level
+            gi = ids[gsel]
+            fam, lvl = self.g_fam[gi], self.g_level[gi]
+            cnt = self.data.goal_pool_n[fam, lvl]
+            k = (torch.rand(len(gi), device=self.dev, generator=self.gen) * cnt).long().clamp(max=cnt - 1)
+            clip = clip.clone()
+            clip[gsel] = self.data.goal_pool[fam, lvl, k]
         if self.eval_mode:
             ph = torch.zeros(n, device=self.dev)
         elif self.csi:
@@ -267,9 +332,17 @@ class AcpEnv:
             ph = self._u(n, lo=0.0, hi=0.98)
             if self.rec is not None:                                 # recorder environments start in the first 10 % (paper:
                 ph = torch.where(ids < self.rec.n, ph * (0.1 / 0.98), ph)   # only such episodes enter the hindsight buffer)
+        ph = torch.where(gsel, torch.zeros_like(ph), ph)
+        if self.paper_s3:                                            # Table S2: initial phase fixed at 0 in stage 3 (all envs)
+            ph = torch.zeros_like(ph)
         frames = m.clip_start[clip] + (ph * (m.clip_len[clip] - 1).float()).long()
         frames = torch.minimum(frames, m.clip_end[clip] - 1)
         p, R, v, w, q, qd = (x.clone() for x in m.ref_state(frames))
+        if self.paper_s3 and not self.eval_mode and bool(gsel.any()):  # Table S2: goal-env reset yaw U(+-0.4 rad) about the spawn
+            dy = torch.where(gsel, self._u(n) * S3_YAW, torch.zeros(n, device=self.dev))
+            cz, sz, o, z = dy.cos(), dy.sin(), torch.ones_like(dy), torch.zeros_like(dy)
+            Rz = torch.stack((torch.stack((cz, -sz, z), -1), torch.stack((sz, cz, z), -1), torch.stack((z, z, o), -1)), -2)
+            R, v, w = Rz @ R, (Rz @ v.unsqueeze(-1)).squeeze(-1), (Rz @ w.unsqueeze(-1)).squeeze(-1)
         if not self.eval_mode:
             q = q + self._u(n, self.NJ) * 0.2                      # Table S2: reset joint position
             p[:, 2] += self._u(n, lo=0.0, hi=0.05)                 # reset base height
@@ -292,14 +365,27 @@ class AcpEnv:
         self.goal_f[ids] = look                                     # per-episode lookahead (frames)
         self.a_prev[ids], self.a_prev2[ids] = 0.0, 0.0
         self.scan_off[ids] = 0.0 if self.eval_mode else self._u(n, 1) * 0.1
+        if PAPER_DR and not self.eval_mode:
+            rr = 0.05 * ((self._u(n, 1) + 1.0) * 0.5).sqrt(); th = self._u(n, 1) * math.pi
+            self.odo_off[ids] = torch.cat((rr * th.cos(), rr * th.sin(), self._u(n, 1) * 0.05), -1)
         S = tuple(x[ids] for x in self.state())
         self.v_prev[ids] = self.data.body_points(S)[1]
         self.c_prev[ids] = True
         self.tgt_prev[ids], self.occ_prev[ids], self.held_ok[ids], self.plan_m[ids] = 0.0, False, False, False
         self.air[ids] = 0
+        self.g_wp[ids], self.g_stand[ids], self.g_reached[ids], self.g_best[ids] = 0, 0, False, 1e3
+        self.g_succ[ids], self.c_steps[ids] = False, 0
         if self.rec is not None:
-            self.rec.start(ids)
+            cl = self.motion.clip_id[self.f[ids]]
+            d0 = None
+            if self.paper_s3:                                         # initial horizontal distance to the goal (eviction quality):
+                d = self.data                                         # goal envs: spawn -> final waypoint; reference envs: start -> clip end
+                fin = d.goal_wp[cl, (d.goal_n[cl] - 1).clamp(min=0)]
+                d0 = torch.where(gsel, (fin[:, :2] - p[:, :2]).norm(dim=-1), (m.root_p[m.clip_end[cl]][:, :2] - p[:, :2]).norm(dim=-1))
+            self.rec.start(ids, cl, d0)                               # source clip, for balanced replay sampling
         self.hist[ids] = self._proprio(S, self.a_prev[ids], ids, noise=not self.eval_mode).unsqueeze(1).expand(-1, HIST, -1)
+        if hasattr(self, "fault_det"):                                # every reset clears the simcheck detector (tools reset envs
+            self.fault_det.reset(ids)                                   # directly; the trainer also does it after its own reset)
 
     def reset_all(self):
         self.reset(torch.arange(self.N, device=self.dev))
@@ -329,22 +415,33 @@ class AcpEnv:
         # contact targets: reference-derived next contacts, body-yaw frame, zero when none
         occ = d.occ[f]
         ref_w = d.next[f]
-        tgt = mtv3(H.unsqueeze(1), ref_w - p.unsqueeze(1))
+        p_o = p + self.odo_off if (noise and PAPER_DR) else p      # odometry estimate (Table S2)
+        tgt = mtv3(H.unsqueeze(1), ref_w - p_o.unsqueeze(1))
         # goal command: bounded direction to the reference root 0.5-1.5 s ahead + relative heading
         g = torch.minimum(f + self.goal_f, m.clip_end[m.clip_id[f]])
-        dxy = mtv3(H, m.root_p[g] - p)[:, :2]
+        dxy = mtv3(H, m.root_p[g] - p_o)[:, :2]
         dxy = dxy / dxy.norm(dim=-1, keepdim=True).clamp(min=GOAL_R)
         Rg = m.root_R[g]
         dpsi = torch.atan2(Rg[:, 1, 0], Rg[:, 0, 0]) - torch.atan2(R[:, 1, 0], R[:, 0, 0])
         dpsi = torch.remainder(dpsi + math.pi, 2 * math.pi) - math.pi
         goal = torch.cat((dxy, dpsi.unsqueeze(-1)), -1)
+        gm = self.goal_env
+        if bool(gm.any()):                                           # stage 3: towards the current waypoint, its heading
+            wpt, dist, gxy = self._waypoint(p)
+            gd = mtv3(H, torch.cat((gxy, torch.zeros_like(dist).unsqueeze(-1)), -1))[:, :2] / dist.clamp(min=GOAL_R3).unsqueeze(-1)
+            gpsi = torch.remainder(wpt[:, 3] - torch.atan2(R[:, 1, 0], R[:, 0, 0]) + math.pi, 2 * math.pi) - math.pi
+            goal = torch.where(gm.unsqueeze(-1), torch.cat((gd, gpsi.unsqueeze(-1)), -1), goal)
+        goal_clean = goal.clone()
         scan = self._scan(p, R, self.gx_a, self.gy_a)
         if noise:
             tgt = tgt + self._u(self.N, 9, 3) * 0.1
             goal = goal + self._u(self.N, 3) * 0.2
             # paper: per-step Gaussian noise and a per-episode elevation offset; Table S2 gives U(-0.1, 0.1) m for the
             # tracker scan: read here as the per-episode offset, with the planner's N(0, 0.03) as the per-step noise
-            scan = scan + self.scan_off + torch.randn(scan.shape, device=self.dev, generator=self.gen) * 0.03
+            if PAPER_DR:
+                scan = scan + self.scan_off + self._u(*scan.shape) * 0.1
+            else:
+                scan = scan + self.scan_off + torch.randn(scan.shape, device=self.dev, generator=self.gen) * 0.03
         tgt = tgt * occ.unsqueeze(-1)
         cmd_w, cmd_ok = ref_w, occ
         if self.planner is not None:                                 # stage 2: planner contacts with probability eta_obs
@@ -355,10 +452,13 @@ class AcpEnv:
                 ptgt, pocc = self.planner.decode(self.hist.flatten(1), goal, scan17)
             pm = pocc > 0.5
             self.plan_w, self.plan_m = p.unsqueeze(1) + mv3(H.unsqueeze(1), ptgt), pm
+            self.g_ptgt = ptgt * pm.unsqueeze(-1)                      # stage 3: plan input of V_fs
             use = torch.rand(self.N, device=self.dev, generator=self.gen) < self.eta_obs
             if getattr(self, "probe", None) is not None:              # probe envs: planner contacts always (2026-11-12)
                 use = use | self.probe
-            tgt = torch.where(use[:, None, None], ptgt, tgt)       # the complete command is switched, not interpolated
+            use = use | gm                                            # stage 3 goal envs: planner contacts only (none in stage 2)
+            ptgt_o = ptgt + self._u(self.N, 9, 3) * 0.1 * pm.unsqueeze(-1).float() if (noise and PAPER_DR) else ptgt
+            tgt = torch.where(use[:, None, None], ptgt_o, tgt)     # the complete command is switched, not interpolated
             cmd_w, cmd_ok = torch.where(use[:, None, None], self.plan_w, ref_w), torch.where(use[:, None], pm, occ)
             both = pm & occ
             self.plan_stats += torch.stack((((self.plan_w - ref_w).norm(dim=-1) * both).sum(), both.float().sum(), use.float().mean(),
@@ -375,9 +475,22 @@ class AcpEnv:
         rp, rR, rv, rw, rq, rqd = m.ref_state(f)
         ref_pts = d.body_points((rp, rR, rv, rw, rq, rqd))[0]
         ref_rel = mtv3(H.unsqueeze(1), ref_pts - p.unsqueeze(1))
-        critic = torch.cat((self._proprio(S, self.a_prev, noise=False), self._scan(p, R, self.gx_c, self.gy_c), mtv3(R, v),
+        scan17c = self._scan(p, R, self.gx_c, self.gy_c)
+        critic = torch.cat((self._proprio(S, self.a_prev, noise=False), scan17c, mtv3(R, v),
                             mtv3(H, rv), mtv3(H, rw), rq - self.default_q, rqd, ref_rel.flatten(1), d.contact[f].float()), -1)
+        if bool(gm.any()):                                           # V_fs (stage 3): no reference; goal, distance, height, time, plan
+            wpt, dist, _ = self._waypoint(p)
+            dz = p[:, 2] - (wpt[:, 2] + d.stand_root_h)
+            self.critic_goal = torch.cat((self._proprio(S, self.a_prev, noise=False), mtv3(R, v), scan17c, goal_clean,
+                                          torch.stack((dist, dz, self.ep_step.float() / GOAL_T), -1), self.g_ptgt.flatten(1)), -1)
         return actor, critic
+
+    def _waypoint(self, p):
+        """Current waypoint (N, 5) of the goal environments, horizontal distance to it and the world vector to it."""
+        cid = self.motion.clip_id[self.f]
+        wpt = self.data.goal_wp[cid, self.g_wp.clamp(max=self.data.goal_wp.shape[1] - 1)]
+        gxy = wpt[:, :2] - p[:, :2]
+        return wpt, gxy.norm(dim=-1), gxy
 
     # ------------------------------------------------------------ step
     def step(self, a):
@@ -385,7 +498,8 @@ class AcpEnv:
         a = a.clamp(-20.0, 20.0)
         q_tgt = self.default_q + self.calib + self.alpha * a
         self._physics(q_tgt)
-        bad = ~(torch.isfinite(self.qpos).all(1) & torch.isfinite(self.qvel).all(1)) | (self.qvel.abs().max(1).values > 200.0)
+        bad, why = self.fault_det.update(self.qpos, self.qvel, wp.to_torch(self.dd.xpos)[:, self.robot_b],
+                                         contact_depth_per_world(self.dd, N))     # was: NaN or |qvel| > 200 only
         if bool(bad.any()):                                           # diverged worlds: park them, end the episode
             ids = bad.nonzero().squeeze(-1)
             self.qpos[ids] = 0.0
@@ -393,7 +507,9 @@ class AcpEnv:
             self.qvel[ids] = 0.0
         S = self.state()
         p, R, v, w, q, qd = S
-        self.f = f = self.f + 1
+        gm = self.goal_env
+        c_last = m.clip_end[m.clip_id[self.f]]
+        self.f = f = torch.where(gm, torch.minimum(self.f + 1, c_last), self.f + 1)   # goal clips are short standing clips: hold
         self.ep_step += 1
         rp, rR, rv, rw, rq, rqd = m.ref_state(f)
         pts, vel, _, _ = d.body_points(S)
@@ -431,12 +547,70 @@ class AcpEnv:
         wts = self.weights()
         r = DT * sum(wts[k] * x for k, x in t.items())
         term_pos, term_rot = (e_pos > TERM_POS) & ~bad, (th > TERM_ROT) & ~bad
-        if self.fall_rule:                                            # evaluation of planner-driven runs: a failure is a fall, not
-            fx = torch.cat((p[:, None, :2], pts[:, :2, :2]), 1)       # a distance from the reference (the robot may be early or late)
+        if self.fall_rule or bool(gm.any()):
+            fx = torch.cat((p[:, None, :2], pts[:, :2, :2]), 1)
             ground = self.terrain.height(fx[..., 0], fx[..., 1], m.clip_id[f]).amin(-1)   # lowest ground under root and feet
-            term_pos = ((p[:, 2] - ground) < FALL_H) & ~bad
-            term_rot = (R[:, 2, 2] < 0.5) & ~bad                      # tilted more than 60 degrees
-        term = term_pos | term_rot | bad
+            fall_pos, fall_rot = ((p[:, 2] - ground) < FALL_H) & ~bad, (R[:, 2, 2] < 0.5) & ~bad   # tilted more than 60 degrees
+        if self.fall_rule:                                            # evaluation of planner-driven runs: a failure is a fall, not
+            term_pos, term_rot = fall_pos, fall_rot                   # a distance from the reference (the robot may be early or late)
+        tg = {}
+        if bool(gm.any()):                                            # ---- stage 3 goal environments (Table 3, stage 3)
+            cid = m.clip_id[f]
+            wpt, dist, gxy = self._waypoint(p)
+            u = gxy / dist.clamp(min=1e-6).unsqueeze(-1)
+            v_to, speed = (v[:, :2] * u).sum(-1), v[:, :2].norm(dim=-1)
+            g_xy = (dist < GOAL_R3).float()
+            g_v = ((v_to > V_MIN) & (speed <= d.goal_vmax[cid])).float()
+            last = self.g_wp >= d.goal_n[cid] - 1
+            station = (wpt[:, 4] > 0.5) | last
+            g_h = ((p[:, 2] - (wpt[:, 2] + d.stand_root_h)).abs() < H_TOL).float()
+            psi = torch.atan2(R[:, 1, 0], R[:, 0, 0])
+            g_psi = ((torch.remainder(wpt[:, 3] - psi + math.pi, 2 * math.pi) - math.pi).abs() < PSI_TOL).float()
+            d_foot = (1 - c_meas[:, :2]).mean(-1)
+            d_tilt = 1 - R[:, 2, 2] ** 2
+            d_q = (q - self.default_q).abs().mean(-1)
+            foot_v = vel[:, :2, :2]
+            if self.paper_s3:                                         # Table 3, summed over the feet
+                cst = torch.where(c_meas[:, :2] > 0.5, self.c_steps[:, :2] + 1, torch.zeros_like(self.c_steps[:, :2]))
+                stumbling = (Fxy[:, :2] > STUMBLE_K * Fz[:, :2] + STUMBLE_C).float().sum(-1)
+                slippage = ((cst * DT > SLIP_T) & (foot_v.norm(dim=-1) > SLIP_V)).float().sum(-1)
+            else:
+                stumbling = (Fxy[:, :2] > 5 * Fz[:, :2]).any(-1).float()
+                slippage = ((foot_v ** 2).sum(-1) * c_meas[:, :2]).sum(-1)
+            tg = dict(move2goal=(1 - g_xy) * g_v + g_xy,
+                      standatgoal=g_xy * g_h * g_psi * torch.exp(-(d_foot + d_tilt + d_q) / 3) * station.float(),
+                      track_planned_contact=t["track_planned_contact"],
+                      flat_orientation=R[:, 2, 0] ** 2 + R[:, 2, 1] ** 2,
+                      stumbling=stumbling,
+                      slippage=slippage,
+                      ang_vel_xy=(mtv3(R, w)[:, :2] ** 2).sum(-1),
+                      **{k: t[k] for k in ("action_rate", "action_rate_2nd", "joint_torque", "torque_limits", "dof_pos_limits",
+                                           "dof_vel_limits", "contact_acc")})
+            r = torch.where(gm, DT * sum(G[k] * x for k, x in tg.items()), r)
+            # waypoints: a pass-through point is reached on entering the disc; a station after 1 s inside; the last one is
+            # the goal (success latched once it has been held for a station's time)
+            inside = dist < GOAL_R3
+            self.g_stand = torch.where(gm & inside, self.g_stand + 1, torch.zeros_like(self.g_stand))
+            held = self.g_stand >= STATION_STEPS
+            self.g_reached = self.g_reached | (gm & last & held)
+            nxt = gm & ~last & inside & (~station | held)
+            self.g_wp = self.g_wp + nxt.long()
+            self.g_stand = torch.where(nxt, torch.zeros_like(self.g_stand), self.g_stand)
+            fin = d.goal_wp[cid, (d.goal_n[cid] - 1).clamp(min=0)]
+            if self.paper_s3:                                         # Table S4 / S5: goal = final waypoint; success within 0.5 m
+                d_fin = (fin[:, :2] - p[:, :2]).norm(dim=-1)          # horizontally and 0.1 m vertically, at some point (latched);
+                dz_fin = (p[:, 2] - (fin[:, 2] + d.stand_root_h)).abs()   # the earlier waypoints must have been passed (last)
+                qual = gm & (dz_fin < S3_SUCC_Z)                      # demotion distance counts only while the height is right
+                self.g_best = torch.where(qual, torch.minimum(self.g_best, d_fin), self.g_best)
+                self.g_succ = self.g_succ | (gm & last & (d_fin < S3_SUCC_XY) & (dz_fin < S3_SUCC_Z))
+                if self.rec is not None:                              # goal segment ends at the first step within 0.2 m of the goal
+                    nr = self.rec.n
+                    self.rec.mark_cut((gm & last & (d_fin < S3_CUT))[:nr])
+            else:
+                self.g_best = torch.where(gm, torch.minimum(self.g_best, (fin[:, :2] - p[:, :2]).norm(dim=-1)), self.g_best)
+            term_pos = torch.where(gm, fall_pos, term_pos)            # goal envs end only by a fall or the time limit
+            term_rot = torch.where(gm, fall_rot, term_rot)
+        term = term_pos | term_rot                                    # simulator faults (bad) are truncations, below
         # contact placement error (paper, Results 0.3): commanded vs realised contact position at contact onset
         c_now = c_meas > 0.5
         # the commanded target switches to the following step around touchdown, so the realised contact is compared with the
@@ -448,33 +622,51 @@ class AcpEnv:
         onset = c_now & ~self.c_prev & (self.air >= 5) & (self.occ_prev | self.held_ok) & (self.ep_step > 1).unsqueeze(-1)
         place = dmin * onset
         self.air = torch.where(c_now, torch.zeros_like(self.air), self.air + 1)
+        self.c_steps = torch.where(c_now, self.c_steps + 1, torch.zeros_like(self.c_steps))
         self.c_prev = c_now
+        if self.paper_s3 and self.rec is not None:                    # positive mechanical work of the recorded episodes (eviction)
+            self.rec.add_work((torch.relu(tau_app * qd).sum(-1) * DT)[: self.rec.n])
         clip = m.clip_id[f]
-        timeout = (f >= m.clip_end[clip]) & ~term
+        timeout = (torch.where(gm, self.ep_step >= GOAL_T, f >= m.clip_end[clip]) | bad) & ~term
+        r = torch.where(bad, torch.zeros_like(r), r)                  # the step was computed on a broken state
         done = term | timeout
         ph = (f - m.clip_start[clip]).float() / (m.clip_len[clip] - 1).float().clamp(min=1)
-        finished = done & ~term & (ph >= CSI_DONE)
+        g_ok = self.g_succ if self.paper_s3 else self.g_reached       # goal success: paper 0.5 m / 0.1 m, or our station rule
+        finished = done & ~term & ~bad & torch.where(gm, g_ok, ph >= CSI_DONE)
+        if bool(gm.any()) and not self.eval_mode:                     # curriculum (Table S4): EMA of success; promote on a success
+            gd = done & gm & ~bad                                     # with EMA > 0.5, demote when the closest approach was > 1 m
+            ok = g_ok & ~term
+            self.g_ema = torch.where(gd, 0.8 * self.g_ema + 0.2 * ok.float(), self.g_ema)
+            up, down = gd & ok & (self.g_ema > 0.5), gd & ~ok & (self.g_best > S3_DEMOTE)
+            self.g_level = (self.g_level + up.long() - down.long()).clamp(0, 9)
         if self.csi and not self.eval_mode:                           # Table S4: -0.05 after reaching phase 0.99, +0.05 otherwise
-            self.phase = torch.where(done, (self.phase + torch.where(finished, -CSI_STEP, CSI_STEP)).clamp(0.0, CSI_MAX), self.phase)
+            self.phase = torch.where(done & ~bad, (self.phase + torch.where(finished, -CSI_STEP, CSI_STEP)).clamp(0.0, CSI_MAX), self.phase)
         self.a_prev2, self.a_prev = self.a_prev, a.clone()
         self.v_prev = vel
         self.hist = torch.cat((self.hist[:, 1:], self._proprio(S, self.a_prev, noise=not self.eval_mode).unsqueeze(1)), 1)
-        info = {"terms": {k: x.mean() for k, x in t.items()}, "e_pos": e_pos.mean(), "e_rot": th.mean(),
+        rm = (~gm).float(); rn = rm.sum().clamp(min=1.0); gmf = gm.float(); gn = gmf.sum().clamp(min=1.0)
+        terms = {k: (x * rm).sum() / rn for k, x in t.items()}        # reference terms over the reference envs only
+        terms.update({"goal/" + k: (x * gmf).sum() / gn for k, x in tg.items()})
+        info = {"terms": terms, "e_pos": e_pos.mean(), "e_rot": th.mean(),
                 "e_joint": (q - rq).abs().mean(), "e_contact_pos": (pb - rpb).norm(dim=-1).mean(),
                 "contact_match": ((c_meas > 0.5) == (c_ref > 0.5)).float().mean(),
                 "term": term.float().sum(), "done": done.float().sum(), "finished": finished.float().sum(),
-                "bad": bad.float().sum(), "done_mask": done, "term_mask": term, "finished_mask": finished,
+                "bad": bad.float().sum(), "sim_fault": {k: x.float().sum() for k, x in why.items()}, "done_mask": done, "term_mask": term, "finished_mask": finished,
                 "term_pos": term_pos.float().sum(), "term_rot": term_rot.float().sum(), "timeout": timeout.float().sum(),
                 "place_sum": place.sum(), "place_n": onset.float().sum(), "place": place, "onset": onset,
                 "phase": ph, "e_pos_env": e_pos, "reward_max": DT * sum(v for v in wts.values() if v > 0),
                 "c_ref_frac": c_ref[:, :2].mean(), "c_meas_frac": c_meas[:, :2].mean(), "speed": v[:, :2].norm(dim=-1).mean(),
                 "ref_speed": rv[:, :2].norm(dim=-1).mean(),
-                "set": self.data.clip_set[clip]}
+                "set": self.data.clip_set[clip],
+                "goal_mask": gm, "goal_done": (done & gm).float().sum(), "goal_success": (finished & gm).float().sum(),
+                "goal_fall": (term & gm).float().sum(), "goal_level": self.g_level, "goal_wp": (self.g_wp.float() * gmf).sum() / gn}
         ids = done.nonzero().squeeze(-1)
         if self.rec is not None:                                      # hindsight buffer admission: reached 90 % of the clip
-            self.rec.end(done, done & ~term & (ph >= 0.9))
+            adm = done & ~term & torch.where(gm, g_ok, ph >= 0.9)
+            self.rec.end(done, adm & ~bad if self.paper_s3 else adm)   # stage 3: a simulator fault never enters the buffer
         if not self.eval_mode:
             self.reset(ids)
+            self.fault_det.reset(ids)
         return r, term, timeout, info
 
 

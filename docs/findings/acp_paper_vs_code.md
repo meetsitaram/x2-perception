@@ -152,7 +152,7 @@ of u_obs, u_rew and N_ann are not given anywhere** (no table row; verified). Our
 | CSI: 0.9, -0.05 on reaching 0.99, +0.05 otherwise, [0, 0.99] | Table S4 | `env.py:32,457-458` (per env) | M |
 | Envs | 12,000 per worker (x3 GPUs, Table S6) | 12,000, then 36,000 on 1 GPU from 750 | DN |
 | Target KL 0.02, entropy 0.006 | Table S6 | `train.py:25,110` | M |
-| Duration / iterations | about 1 day, 3 x 4090; iterations not given | s1 to 2,250 / 5,500 | DJ (silent) |
+| Duration / iterations | stage 1 about 1 day on 3 RTX 4090; stage 2 about 1 day 21 h on 2 (2,400 envs each); stage 3 about 2 days 6 h on 4 (2,100 envs each); 24 steps per iteration; iteration counts not given (corrected 2026-11-13 after a fresh read; the earlier row said 1 day in total) | s1 to 2,250 / 5,500 | DJ (silent) |
 
 ## 7. Stage 2 and Eq. 3
 

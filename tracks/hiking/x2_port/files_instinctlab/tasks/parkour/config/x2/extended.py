@@ -235,3 +235,9 @@ class X2ParkourExtendedFixedEnvCfg(X2ParkourFixedEnvCfg):
         if "g" in _opts():  # v4j: wall / prop contact graded by body part, torso ends only when resting on something (contact.py)
             from .contact import apply_v4j
             apply_v4j(self)
+        if os.environ.get("HIKING_X2_FAIR", "0") == "1":  # v8 (2026-11-14): paper curriculum signal + touchdown pay for progress (fair.py)
+            from .fair import apply_fair
+            apply_fair(self)
+        if os.environ.get("HIKING_X2_V9", "0") == "1":  # v9 (2026-11-14): paper stand column, per-type curriculum log, contact scales (v9.py)
+            from .v9 import apply_v9
+            apply_v9(self)

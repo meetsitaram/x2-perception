@@ -35,6 +35,10 @@ Options are read from the environment when the config is built (the supervisor p
      clamp(air time of that swing - 0.05 s, 0, 0.30) (SSR uses 0.10 s; 0.05 here so the 0.03-0.06 s swings of run 4 get a gradient), summed over the feet; weight HIKING_X2_AIR_TD_WEIGHT (default 140, sized from the per-step table in state/hiking.md; the
      reward manager multiplies by dt, so a 0.3 s swing pays 140 x 0.02 x 0.25 = 0.7 per touchdown). Never negative, so short steps cost nothing
      (Isaac Lab's (air - threshold) form charges them). Beside the paper's `feet_air_time`, not instead of it. Not scheduled.
+     v6 (2026-11-13, HIKING_X2_AIR_TD_CAP=ref): the 0.30 s cap set the paid optimum at 1/(0.30+0.05) = 2.9 steps/s at every
+     speed (docs/findings/gait_vs_reference.md). With ref, the cap depends on the commanded planar speed v:
+     cap(v) = 1/f_ref(v) - 0.05, f_ref = linear in (0.3, 1.4), (0.5, 1.9), (0.7, 2.0) steps/s (X2 paper reference), flat outside;
+     the pay per second then peaks at the reference's swing (1/f_ref). Swings under 0.35 s pay exactly as before.
   s  style reward coefficient (0.25) x 0.3 early (HIKING_X2_STYLE_EARLY), patched into the trainer's WasabiPPO.
      Every staged run (with or without s) logs `style_coef` and `style_reward_weighted` per step.
 Every option is a listed deviation from the paper, with its schedule; the run's state file must say which were on.
@@ -192,6 +196,32 @@ def feet_air_touchdown_positive(env, command_name: str, sensor_cfg: SceneEntityC
     return pay * moving
 
 
+_REF_V = (0.3, 0.5, 0.7)
+_REF_F = (1.4, 1.9, 2.0)
+
+
+def _ref_cadence(v: torch.Tensor) -> torch.Tensor:
+    """Reference cadence (steps/s) of the X2 paper reference at planar speed v, linear between points, flat outside."""
+    f = torch.full_like(v, _REF_F[0])
+    for (v0, f0), (v1, f1) in zip(zip(_REF_V, _REF_F), zip(_REF_V[1:], _REF_F[1:])):
+        seg = (v >= v0) & (v < v1)
+        f = torch.where(seg, f0 + (f1 - f0) * (v - v0) / (v1 - v0), f)
+    return torch.where(v >= _REF_V[-1], torch.full_like(v, _REF_F[-1]), f)
+
+
+def feet_air_touchdown_refcap(env, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float = 0.05,
+                              min_cmd: float = 0.1) -> torch.Tensor:
+    """Option t, v6: as feet_air_touchdown_positive, cap = 1/f_ref(|v_cmd|) - threshold (paid optimum = reference swing)."""
+    sensor = env.scene.sensors[sensor_cfg.name]
+    first = sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
+    air = sensor.data.last_air_time[:, sensor_cfg.body_ids]
+    cmd = env.command_manager.get_command(command_name)
+    cap = (1.0 / _ref_cadence(torch.norm(cmd[:, :2], dim=1)) - threshold).unsqueeze(1)
+    pay = (torch.minimum((air - threshold).clamp(min=0.0), cap) * first).sum(dim=1)
+    moving = (torch.norm(cmd[:, :2], dim=1) > min_cmd) | (cmd[:, 2].abs() > min_cmd)
+    return pay * moving
+
+
 # ---- r: reference-state starts ----
 def _yaw(q):  # wxyz -> yaw
     w, x, y, z = q.unbind(-1)
@@ -327,7 +357,8 @@ class X2ParkourStagedEnvCfg(X2ParkourTorsoCamEnvCfg):
             r.feet_air_time = RewTerm(func=feet_air_time_staged, weight=r.feet_air_time.weight,
                                       params=dict(r.feet_air_time.params, early_scale=float(os.environ.get("HIKING_X2_AIR_EARLY", "4.0"))))
         if "t" in opts:
-            r.feet_air_touchdown = RewTerm(func=feet_air_touchdown_positive, weight=float(os.environ.get("HIKING_X2_AIR_TD_WEIGHT", "140.0")),
+            _td = feet_air_touchdown_refcap if os.environ.get("HIKING_X2_AIR_TD_CAP", "fixed") == "ref" else feet_air_touchdown_positive
+            r.feet_air_touchdown = RewTerm(func=_td, weight=float(os.environ.get("HIKING_X2_AIR_TD_WEIGHT", "140.0")),
                                            params={"command_name": "base_velocity",
                                                    "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link")})
         if "r" in opts:  # added last, so it runs after reset_base and reset_robot_joints

@@ -6,7 +6,7 @@
 T=/mnt/filesystem-g4/tracks/acp; L=$T/eval/export_every.log; ST=/mnt/filesystem-g4/status/acp_export.json; FROM=${FROM:-3500}
 status() { printf '{"track":"acp","what":"pair export","state":"%s","pair":"%s","detail":"%s","time":"%s","unix":%d}\n' "$1" "$2" "$3" "$(date -u +%FT%TZ)" "$(date +%s)" > "$ST"; }
 while true; do
-  for RUN in $T/runs/s2_v1 $T/runs/s3_v1 $T/runs/s1_v2 $T/runs/s2_v2 $T/runs/s2_v3; do
+  for RUN in $T/runs/s2_v1 $T/runs/s3_v1 $T/runs/s1_v2 $T/runs/s2_v2 $T/runs/s2_v3 $T/runs/s2_v4 $T/runs/s2_v5 $T/runs/s3_v2; do
     case $(basename $RUN) in s1_*) export PLANNER_FROM=${S1_PLANNER:-$T/runs/s2_v1/ckpt_004000.pt};; *) unset PLANNER_FROM;; esac
     for CK in $(ls $RUN/ckpt_*.pt 2>/dev/null | sort); do
       IT=$((10#$(basename $CK .pt | cut -d_ -f2))); [ $IT -lt $FROM ] && continue

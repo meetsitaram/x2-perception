@@ -219,3 +219,109 @@ On the 25 paper-specified deviations in `docs/findings/acp_paper_vs_code.md` ("t
 
 ## One copy of the code per track (user, 2026-11-13)
 "having duplicate code can cause failure that are hard to detect until so late in the training runs." Rule for every track: one code folder; stages and variants are chosen by flags, never by copied folders; running jobs are protected by their per-run code snapshot. Existing duplicates to remove: ACP `code_s3/` (fold its stage-3 code into `code/` behind `--stage 3`, instead of merging stage-2 fixes into the copy); SSR `code_v15/` (if it diverges from `code/`); Hiking's two copies of its patched InstinctLab files (`files_instinctlab` and the InstinctLab tree: one source plus an install step that checks they are identical). Copies go to `_trash/`, never deleted.
+
+## ACP hold-out gate is information only (user, 2026-11-13)
+On the 5-trial hold-out gate ("3 of 5 against 4 of 5 is a single trial" - "yup"): the gate no longer blocks anything - not the scorer's station legs (now run regardless) and not a fall-back or stage decision. Decisions use the 250-trial station legs plus training measures; the gate is reported beside them.
+
+## Judge training progress on the training terrain (user, 2026-11-13)
+"Judging the training progress by ood apparatus results is not fair. The progress should be based on what is happening on the things it is trained on - based on how it is doing with the different terrain types like ramps, blocks, stairs, etc." Rule: decisions about a run (keep, fall back, restart, stage switch) are made on in-distribution measures per terrain type: each track's own training metrics per type (success / finish rate, terrain level) and the eval's MuJoCo courses that copy each track's training terrain types (`eval/train_terrains.py`, ladder step 20), at several levels. The apparatus (station legs, full route) stays the goal and is reported beside it, but is not the progress gate.
+
+## Run ledger and single-run recipe (user, 2026-11-13)
+"Make note of all these iterations and changes ... once we find the results are good, we might run another bigger training run on more GPUs without interruptions as a single run. And we won't be there to evaluate at every checkpoint." Rule: `docs/runs/ledger_<track>.md` records every run segment (start point, what changed, why, outcome, mark paper / fix / user rule / ours) the same day it happens; `docs/runs/recipe_<track>.md` is the current best recipe as one uninterrupted run from scratch, with every human decision replaced by a code-checkable rule. Agents append to the ledger at every restart; the coordinator checks it at refreshes.
+- The user, 2026-11-13, on ACP's frozen planner and held / capped ramp: "It has to be deterministic and not based on judgement." Rule: ACP's stage 2 follows Eq. 3 with the planner co-trained and eta ramping to 1 on a fixed schedule written in the flags; no hand-held gates; the forgetting problem that led to the freeze is handled by balanced replay sampling (the paper's principle) and the rare-skill data, not by freezing. Fall-backs only as fixed code-checked thresholds.
+
+## No restart from scratch (2026-11-13)
+User, on the coordinator's proposal to retrain all three tracks from scratch for reproducibility: "Start from scratch??? Really?? We spend 100s of dollars on gpu training for past two days". Rule: keep the trained weights. Fixes go in by resuming from the latest good checkpoint (one planned restart per track, then run to the end uninterrupted). A from-scratch single-run recipe is written down for a future larger run, not run now.
+
+## Paper reference v4 approved (2026-11-13)
+User, on the G1-vs-X2 v4 review video: "G1 vs x2 walks look good with the forward leans seem correct." v4 (`hiking_release_x2/parkour_motion_without_run_x2_v4.npz`) replaces v2/v3 as the style reference for Hiking and SSR. The X2 waist-pitch limit (+18 deg) is left as is. Hiking v6 armed with v3 must not start.
+
+## ACP stage lengths (2026-11-13, open)
+User on 4,000 / 6,000 / 12,000: "6k for stage 2 seem less." The paper gives wall time per stage (1 d on 3 GPUs; 1 d 21 h on 2; 2 d 6 h on 4) and no iteration counts or training curves (checked 2026-11-13, full text and Supplement).
+
+## ACP fixed stage lengths (2026-11-13)
+User: "Make stage three 15k . If the results look good, we can stop it earlier". Fixed schedule, no gates on eval results: stage 1 4,000; stage 2 = the Eq. 3 ramp at 1/6,000 per iteration (u_obs 200, u_rew 1,700) until eta_rew = 1, then 2,300 iterations at full planner contacts (10,000 for a run from scratch); stage 3 15,000. Stopping early is the user's call only, on the scorer's numbers; nothing stops automatically except fault fall-backs (crash loop, throughput, simulator faults). The paper gives wall time per stage only (1 d / 1 d 21 h / 2 d 6 h), no iteration counts.
+
+## No stopping training for evals (2026-11-13)
+User: "And do not stop the training runs this time. Get the checkpoints to local and run evals here ." After each track's one approved restart (Hiking and SSR on v4, ACP s2_v5), training runs to its fixed end with no pauses, stops or planned restarts for evaluation. Every eval runs on the desktop from fetched checkpoints (automatic scorer); results are information for the user, never an automatic stop. Only fault fall-backs (crash loop, simulator faults, throughput) may act on their own.
+
+## Local checkpoint cleanup (2026-11-13)
+User: "But cleanup older local checkpoint periodically to not fill up disk space". `eval/autoscore/cleanup.py` runs at every coordinator refresh: per track the 5 newest fetched checkpoints and the best-scored one keep everything; older ones lose model files and videos only (scores, logs, CSV, JSON kept; exports stay on the shared filesystem and can be fetched again).
+
+## The bar on the training terrain (2026-11-13)
+User, on "Hiking has mastered its training terrain": "really? show me the renders of walking in various places in our extended map" and "i would be impressed if it was able to go through all the routes we added in the extended map - without stumbles or falls". Mastery of training terrain means every extended-map route traversed without stumbles or falls, not a full curriculum (Hiking's level-6 average only means its promotion rule, velocity-tracking score > 0.6, is met everywhere).
+
+## Final-station stop (2026-11-13)
+User, on Hiking's adapter stopping at 0.4 m while the eval needs 0.2 m (none of the three papers has a stop command; Hiking scores success within 0.25 m, SSR has no distance, ACP 0.5 m / 0.1 m): "Sounds good. But don't penalize heavily if it can't stop there." Rule: every adapter commands the robot toward the final station until within 0.2 m. A trial that ends standing stably within 0.4 m of the final station but outside 0.2 m counts as a success, reported separately as "stopped short"; the strict 0.2 m count is reported beside it. Same rule for all tracks.
+
+## Monitor the style reward (2026-11-13)
+User: "ok. and also monitor the style reward". `eval/metrics/style_watch.py` runs at every hourly refresh (SSR r_s and D(policy); Hiking discriminator reward and D(actor)); history in eval/metrics/out/style_watch.csv; a fall or two flat refreshes is reported to the user.
+
+## SSR arm-noise restart approved (2026-11-13)
+User, on one exception to the no-stop rule for SSR's arm action noise fix (E7: arm std reset 0.3, cap 0.4, discriminators warm): "go ahead". GO_v18 created by the coordinator; the run then continues to 20,000 with no further planned stops.
+
+## Deployment perception: added RealSense depth camera, not the X2 LiDAR (2026-11-13)
+User: "x2 has lidar but based on what i saw in the past - really noisy, very hard to make use of it.. it sees robots own hands as obstacles.. we will have to rely on the additional intellisense [RealSense] cam we will add just like what we are using for hiking and ssr." Consequence for ACP: its height scan (paper: LiDAR neural map) must come from the chest depth camera on the real robot, so the eval should also score ACP with a height map built from the simulated depth camera (limited field of view, occlusion, own limbs masked), beside today's direct terrain sampling.
+
+## ACP depth student: later (2026-11-13)
+Coordinator proposed a teacher-student DAgger path (height-map ACP teacher -> depth-camera student, preferably a depth-to-height-map estimator under the unchanged ACP policy). User: "not right now. lets see if ACP can perform really good with perfect height map first. if that itself is not good, depth camera can only be even more difficult". Rule: no depth-student work and no camera-built-map ACP eval until ACP reaches a strong result with the perfect height map; then revisit.
+
+## SSR continues after 20,000 (2026-11-14)
+User, on continuing SSR from its 20,000 save with the E7b fix (arm action means kept inside the joint limits, arm std reset and capped at 0.2) for a fixed 10,000 more iterations with no stops: "sure". Start automatically when 20,000 is saved, provided the CPU pre-flight has passed; fixed end 30,000.
+
+## Score every 500 iterations when evals are slow (2026-11-14)
+User: "if eval takes long time, limit to every 500 instead of every 250." The automatic scorer only picks exports whose iteration is a multiple of 500 (config.json `score_every`, per track `every`); newest first as before.
+
+## Hiking priority: match the paper on its own terrains first (2026-11-14)
+User, after the comparison with the paper's Table 2 (G1: 99-100% on stairs up/down 20 cm, platforms 40 cm, gap 60 cm, ramp 0.40 rad, boxes): "That gap has to go away first before we worry about arm hits and other issues with side rails". Hiking work goes first to closing the gap to the paper on the paper's terrain types at the paper's hard settings; walled ramps, arm contacts and rail issues wait.
+- (2026-11-14) User: "we have already seen from ssr paper that x2 is a capable robot". The SSR paper's robot is the AgiBot X2 (1.31 m, 39 kg; stairs to 0.20 m, gaps to 0.8 m, platforms). Do not question X2 feasibility of the papers' terrains; look for the cause in our training.
+
+## Hiking v8 approved (2026-11-14)
+User: "Please start with the fixes" (v8: curriculum moves only on normal walking-command episodes; touchdown pay times forward progress). GO_v8 created by the coordinator; the run then continues to 30,000 with no further planned stops.
+- (2026-11-14, on v8) User: "don't give up quickly. Other option could be reduce inplace turns and slow walk episode ratio and see if hiking can improve in the stairs". If v8's start trial fails, do not just fall back to v7: try a variant with fewer turn-in-place and slow-walk episodes (and the same fixes) before giving up. Judge v8 on the stair/platform/gap rows over 500-1,000 iterations, not on the first trial alone.
+
+## ACP spawn-fault fix approved (2026-11-14)
+User: "Fix the bad start points" (ACP stage 3: 63% of goal episodes faulted at spawn, mostly ext_homes, ext_log_corridors, ext_tight_spots). One restart of s3_v2 from its latest checkpoint with corrected spawns is approved; the run then continues to 34,218 with no further planned stops.
+
+## SSR stair refusal fix approved (2026-11-14)
+User: "Ssr Leg 5 is at 1/50 - if it is still just starting at start instead of trying to climb and fall - then we need to fix it". Checked: 48/50 leg-5 trials at 23,500 stall at the foot of the stairs, no falls (refusal). One fix restart of SSR approved, started by the SSR agent once its CPU pre-flight passes; the run then continues to 30,000.
+- (2026-11-14) User, on SSR standing at the stair foot: "Just standing" / "Finds ways to encourage to walk". The SSR fix includes positive incentives to attempt (progress reward, no stand-still pay under walking commands, stall penalty, refusal demotion), chosen with CPU evidence.
+- (2026-11-14) User: "We need to investigate why our run refuses while ssr paper was successful. I suspect it has to do with our custom reward changes". SSR refusal diagnosis audits every deviation from the paper (rewards, weights, normalisation, commands, curriculum) for paying standing or penalising attempts; preferred fix = paper values.
+
+## Fix every unapplied paper deviation (2026-11-14)
+User, after the unapplied SSR curriculum deviation (E8a): "Please fix. It's already two days of cloud training without good results so far." SSR: every still-deviating, non-override paper item goes back to the paper in one resume (agent may GO after its pre-flight). ACP and Hiking: a ranked list of unapplied deviations (docs/findings/unapplied_deviations_20261114.md), then fixes. Every deviation item gets an owner and a date.
+
+## Hiking v9 decisions (2026-11-14)
+User: "The toe-strike penalty and The graded body-contact penalty are valid, but not sure if we have too big weights." -> keep both terms; measure whether their weights are too large (attempt vs refusal cost on stairs/platform rows 5 and 8) and propose weights with evidence before changing them.
+User: "The command mix and The air-time reward - let's fix and have what the paper has." -> v9 uses the paper's command mix and drops the touchdown/air-time term (the paper has none).
+User: "penalty of staying at one place for long time when we still give command to move forward for a while should be penalized - but keep that as a todo item for now" -> recorded in docs/USER_TODO.md; not implemented now.
+- (2026-11-14) User: "A good lesson learned" (the air-time reward paid refusals). Rule added to docs/TRACK_RULES.md and the three track briefs: every non-paper reward/command/curriculum change needs a CPU attempt-vs-refusal reward table before it goes into a run.
+
+## Refusals must turn into attempts first (2026-11-14)
+User, on Hiking 19,500 leg 5 (43 of 50 stopped at the foot of the stairs, 1 success): "Stopped at the foot of the stairs - 43 - these have to be converted to - fell ... slowly". Key signal for Hiking and SSR: the share of refusals at an obstacle foot must fall first (into attempts, even failed ones), then attempts into successes. `eval/metrics/refusal_watch.py` reports success / attempt / refusal for leg 5 at every refresh.
+
+## SSR extension to 40,000 only if improving (2026-11-14)
+User: "don't stop SSR at 30,000. Extend it by 10,000 iterations, about 20 hours --- only if we are seeing improvements". Rule (fixed before the data, coordinator 2026-11-14): at 30,000 extend to 40,000 on the v21 recipe if the newest scored v21 checkpoint (27,500 or later) improves on v20 final 26,000 (legs 49/50/49/44/5, leg-5 refusals 42, courses 18/22) on at least two of: (a) leg-5 refusals below 42, (b) leg-5 successes above 5, (c) training courses above 18/22 or a stairs/platform L15 course passed, (d) the CPU stairs probe pass rate at level 19 above v20's 0.375. Otherwise SSR stops at 30,000 and its node is freed.
+- (2026-11-14) User: "and its node is freed. -- I will make that call on what to do with the node in the end". If SSR stops at 30,000, its node stays idle and nothing new is started on it until the user decides.
+- (2026-11-14) User: "we only evaluate first by whether it failed trying to go up stairs or still refraining from taking the steps at all". For SSR and Hiking the first and deciding signal is the leg-5 split refusal vs attempt (eval/metrics/refusal_watch.py); scores, courses and style come after. For the SSR 30,000 decision this makes (a) leg-5 refusals below 42 the required criterion; the others only confirm.
+- (2026-11-14) User: "If we ask for a forward moving command and the robot stands still for a long time before reaching the goal point, we should heavily penalize then. But that will be an aggressive take only if we have no other choice". Stall penalty (heavy, under an active forward command, before the goal) is the LAST resort for SSR and Hiking: first find and fix the term or setting that makes refusing pay (reward-hacking check); use the stall penalty only if that fails. Prepare it behind a default-off flag so it is ready.
+
+## Keep SSR training and find the cause (2026-11-14, supersedes the stop branch of the 40,000 rule)
+User: "We have to continue and figure out what is failing. Even the training maps are not fully solved. And standing still in front of stairs is not at all acceptable. We spent several 100s of dollars training these runs. We must get to the bottom of this issue." -> SSR does not stop at 30,000. It continues to 40,000 on the recipe with the fewest leg-5 refusals so far (v20 flags: 42 refusals at 26,000, vs 50 for v21) unless the per-term diagnosis names a better fix before the switch; the root cause of the refusals is found and fixed with evidence (per-term reward tables, training-map courses), for SSR and Hiking alike.
+
+## SSR rollback to 5,050 (2026-11-14)
+Coordinator proposal: at 30,000, resume SSR from the r7_v14_p250 checkpoint (iteration 5,050; leg-5 refusals 0 of 50) with the v20 fixed recipe (Rudin curriculum, stair/platform wall touch non-fatal) instead of continuing the 30,000 policy (refusals 42-50). User: "Try that". Judge it on leg-5 refusals first. Hiking waits for v9's 21,000/21,500 scores.
+- (2026-11-14) User: "Keep backup of 30000 checkpoints". The SSR r7 30,000 save (full state) and its export go to a separate backup folder no script writes to, path and checksum recorded; never deleted.
+- (2026-11-14) User: "Keep the extended map through". The extended map stays in every run (incl. the SSR rollback from 5,050); if its mechanics (fatal walls, route levels, goals) contribute to refusals, fix those mechanics, never drop the map.
+- (2026-11-15) User, on the SSR refusal cause (separate normalisation) and the plan to continue from 30,000 on v20 (joint normalisation) instead of rolling back to 5,050: "good fix it". Rollback to 5,050 cancelled; SSR continues from 30,000 on v20 flags to 40,000 with the extended map; 30,000 backed up; stall penalty stays off.
+- (2026-11-15 00:02) User: "We are wasting time. Start right now" - SSR switches to the v20 continuation at the next save (about 29,550) instead of 30,000; that save is backed up.
+- (2026-11-15) User on renders: "they don't look good - not the true color of the apparatus or extended map - they had like too much saturation and also were single colored". Renders use the apparatus's true material colours, distinct realistic colours per extended-map primitive class, and balanced lighting (no blown-out or oversaturated surfaces).
+- (2026-11-15) User showed the render look they want (their earlier SuperMimic p4_full_route_walk.mp4, made by gwbc-v6/scripts/acp/eval/render_full.py and render_full_plan.py): true apparatus colours (orange-brown wood, sand ramps/deck, dark blue checker floor), height-map grid overlay (green level / orange high / blue below), black policy-scan dots, red side obstacles, pink margins, foot markers (disc ref support, ring next ref landing, square physics stance), caption and legend lines, an inset. All renders follow that style; Hiking/SSR put the depth image in a bottom-right inset.
+- (2026-11-15) User: "For hiking and ssr, I would like to see the depth cam view like it would show up in the real robot" -> inset = full-resolution RealSense-style depth from the chest camera's pose and FOV with a depth colour map and scale bar (own limbs visible), plus a small 'policy input' thumbnail.
+
+## SSR stopped (2026-11-15)
+User: "of all the results, acp walk and results look the best, hiking results decent, but ssr results are really bad - least success, straight arms issue, waist keeps bending sideways.. lets backup latest checkpoint for ssr to the shared fs, and lets stop the training for that. i will shutdown that nebius node once stopped." SSR training stops at its next save; the full latest save, args, flags, log and newest export go to tracks/ssr/backups/r7_v20x_final_<it>/ (read-only, MD5SUMS). The user shuts the node down; nothing else runs on it.
+
+## Depth camera -> height map for ACP (2026-11-15)
+User: "i think its time to figure out how to get that height map from the intelsense [RealSense] depth camera. but before we start building, explore the literature and recently published papers in the last one year how people used depth camera for terrain mapping." Step 1: literature review (last 12 months) of depth-camera terrain/elevation mapping for legged robots; no building until the user has seen it. Context: ACP paper uses a learned LiDAR neural mapper (local grids from each scan, fused with DLIO odometry, trained in sim with LiDAR noise models; 3 cm cells, 30 ms on Jetson Orin NX).
+- (2026-11-15) User: "hold off on that work for now.. first commit all changes, update docs and push whatever we have built so far for all three runs. we can work on it in about 5-6 hours once i wake up. for now, continue the two training runs, keep monitoring, run evals, keep me posted." Literature review paused (research agents stopped; partial notes in research_notes/); one-time commit+push approval for everything built so far.

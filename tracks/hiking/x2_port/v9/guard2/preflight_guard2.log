@@ -1,0 +1,29 @@
+normal_params_bit_identical True
+normal_losses_identical True
+normal_shared_stats_identical True
+normal_extra_stats ['guard_rollout_action_absmax_max', 'guard_rollout_critic_obs_absmax_max', 'guard_rollout_obs_absmax_max', 'guard_rollout_reward_absmax_max', 'guard_rollout_skipped_max']
+normal_rollout_skipped_stat 0.0
+obs_patched_params_unchanged True
+obs_patched_loss_keys ['entropy', 'surrogate_loss', 'total_loss', 'value_loss']
+obs_patched_skipped_stat 1.0
+obs_storage_cleared 1
+obs_log [GUARD] iteration 0: rollout out of range in ['critic_obs']; maxima {'obs': 2.634, 'critic_obs': 110000000.0, 'action': 3.539, 'reward': 1.741}; 1 robots beyond 1e+04, top robots [(2, 110000000.0), (0, 3.021), (1, 2.777), (4, 2.008), (3, 1.799)]; first step ou
+action_patched_params_unchanged True
+action_patched_loss_keys ['entropy', 'surrogate_loss', 'total_loss', 'value_loss']
+action_patched_skipped_stat 1.0
+action_storage_cleared 1
+action_log [GUARD] iteration 0: rollout out of range in ['action']; maxima {'obs': 2.634, 'critic_obs': 3.021, 'action': 200000.0, 'reward': 1.741}; 1 robots beyond 1e+03, top robots [(4, 200000.0), (2, 3.539), (1, 2.131), (0, 1.675), (3, 1.617)]; first step out of range
+reward_nan_patched_params_unchanged True
+reward_nan_patched_loss_keys ['entropy', 'surrogate_loss', 'total_loss', 'value_loss']
+reward_nan_patched_skipped_stat 1.0
+reward_nan_storage_cleared 1
+reward_nan_log [GUARD] iteration 0: rollout out of range in ['reward']; maxima {'obs': 2.634, 'critic_obs': 3.021, 'action': 3.539, 'reward': nan}; 1 robots beyond 1e+04, top robots [(1, 3e+38), (3, 1.741), (0, 1.448), (2, 1.411), (4, 1.012)]; first step out of range for rob
+three_in_a_row ['skip', 'skip', 'raised: [GUARD] update skipped in 3 iterations in a row (rollout out of range)']
+streak_reset_by_normal ['skip', 'skip', 'ok', 'skip', 'skip']
+minibatch_guard_equals_orig_without_bad True
+wasabi_normal_losses_identical True
+wasabi_normal_params_identical True
+wasabi_normal_calls ({'amp': 4, 'step': 4, 'clear': 1}, {'amp': 4, 'step': 4, 'clear': 1})
+wasabi_skip_calls {'amp': 0, 'step': 0, 'clear': 1}
+wasabi_skip_keys ['amp_total_loss', 'discriminator_gradient_penalty', 'discriminator_loss', 'entropy', 'surrogate_loss', 'total_loss', 'value_loss']
+PREFLIGHT PASS

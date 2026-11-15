@@ -1,64 +1,68 @@
 {
-  "_help": "Edited by the coordinator; re-read every cycle. See eval/autoscore/README.md. Export ids are track:name, the name as on the node (pair_s2_v3_007750, r7_003800, x2_parkour_v4_6000).",
-  "poll_minutes": 10,
-  "max_cores": 3,
-  "trials": 50,
-  "route_min_leg": 45,
-  "route_seeds": [
-    1000,
-    1050,
-    1100,
-    1150
-  ],
-  "hiking_run_params": "eval/data/handover/hiking_v4_4750/run_params",
-  "hiking_port": "eval/autoscore/port",
-  "tracks": {
-    "acp": {
-      "enabled": true,
-      "policy": "newest",
-      "pattern": "pair_*",
-      "skip": [],
-      "priority": []
-    },
-    "ssr": {
-      "enabled": true,
-      "policy": "newest",
-      "pattern": "*",
-      "skip": [
-        "ckpts",
-        "e1_last",
-        "e2_last",
-        "e3_last",
-        "r6b_001600",
-        "r6b_002000",
-        "r7_000500",
-        "r7_002000",
-        "r7_002250",
-        "r7_003550",
-        "r7_003800"
-      ],
-      "priority": [
-        "r7_v14_p250"
-      ]
-    },
-    "hiking": {
-      "enabled": true,
-      "policy": "newest",
-      "pattern": "x2_parkour_v4_*",
-      "skip": [],
-      "priority": []
-    }
+ "_help": "Edited by the coordinator; re-read every cycle. See eval/autoscore/README.md. Export ids are track:name, the name as on the node (pair_s2_v3_007750, r7_003800, x2_parkour_v4_6000).",
+ "poll_minutes": 10,
+ "max_cores": 8,
+ "trials": 50,
+ "train_trials": 20,
+ "train_job_size": 6,
+ "chunk_trials": 5,
+ "route_min_leg": 45,
+ "route_seeds": [
+  1000,
+  1050,
+  1100,
+  1150
+ ],
+ "hiking_run_params": "eval/data/handover/hiking_v4_4750/run_params",
+ "hiking_port": "eval/autoscore/port",
+ "tracks": {
+  "acp": {
+   "enabled": true,
+   "policy": "newest",
+   "pattern": "pair_*",
+   "skip": [],
+   "priority": []
   },
-  "export_options": {
-    "ssr:r7_v14_p250": {
-      "order": [
-        "flat",
-        "leg1",
-        "leg2",
-        "leg5",
-        "leg3",
-        "leg4"
-      ]
-    }
+  "ssr": {
+   "enabled": false,
+   "policy": "newest",
+   "pattern": "*",
+   "skip": [
+    "ckpts",
+    "e1_last",
+    "e2_last",
+    "e3_last",
+    "r6b_001600",
+    "r6b_002000",
+    "r7_000500",
+    "r7_002000",
+    "r7_002250",
+    "r7_003550",
+    "r7_003800"
+   ],
+   "priority": []
+  },
+  "hiking": {
+   "enabled": true,
+   "policy": "newest",
+   "pattern": "x2_parkour_v4_*",
+   "skip": [],
+   "priority": []
   }
+ },
+ "export_options": {
+  "ssr:r7_v14_p250": {
+   "order": [
+    "flat",
+    "leg1",
+    "leg2",
+    "leg5",
+    "leg3",
+    "leg4"
+   ]
+  }
+ },
+ "acp_legs_despite_gate": true,
+ "_help_train": "train_trials: trials per training-terrain course (eval/train_terrains.py TRAIN_SETS); train_job_size: courses per train job. The hold-out gate is information only since 2026-11-13 (acp_legs_despite_gate is no longer read).",
+ "score_every": 500
 }

@@ -53,6 +53,11 @@ HTML and scripts only fill elements marked `data-draw`; every figure carries `da
 - `apparatus_results.json`: one row per eval run: `id`, `date`, `track` (`ACP`, `SSR`, `Hiking`), `checkpoint`, `apparatus`
   (`ours` or `nist`), `simulator`, `trials`, `success_pct`, and optionally `door_pct`, `stepovers_pct`, `ramps_pct`, `stairs_pct`,
   `note`. The newest row per track and apparatus fills the bars on the cards and in the goal chart. It is empty now.
+- `train_terrain.json` (2026-11-13, not registered in `prepare.py` / `store.json` yet, not on the page): success per track,
+  checkpoint, terrain type and level on MuJoCo copies of each track's own training terrain (`eval/train_terrains.py`), with the
+  highest level passed (>= 80 %). Written by the automatic scorer after every export from `eval/autoscore/train_results.csv`;
+  at a refresh rebuild it with `python eval/autoscore/autoscore.py --build-train-dataset`. To show it, add it to `REQUIRED` in
+  `prepare.py` and to `store.json`, then the upload steps above.
 - `targets.json`: the 99% goal and the "about 25%" starting figure. Change the baseline row when the eval monitor re-measures it.
 - `g1_results.json`: the G1 reproduction against the paper (chart and table on the Eval tab).
 - `details.json`: what goes into each training. `origin_kind` is `paper` (left column), `papers` or `ours` (right column, "Added");

@@ -1,0 +1,1 @@
+2026-11-13T13:54:00Z stage-3 paper rules built and CPU-tested (state/acp.md 17k): runs/s3_build/s3_rules_test.json ALL PASS, regression.txt PASS (stage 2 bit-identical), s3_smoke_check.txt PASS, test_auto_stage3.txt ALL PASS

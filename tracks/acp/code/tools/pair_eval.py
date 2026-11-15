@@ -47,6 +47,8 @@ def main():
     clip = torch.zeros(N, dtype=torch.long)
     for s in range(nset):
         w = data.clip_w * (data.clip_set == s)
+        if float(w.sum()) <= 0:  # a set with training weight 0 (e.g. the replaced pico 2x2 set in data 2h): sample its clips uniformly
+            w = (data.clip_set == s).float()
         clip[set_id == s] = torch.multinomial(w / w.sum(), per, replacement=True, generator=g)
     H = 5 * env.PROP
     report = dict(tracker=ckpt, tracker_iteration=int(ck["it"]), planner=pl_path, planner_arch=pk["arch"], planner_stats=pk["stats"],
@@ -62,6 +64,8 @@ def main():
             data.clip_w = torch.zeros_like(saved); data.clip_w[clip[i]] = 1.0
             env.reset(ids[i:i + 1])
         data.clip_w = saved
+        if hasattr(env, "fault_det"):           # simcheck detector: manual resets must clear it, or the jump from the last mode is a fault
+            env.fault_det.reset(ids)
         alive = torch.ones(N, dtype=torch.bool); failed = torch.zeros(N, dtype=torch.bool)
         final_d = torch.full((N,), 1e9)
         goal_xy = m.root_p[m.clip_end[clip]][:, :2]
@@ -82,7 +86,7 @@ def main():
                         rec["planner_occupancy"].append(occ[0].numpy()); rec["actor_input"].append(ao[0].numpy())
                 a = ac.actor(ac.an(ao))
                 if mode == "planner_contacts" and step < 50:
-                    rec["action"].append(a[0].numpy())
+                    rec["action"].append(a[0].clamp(-20.0, 20.0).numpy())   # record the action as env.step applies it (clamp +-20, 17i)
                 r, term, timeout, info = env.step(a)
                 failed |= alive & term
                 d = (env.qpos[:, :2] - goal_xy).norm(dim=-1)

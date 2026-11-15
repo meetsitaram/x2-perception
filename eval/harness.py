@@ -20,6 +20,10 @@ import pathlib
 import sys
 import time
 
+# Single-threaded maths (2026-11-13): a multi-threaded run changed 3 of the 10 regression trials (baseline adapter); the
+# eval sets one thread unless the caller chose otherwise. Must come before numpy / torch / onnxruntime are imported.
+for _k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+    os.environ.setdefault(_k, "1")
 import mujoco
 import numpy as np
 
@@ -48,6 +52,12 @@ END_RETRY = os.environ.get("END_RETRY", "1") == "1"   # coordinator 2026-11-12 1
 #                          station, counts once a continuous 1 s strict stand is reached at the last station (a correction
 #                          restarts the 1 s; limit: the time limit, or 45 s after the last waypoint), then 2 s upright.
 #                          Default on since 2026-11-12 12:06 UTC (END_RETRY=0 gives the earlier end stand).
+SHORT_R = 0.40           # m: final-station stop (user, 2026-11-13, docs/EVAL.md "Final-station stop"): a trial that is not a
+#                          strict success but ends (stalled / time limit / end stand never held) with every earlier waypoint
+#                          reached, every earlier station a strict stand, and its last END_STAND s a strict stand (feet load,
+#                          pelvis speed, height, heading if the station has a tolerance) within SHORT_R of the final station,
+#                          is a success flagged "stopped_short". headline = strict success or stopped short; strict = 0.2 m.
+#                          The outcome (reason) and the strict count are unchanged by this flag.
 TRAVEL_AFTER = 1.0       # s: "travel after a station": the pelvis path length in this time after the station counted
 TIME_LIMIT = 180.0       # s per trial (recommended value; the user has not confirmed it)
 STALL = 45.0             # s without reaching a new waypoint (and not holding at a station): the trial ends as "stalled"
@@ -174,6 +184,7 @@ class Trial:
         self.done_t = None
         self.disc_reason, self.strict_fail, self.stations, self.win, self.end_win = None, None, [], [], []
         self.end_breaks, self.end_ok_t = 0, None
+        self.short_run = 0.0                                # s of continuous strict stand within SHORT_R of the final station
         self.weight = float(m.body_mass.sum() * 9.81)
         self.push_done = []
         self.beam_cross = {b["name"]: [] for b in self.beams}      # times the pelvis path crossed each beam's centre line
@@ -307,6 +318,30 @@ class Trial:
         w = self.wps[min(self.wp, len(self.wps) - 1)]
         inside = math.hypot(w["x"] - d.qpos[0], w["y"] - d.qpos[1]) < RADIUS
         return (sum(self.load[b] for b in self.x.foot_ids) / self.weight, math.hypot(d.qvel[0], d.qvel[1]), inside)
+
+    def _short_ok(self):
+        """This control step is a strict stand within SHORT_R of the final station (final-station stop rule)."""
+        d, w = self.d, self.wps[-1]
+        if math.hypot(w["x"] - d.qpos[0], w["y"] - d.qpos[1]) >= SHORT_R:
+            return False
+        if abs(d.qpos[2] - self.ground(w["x"], w["y"]) - self.h0) >= Z_TOL:
+            return False
+        if w.get("heading_tol_deg") is not None and abs(X.wrap(math.radians(w["heading_deg"]) - X.yaw_of(d.qpos[3:7]))) >= math.radians(w["heading_tol_deg"]):
+            return False
+        smp = self._stand_sample()
+        return smp[0] >= STRICT_LOAD and smp[1] < STRICT_SPEED
+
+    def _stopped_short(self, reason):
+        """Final-station stop rule: True when a non-strict trial ended in a stable stand within SHORT_R of the final station."""
+        if not self.wps or self.wps[-1]["hold_s"] <= 0 or self.wp < len(self.wps) - 1:
+            return False
+        if not (reason == "stalled" or reason == "time limit" or reason.startswith("not a stand: end stand never held")):
+            return False
+        if self.strict_fail is not None and not self.strict_fail.startswith("end stand"):
+            return False                                       # an earlier station was not a strict stand
+        if any(not v for v in self.beam_cross.values()):
+            return False
+        return self.short_run >= END_STAND - 1e-9
 
     @staticmethod
     def _stand_bad(win):
@@ -527,7 +562,9 @@ class Trial:
             self._jlim()
             self._disturbance()
             self._travel()
-            end_retry = END_RETRY and STAND_RULE == "strict" and self.wps and self.wps[-1]["hold_s"] > 0
+            if not stand_only and not pre and self.wps and self.wps[-1]["hold_s"] > 0 and self.wp >= len(self.wps) - 1:
+                self.short_run = self.short_run + dt_c if self._short_ok() else 0.0
+            end_retry =END_RETRY and STAND_RULE == "strict" and self.wps and self.wps[-1]["hold_s"] > 0
             if self.done_t is not None and self.disc_reason is None and self.wps and self.wps[-1]["hold_s"] > 0:
                 smp = self._stand_sample()                     # the end stand, strict rule
                 if end_retry and (smp[0] < STRICT_LOAD or smp[1] >= STRICT_SPEED or not smp[2]):
@@ -674,6 +711,10 @@ class Trial:
             stand_rule=STAND_RULE, end_retry=bool(END_RETRY and STAND_RULE == "strict"), end_breaks=self.end_breaks, strict_success=bool(reason == "success" and self.strict_fail is None), strict_fail=self.strict_fail if (reason == "success" or reason.startswith("not a stand")) else None,
             stations=[dict(name=s["name"], t=s["t"], strict=s["strict"], why=s["why"], travel_1s=round(s["travel"], 3)) for s in self.stations])
         res["strict_clean"] = bool(res["strict_success"] and res["clean"])
+        res["stopped_short"] = bool(not res["strict_success"] and self._stopped_short(reason))
+        res["headline_success"] = bool(res["strict_success"] or res["stopped_short"])
+        if self.wps:
+            res["end_dist_m"] = round(float(math.hypot(self.wps[-1]["x"] - d.qpos[0], self.wps[-1]["y"] - d.qpos[1])), 3)
         res["flags"] = self._flags(reason)
         res["measure"] = MEASURE
         return res
@@ -698,6 +739,20 @@ def _count(xs):
     for v in xs:
         out[v] = out.get(v, 0) + 1
     return out
+
+
+def main_count(s):
+    """The headline success count of a summary (final-station stop rule, 2026-11-13): strict 0.2 m + stopped short; for a
+    summary written before that rule, its strict count; for a disc-only one, its successes."""
+    for k in ("headline_successes", "strict_successes", "successes"):
+        if s.get(k) is not None:
+            return s[k]
+    return 0
+
+
+def strict_count(s):
+    """The strict 0.2 m count of a summary (its successes when strict was not scored)."""
+    return s["strict_successes"] if s.get("strict_successes") is not None else s.get("successes", 0)
 
 
 def summarise(results, meta):
@@ -757,6 +812,10 @@ def summarise(results, meta):
                 strict_successes=len(strict) if have_strict else None, strict_success_rate=round(len(strict) / max(n, 1), 4) if have_strict else None,
                 strict_ci95=[round(slo, 4), round(shi, 4)] if have_strict else None,
                 strict_clean_successes=sum(bool(r.get("strict_clean")) for r in results) if have_strict else None,
+                headline_successes=(len(strict) + sum(bool(r.get("stopped_short")) for r in results)) if have_strict else None,
+                headline_ci95=[round(v, 4) for v in wilson(len(strict) + sum(bool(r.get("stopped_short")) for r in results), n)] if have_strict else None,
+                stopped_short=sum(bool(r.get("stopped_short")) for r in results),
+                final_station_rule="final-station stop (user 2026-11-13): headline = strict 0.2 m successes + stopped short (stable 1 s stand within %.2f m of the final station at the end)" % SHORT_R,
                 strict_fail_reasons=_count([_why_key(r["strict_fail"]) for r in results if r.get("strict_fail")]),
                 station_travel_1s=travel,
                 measure=(results[0].get("measure", "v1 (before 2026-11-12 evening): summed magnitudes") if results else MEASURE),
@@ -793,7 +852,8 @@ TRIAL_COLS = ["seed", "outcome", "strict_success", "strict_fail", "success", "cl
               "foot_side_all", "shin", "knee", "thigh", "arm", "trunk", "head", "start_dx", "start_dy", "start_dyaw_deg", "friction",
               "mass_scale", "torso_payload_kg", "final_x", "final_y", "final_pelvis_z", "station_travel_1s_m",
               "stop_nearest_box_m", "stop_nearest_raised_cell_m", "stop_course_edge_m", "stop_harness_cmd", "stop_adapter_cmd",
-              "flag_trapped_foot_s", "flag_trapped_foot_longest_s", "flag_limb_clamp_s", "flag_joint_limit_s", "flag_joint_limit_max_rad", "flag_ankle_roll_past_s"]
+              "flag_trapped_foot_s", "flag_trapped_foot_longest_s", "flag_limb_clamp_s", "flag_joint_limit_s", "flag_joint_limit_max_rad", "flag_ankle_roll_past_s",
+              "headline_success", "stopped_short", "end_dist_m"]
 EVENT_COLS = ["seed", "t_s", "dur_s", "kind", "side", "on", "class", "hit", "penalty", "peak_horizontal_N", "impulse_Ns", "peak_normal_N",
               "normal_z", "in_swing", "foot_speed", "pelvis_dv", "pelvis_dtilt_deg", "push_in_window", "x", "y", "z", "heading_to_waypoint", "section"]
 
@@ -819,7 +879,8 @@ def write_logs(out, results, wps):
                         " ".join("%s:%.2f%s" % (x_["name"].replace(" ", "_"), x_["travel_1s"], "" if x_["strict"] else "!") for x_ in r.get("stations", [])),
                         *[(r.get("stop") or {}).get(k, "") for k in ("nearest_box_m", "nearest_raised_cell_m", "course_edge_m")],
                         " ".join(map(str, (r.get("stop") or {}).get("harness_cmd") or [])), " ".join(map(str, (r.get("stop") or {}).get("adapter_cmd") or [])),
-                        *[(r.get("flags") or {}).get(k, "") for k in ("trapped_foot_s", "trapped_foot_longest_s", "limb_clamp_s", "joint_limit_s", "joint_limit_max_rad", "ankle_roll_past_s")]])
+                        *[(r.get("flags") or {}).get(k, "") for k in ("trapped_foot_s", "trapped_foot_longest_s", "limb_clamp_s", "joint_limit_s", "joint_limit_max_rad", "ankle_roll_past_s")],
+                        int(bool(r.get("headline_success"))) if "headline_success" in r else "", int(bool(r.get("stopped_short"))) if "stopped_short" in r else "", r.get("end_dist_m", "")])
     with open(out / "events.csv", "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(EVENT_COLS)
@@ -960,7 +1021,7 @@ def main():
                 plant=adapter.plant_name or "harness default vendor_20260823 (test fixture)",
                 protocol=a.protocol if not a.stand else "standing check (zero command)", seeds=[a.seed0, a.seed0 + a.trials - 1],
                 time_limit=a.seconds, sections=(app.sections if app else []),
-                definition=dict(radius=RADIUS, z_tol=Z_TOL, end_stand=END_STAND, stall=STALL, fall_h=FALL_H, fall_tilt=FALL_TILT,
+                definition=dict(radius=RADIUS, short_r=SHORT_R, z_tol=Z_TOL, end_stand=END_STAND, stall=STALL, fall_h=FALL_H, fall_tilt=FALL_TILT,
                                 off_course=OFF_COURSE, f_min=F_MIN, side_nz=SIDE_NZ, side_relief=SIDE_RELIEF, edge_range=EDGE_RANGE,
                                 hit_f=HIT_F, hit_j=HIT_J, scuff_p=SCUFF_P, hit_base=HIT_BASE, hit_j_w=HIT_J_W, hit_j_ref=HIT_J_REF, hit_d_w=HIT_D_W,
                                 hit_dv_ref=HIT_DV_REF, hit_tilt_ref=HIT_TILT_REF, hit_window=HIT_WINDOW, beam_near=BEAM_NEAR))
@@ -986,6 +1047,8 @@ def main():
     print("%s on %s: success %d / %d (%.1f %%, 95 %% CI %.1f-%.1f %%); clean success %d / %d (%.1f %%); mean stumble penalty %.2f; side hits per trial %.2f; outcomes %s; renders %s" % (
         adapter.name, a.apparatus, s["successes"], s["trials"], 100 * s["success_rate"], 100 * s["ci95"][0], 100 * s["ci95"][1],
         s["clean_successes"], s["trials"], 100 * s["clean_success_rate"], s["mean_stumble_penalty"], s["side_hits"]["per_trial"], s["outcomes"], s["renders"]))
+    if s.get("strict_successes") is not None:
+        print("final-station stop: headline %d / %d (strict 0.2 m %d + stopped short %d)" % (s["headline_successes"], s["trials"], s["strict_successes"], s["stopped_short"]))
 
 
 if __name__ == "__main__":

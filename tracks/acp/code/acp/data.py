@@ -83,6 +83,23 @@ def load_sets(cfg_path: str):
                 set_of[nm] = si
         if dropped:
             print(f"[data] {s['pkl']}: {dropped} of {len(data)} clips left out by the quality filters", flush=True)
+    if cfg.get("goal_tiles"):                  # stage 3: goal-reaching tiles as short standing clips (acp/goals.py); weight 0 in the
+        g = cfg["goal_tiles"]                  # reference sampling, the goal environments draw them by family and level
+        gt = json.load(open(g["file"] if os.path.isabs(g["file"]) else os.path.join(d, g["file"])))
+        si = len(cfg["sets"])
+        cfg["sets"] = cfg["sets"] + [dict(pkl="goal_tiles.pkl", props="", weight=0.0, goal=True)]
+        q0 = np.asarray(gt["default_q"], dtype=np.float32)
+        for t in gt["tiles"]:
+            x, y, z, yaw = t["spawn"]
+            nm = f"s{si}/{t['name']}"
+            T = 3
+            clips[nm] = dict(root_trans_offset=np.tile(np.array([x, y, z + gt["stand_root_h"]], np.float32), (T, 1)),
+                             root_rot=np.tile(np.array([0.0, 0.0, np.sin(yaw / 2), np.cos(yaw / 2)], np.float32), (T, 1)),
+                             dof=np.tile(q0, (T, 1)), fps=50.0)
+            props[nm] = t["boxes"]
+            set_of[nm] = si
+        cfg["_goal_tiles"] = gt
+        print(f"[data] goal tiles: {len(gt['tiles'])} from {g['file']}", flush=True)
     return clips, props, set_of, cfg
 
 
@@ -114,6 +131,7 @@ class Dataset:
         self.set_names = [s["pkl"].replace(".pkl", "") for s in cfg["sets"]]
         self.grounded = self._ground([si for si, s in enumerate(cfg["sets"]) if s.get("ground_stance")])
         self.armfix = self._armfix(cfg, os.path.dirname(os.path.abspath(cfg_path)))
+        self._goals(cfg)
         if cache and os.path.exists(cache):
             lab = torch.load(cache, map_location=dev)
             assert lab["contact"].shape[0] == m.num_frames, "label cache does not match the clip sets"
@@ -133,6 +151,48 @@ class Dataset:
         off = mv3(Rb, self.point)
         return P + off, V + torch.cross(W, off, dim=-1), Rb, P
 
+    def _goals(self, cfg):
+        """Stage-3 goal tiles per clip: is_goal (C,), route waypoints (C, K, 5: x, y, floor z, heading, station), count (C,),
+        v_max (C,), level (C,), family (C,); pools[f][l] = clip ids of family f at level l (for the goal environments)."""
+        m, dev = self.motion, self.device
+        C = len(m.names)
+        self.is_goal = torch.zeros(C, dtype=torch.bool, device=dev)
+        gt = cfg.get("_goal_tiles")
+        self.goal_families = list(gt["families"]) if gt else []
+        if not gt:
+            return
+        by = {f"s{len(cfg['sets']) - 1}/{t['name']}": t for t in gt["tiles"]}
+        K = max(len(t["route"]) for t in gt["tiles"])
+        self.goal_wp = torch.zeros(C, K, 5, device=dev)
+        self.goal_n = torch.zeros(C, dtype=torch.long, device=dev)
+        self.goal_vmax = torch.full((C,), 2.0, device=dev)
+        self.goal_level = torch.full((C,), -1, dtype=torch.long, device=dev)
+        self.goal_family = torch.full((C,), -1, dtype=torch.long, device=dev)
+        self.stand_root_h = float(gt["stand_root_h"])
+        pools = [[[] for _ in range(10)] for _ in self.goal_families]
+        for c, n in enumerate(m.names):
+            t = by.get(n)
+            if t is None:
+                continue
+            self.is_goal[c] = True
+            r = torch.tensor(t["route"], device=dev, dtype=torch.float32)
+            self.goal_wp[c, :len(r)] = r
+            self.goal_wp[c, len(r):] = r[-1]
+            self.goal_n[c] = len(r)
+            self.goal_vmax[c] = float(t["v_max"])
+            self.goal_level[c] = int(t["level"])
+            f = self.goal_families.index(t["family"])
+            self.goal_family[c] = f
+            pools[f][int(t["level"])].append(c)
+        P = max(len(p) for fam in pools for p in fam)
+        self.goal_pool = torch.zeros(len(pools), 10, P, dtype=torch.long, device=dev)
+        self.goal_pool_n = torch.zeros(len(pools), 10, dtype=torch.long, device=dev)
+        for f, fam in enumerate(pools):
+            for l, p in enumerate(fam):
+                assert p, f"no goal tile for family {self.goal_families[f]} level {l}"
+                self.goal_pool[f, l, :len(p)] = torch.tensor(p, device=dev)
+                self.goal_pool_n[f, l] = len(p)
+
     def _armfix(self, cfg, cfg_dir):
         """Arm clearance data fix (cfg key "armfix": file from tools/arm_clear.py): per-frame offsets of shoulder roll and
         elbow so each arm clears its thigh and the torso by >= 1 cm with the training collision geometry; joint velocities
@@ -141,16 +201,17 @@ class Dataset:
             return None
         fx = torch.load(os.path.join(cfg_dir, cfg["armfix"]), map_location="cpu")
         m = self.motion
-        assert fx["num_frames"] == m.num_frames and list(fx["names"]) == list(m.names), "armfix file does not match the clip sets"
+        nc, F0 = len(fx["names"]), int(fx["num_frames"])          # the file covers the reference clips; goal tiles (stage 3) come after
+        assert list(m.names[:nc]) == list(fx["names"]) and int(m.clip_end[nc - 1]) + 1 == F0, "armfix file does not match the clip sets"
         cols = [self.x2.joint_names.index(n) for n in fx["joints"]]
         dq = fx["dq"].to(self.device, m.q.dtype)
-        m.q[:, cols] += dq
+        m.q[:F0, cols] += dq
         vel = torch.zeros_like(dq)
         vel[1:-1] = (dq[2:] - dq[:-2]) / (2 * 0.02)
-        s, e = m.clip_start, m.clip_end
+        s, e = m.clip_start[:nc], m.clip_end[:nc]
         vel[s] = (dq[torch.minimum(s + 1, e)] - dq[s]) / 0.02
         vel[e] = (dq[e] - dq[torch.maximum(e - 1, s)]) / 0.02
-        m.qd[:, cols] += vel
+        m.qd[:F0, cols] += vel
         print(f"[data] armfix: {cfg['armfix']} applied ({int((dq.abs().amax(-1) > 1e-4).sum())} of {m.num_frames} frames changed, "
               f"largest {float(dq.abs().max()):.2f} rad)", flush=True)
         return cfg["armfix"]

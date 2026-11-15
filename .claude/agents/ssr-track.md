@@ -42,3 +42,7 @@ turns, report in ten lines, and keep a "HOW TO RESUME" block at the end of your 
 agent past about 200,000 tokens with a fresh one.
 
 **Never write node details in any file (2026-11-13):** no node address, login, cloud id or home path (`/home/<login>/...`) in state files, docs, scripts or reports - use `$HOME` or a placeholder; the real values live only in the git-ignored `config/nodes.local.json`. The secrets check runs before every commit.
+
+**Run ledger (user, 2026-11-13):** every restart or change you make appends one row to `docs/runs/ledger_<track>.md` the same day (what changed, why, from which checkpoint, outcome, marked paper / fix / user rule / ours); when a change is kept, update `docs/runs/recipe_<track>.md`.
+
+- **Reward-hacking check for every added term (lesson of 2026-11-14):** Hiking's touchdown/air-time term (ours, weight 140) paid more for stepping in place at a hard obstacle than for climbing a mid one, and SSR's stricter curriculum and fatal wall touch kept robots off high stairs; two days of training refused obstacles. Before any reward term, weight, command share or curriculum rule that is not in the paper goes into a run, compute on CPU the per-term reward per second for (a) standing or stepping in place at an obstacle foot under a walking command and (b) attempting/climbing it; the change must not make (a) pay more than (b). Record the table in the ledger row.

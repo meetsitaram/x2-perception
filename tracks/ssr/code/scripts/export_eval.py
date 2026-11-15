@@ -91,6 +91,12 @@ def main():
     # ---- one robot in the training simulator (no training noise / delay / pushes: train=False)
     env = SSREnv(1, "cpu", train=False, tiles=True, camera=a.camera)
     env.flat_only = True
+    # Record over open flat ground (fix 2026-11-13): in the v14 tile layout the flat level-0 tile's neighbour (flat level 1) carries
+    # 1.3 m side-obstacle walls in the vision raster within the 3 m chest_rs range; the hand-over check replays the record on an
+    # open plane, so those wall pixels failed the depth tolerance (v16 p300, v17 11500). Physics raster unchanged (robot stays on
+    # the z=0 flat tile); only what the camera sees is flattened, so the record is exactly the documented 'flat tile' case.
+    env.hmap.vz = torch.zeros_like(env.hmap.vz)
+    env.obst = None
     ids = torch.arange(1)
     env.type[:], env.level[:] = T.FLAT, 0
     env.reset(ids)
@@ -177,7 +183,8 @@ def main():
                        camera_frame="x forward, y left, z up; mount = body R_body @ Rz(yaw) @ Ry(pitch) @ Rx(roll); rays in obs_check camera_rays_cam_frame",
                        pixel_layout="row 0 = image top, column 0 = image left (robot's left), pinhole, pixel centres",
                        value="z = ray length x ray[0] (depth along the optical axis); (clip(z, %.2f, dmax) - %.2f) / (dmax - %.2f)" % (DEPTH_MIN, DEPTH_MIN, DEPTH_MIN),
-                       near=DEPTH_MIN, far=float(cam.get("dmax", 2.0)), ray_march_range=float(cam.get("dmax", 2.0)) / 0.4,
+                       near=DEPTH_MIN, far=float(cam.get("dmax", 2.0)), ray_march_range=float(cam.get("dmax", 2.0)) / 0.4, ray_march_iters=int(cam.get("march", 26)), ray_march_step_cap=0.10, ray_tmin=0.08, ray_hit_range=0.08 + 0.10 * int(cam.get("march", 26)),   # training march reaches at most tmin + iters * step_cap; farther hits read as no hit (t = ray_march_range) (fix 2026-11-13)
+                      
                        geometry="ray march on the terrain height field including side obstacles (vision raster), plus self-occlusion by limb spheres (x2.OCCLUDERS); robot meshes are not ray cast",
                        train_noise="self-occluded pixels + N(0, 0.1 m); mount randomised per episode pos +-%s m, rpy +-%s deg, fov +-1 deg" % (list(cam.get("dr_pos", (0.01,) * 3)), list(cam.get("dr_rpy_deg", (1.0,) * 3))),
                        stacking="none (one frame per control step; memory is the GRU)", delay="none", filtering="none"),

@@ -9,9 +9,24 @@ import os
 import numpy as np
 import torch
 
-# The route's own terrain categories (the paper's were slope, stairs, discrete, gap, platform). One discriminator and one gate expert each.
-TYPES = ("ramp", "stairs", "beam", "platform", "flat")
-SLOPE, STAIRS, BEAM, PLATFORM, FLAT = range(5)
+import os as _os_terrain
+# PAPER (train --paper_terrain, env X2_TERRAIN_PAPER=1; v15, user rule 2026-11-13 "SSR back to the paper"): the paper's five terrain
+# categories (A.1) with gap -> beam (the apparatus has no gaps). One discriminator and one gate expert each; no flat type (Table 11
+# folds flat walking into every set). Index 4 is "discrete" (a resumed v14 checkpoint's flat robots start discrete at level 0).
+# Column FREE (= 5) is an open flat area, not a type: robots that cleared the top level walk there with omnidirectional commands
+# (A.2), scored by the discriminator of the terrain they came from.
+# Default (v14): the route's own categories ramp / stairs / beam / platform / flat; flat (index 4) is also the omni-command column.
+PAPER = _os_terrain.environ.get("X2_TERRAIN_PAPER", "") == "1"
+if PAPER:
+    TYPES = ("ramp", "stairs", "beam", "platform", "discrete")
+    SLOPE, STAIRS, BEAM, PLATFORM, DISCRETE = range(5)
+    FREE = FLAT = 5              # raster column of the open area (FLAT kept as its old name for the free-robot placement)
+    NCOL = len(TYPES) + 1
+else:
+    TYPES = ("ramp", "stairs", "beam", "platform", "flat")
+    SLOPE, STAIRS, BEAM, PLATFORM, FLAT = range(5)
+    DISCRETE = FREE = FLAT
+    NCOL = len(TYPES)
 NLEVEL, TILE_X, TILE_Y, RES, BORDER = 20, 8.0, 4.0, 0.025, 2.0
 FLAT_RUN = 1.25                  # flat approach at the start of each tile (and 0.75 m flat at the end)
 
@@ -63,6 +78,18 @@ def _flat(z, s, rng):
     pass
 
 
+def _discrete(z, s, rng):
+    """Paper A.1 / Table 3 discrete obstacles: random rectangular blocks, height U(0.05, 0.05 + 0.15 s) (0.05-0.2 m at the top level),
+    0.3-0.8 m sides, between the flat approach and the 0.75 m flat end."""
+    nx, ny = z.shape
+    hmax = 0.05 + 0.15 * s
+    for _ in range(int(14 + 16 * s)):
+        w, l = rng.uniform(0.3, 0.8, 2)
+        x0 = rng.uniform(FLAT_RUN, TILE_X - 0.75 - w)
+        y0 = rng.uniform(0.2, TILE_Y - 0.2 - l)
+        z[_i(x0):_i(x0 + w), _i(y0):_i(y0 + l)] = rng.uniform(0.05, max(hmax, 0.051))
+
+
 def _platform(z, s, rng):
     H, L, x = 0.05 + 0.35 * s, 1.3, FLAT_RUN + 0.3
     while x + L < TILE_X - 0.75:
@@ -70,7 +97,7 @@ def _platform(z, s, rng):
         x += L + 1.0
 
 
-BUILD = (_slope, _stairs, _beam, _platform, _flat)
+BUILD = (_slope, _stairs, _beam, _platform, _discrete, _flat) if PAPER else (_slope, _stairs, _beam, _platform, _flat)   # paper: the last is the FREE column
 
 
 WALL_H = 1.3
@@ -110,16 +137,19 @@ def _side_obstacles(t, s, rng, p_kind=(0.3, 0.3, 0.2, 0.2)):
 def generate(seed: int = 0) -> dict:
     rng = np.random.default_rng(seed)
     bn, tx, ty = _i(BORDER), _i(TILE_X), _i(TILE_Y)
-    nx, ny = bn * 2 + tx * len(TYPES) + 1, bn * 2 + ty * NLEVEL + 1
+    nx, ny = bn * 2 + tx * NCOL + 1, bn * 2 + ty * NLEVEL + 1
     z = np.zeros((nx, ny), np.float32)
     v = np.zeros((nx, ny), np.float32)
-    lane = np.full((len(TYPES), NLEVEL), NO_WALL, np.float32)
+    lane = np.full((NCOL, NLEVEL), NO_WALL, np.float32)
     for c, build in enumerate(BUILD):
         for r in range(NLEVEL):
             t = np.zeros((tx, ty), np.float32)
             build(t, r / (NLEVEL - 1), rng)
-            kinds = (0.0, 0.4, 0.25, 0.35) if c == FLAT else (0.3, 0.3, 0.2, 0.2)
-            o, h = _side_obstacles(t, r / (NLEVEL - 1), rng, kinds) if not (c == FLAT and r == 0) else (np.zeros(t.shape, bool), NO_WALL)  # the omni-command tile stays open
+            if PAPER:
+                o, h = _side_obstacles(t, r / (NLEVEL - 1), rng) if c != FREE else (np.zeros(t.shape, bool), NO_WALL)   # the free area stays open
+            else:
+                kinds = (0.0, 0.4, 0.25, 0.35) if c == FLAT else (0.3, 0.3, 0.2, 0.2)
+                o, h = _side_obstacles(t, r / (NLEVEL - 1), rng, kinds) if not (c == FLAT and r == 0) else (np.zeros(t.shape, bool), NO_WALL)  # the omni-command tile stays open
             z[bn + c * tx: bn + (c + 1) * tx, bn + r * ty: bn + (r + 1) * ty] = t
             v[bn + c * tx: bn + (c + 1) * tx, bn + r * ty: bn + (r + 1) * ty] = t + WALL_H * o
             lane[c, r] = h
@@ -246,7 +276,7 @@ def add_extended(r: dict, types=("tight_spots", "log_corridors", "homes", "stree
     """Append extended_v1 tiles to a raster made by generate(): see scripts/patch_ext.py. Returns r with r["ext"] metadata."""
     import json
     z, v = r["z"], r["vision"]["z"]
-    x_base = len(TYPES) * TILE_X + gap                                # local x where the extended block starts (raster x0 = -BORDER)
+    x_base = NCOL * TILE_X + gap                                # local x where the extended block starts (raster x0 = -BORDER)
     ncol = len(types) * variants
     nx_new = _i(BORDER) * 2 + _i(x_base + ncol * 8.0) + 1
     if nx_new > z.shape[0]:

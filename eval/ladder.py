@@ -15,6 +15,7 @@ import json
 import math
 import os
 import pathlib
+import shutil
 import sys
 import time
 
@@ -346,7 +347,10 @@ def _step1():
 
 
 STEPS = {1: _step1(), 2: STEP2, 10: STEP1_V0} if __name__ != "__main__" else {1: {}, 2: STEP2, 10: STEP1_V0}
-STEP_DIR = {1: "step1", 2: "step2", 10: "step1_v0"}
+STEP_DIR = {1: "step1", 2: "step2", 10: "step1_v0", 20: "train"}
+if __name__ != "__main__":
+    import train_terrains as _TT        # step 20: copies of each track's own training terrain (review renders, 2026-11-13)
+    STEPS[20] = _TT.TESTS
 SKILLS = ("log", "wedge", "stairs_up", "stairs_down", "corridor")
 PASS = 45                            # of 50: a skill level is passed
 
@@ -362,7 +366,46 @@ def load_course(name):
     raise KeyError(name)
 
 
-def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label, seed0=1000):
+def chunk_seeds(chunk, chunk_size, trials, seed0):
+    """Seeds of chunk k (0-based): seed0 + k*size .. seed0 + min(trials, (k+1)*size) - 1. The same seeds as one unchunked run."""
+    return [seed0 + i for i in range(chunk * chunk_size, min(trials, (chunk + 1) * chunk_size))]
+
+
+def merge_chunks(d, results):
+    """Add the trials of d/chunks/c*.json (a chunked run) to results, one per seed (automatic scorer, 2026-11-14)."""
+    have = {r["seed"] for r in results}
+    for f in sorted((d / "chunks").glob("c*.json")) if (d / "chunks").exists() else []:
+        for r in json.load(open(f)):
+            if r["seed"] not in have:
+                results.append(r); have.add(r["seed"])
+    return results
+
+
+def run_chunk(d, chunk, chunk_size, trials, seed0, have, one):
+    """Run the seeds of one chunk that are not in `have`; d/chunks/c<k>.json is rewritten after every trial, so a killed or
+    wall-limited chunk resumes at the next seed. Exit 3 (run again) at the wall limit. No summary: the unchunked command merges."""
+    (d / "chunks").mkdir(parents=True, exist_ok=True)
+    f = d / "chunks" / ("c%d.json" % chunk)
+    res = json.load(open(f)) if f.exists() else []
+    got = have | {r["seed"] for r in res}
+    for s in chunk_seeds(chunk, chunk_size, trials, seed0):
+        if s in got:
+            continue
+        if time.time() - T0 > WALL:
+            print("wall limit reached in %s chunk %d after %d trials; run the same command again" % (d.name, chunk, len(res)), flush=True)
+            sys.exit(3)
+        r = one(s)
+        if r is None:
+            continue
+        res.append(r)
+        json.dump(res, open(str(f) + ".tmp", "w")); os.replace(str(f) + ".tmp", f)
+    if not f.exists():
+        json.dump(res, open(f, "w"))
+    open(d / "chunks" / ("c%d.done" % chunk), "w").write("%d trials" % len(res))   # the scorer's resume marker (seeds without a clean spawn are skipped)
+    print("%s chunk %d done: seeds %s, %d trials in the chunk file" % (d.name, chunk, chunk_seeds(chunk, chunk_size, trials, seed0)[:1], len(res)), flush=True)
+
+
+def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label, seed0=1000, chunk=None, chunk_size=5):
     import mujoco
     import harness as Hn
     import x2 as X
@@ -385,7 +428,12 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
         part = d / "partial.json"
         if part.exists():
             results = json.load(open(part))
+        results = merge_chunks(d, results)            # chunk files of a chunked run (automatic scorer, 2026-11-14)
         have = {r["seed"] for r in results}
+        if chunk is not None:                         # one chunk of the seeds: its own file, saved after every trial, no summary
+            run_chunk(d, chunk, chunk_size, trials, seed0, have,
+                      lambda s: (tr.run(s, protocol, TIME_LIMIT_STEP2 if step == 2 else TIME_LIMIT, record=True), tr.save_traj(d / "traj" / ("%d.npz" % s)))[0])
+            continue
         for i in range(trials):
             if seed0 + i in have:
                 continue
@@ -411,13 +459,15 @@ def run(adapter_name, checkpoint, step, tests, trials, out, protocol_name, label
         json.dump(results, open(d / "results.json", "w"), indent=1)
         json.dump(s, open(d / "summary.json", "w"), indent=1)
         Hn.write_logs(d, results, course.waypoints)
-        row = dict(test=test, trials=s["trials"], rule=s.get("stand_rule", "disc"), strict=s.get("strict_successes"), success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
+        if (d / "chunks").exists():
+            shutil.rmtree(d / "chunks", ignore_errors=True)
+        row = dict(test=test, trials=s["trials"], rule=s.get("stand_rule", "disc"), strict=s.get("strict_successes"), headline=s.get("headline_successes"), stopped_short=s.get("stopped_short"), success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
                    side_hits_per_trial=s["side_hits"]["per_trial"], mean_waypoints=s["mean_waypoints"], of=len(course.waypoints), outcomes=s["outcomes"],
                    time_median=(s["time_success"] or {}).get("median"), length_m=round(float(np.linalg.norm(np.diff(course.path(), axis=0), axis=1).sum()), 1),
                    tile=course.route.get("tile"), wall_s=round(time.time() - t0))
         table.append(row)
-        print("%-20s strict %s, %s-rule run %3d / %d success (%.0f-%.0f %%), clean %3d, penalty %.2f, waypoints %.1f / %d, %s, %d s" % (
-            test, row["strict"], row["rule"], row["success"], row["trials"], 100 * row["ci95"][0], 100 * row["ci95"][1], row["clean"], row["mean_penalty"], row["mean_waypoints"], row["of"],
+        print("%-20s headline %s (stopped short %s), strict %s, %s-rule run %3d / %d success (%.0f-%.0f %%), clean %3d, penalty %.2f, waypoints %.1f / %d, %s, %d s" % (
+            test, row["headline"], row["stopped_short"], row["strict"], row["rule"], row["success"], row["trials"], 100 * row["ci95"][0], 100 * row["ci95"][1], row["clean"], row["mean_penalty"], row["mean_waypoints"], row["of"],
             row["outcomes"], row["wall_s"]), flush=True)
     return table
 
@@ -432,7 +482,7 @@ def collect(out, step):
         s = json.load(open(f))
         head = head or s
         course = STEPS[step][test]()
-        rows.append(dict(test=test, trials=s["trials"], rule=s.get("stand_rule", "disc"), strict=s.get("strict_successes"), success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
+        rows.append(dict(test=test, trials=s["trials"], rule=s.get("stand_rule", "disc"), strict=s.get("strict_successes"), headline=s.get("headline_successes"), stopped_short=s.get("stopped_short"), success=s["successes"], ci95=s["ci95"], clean=s["clean_successes"], mean_penalty=s["mean_stumble_penalty"],
                          side_hits_per_trial=s["side_hits"]["per_trial"], mean_waypoints=s["mean_waypoints"], of=len(course.waypoints), outcomes=s["outcomes"],
                          time_median=(s["time_success"] or {}).get("median"), length_m=round(float(np.linalg.norm(np.diff(course.path(), axis=0), axis=1).sum()), 1),
                          tile=s.get("tile"), renders=s.get("renders"), defect=STEP2_DEFECT.get(test) if step == 2 and "floor" not in str(s.get("scan")) else None, scan=s.get("scan", "walk raster only")))
@@ -443,21 +493,21 @@ def collect(out, step):
                 label="%s | %s" % (head.get("label") or head["adapter"], head.get("simulator", "MuJoCo (CPU)")))
     json.dump(dict(label=head.get("label"), plant=head.get("plant"), step=step, on="the training map (not an apparatus result)", adapter=head["adapter"], checkpoint=head["checkpoint"],
                    protocol=head["protocol"], rows=rows), open(out / (STEP_DIR[step] + ".json"), "w"), indent=1)
-    lines = ["STRICT = strict stand (main number, coordinator 2026-11-12); the next column is the run's own rule: 'strict' runs (stations advance only on a strict 1 s stand) or 'disc' runs (old rule, stations advance on 1 s in the disc; STRICT there is checked on the window that counted, a lower bound)",
+    lines = ["HEADLINE = strict 0.2 m + stopped short (stable stand within 0.4 m of the final station; final-station stop rule, user 2026-11-13; main number; '-' = scored before that rule); STRICT = strict stand at 0.2 m (coordinator 2026-11-12); the next column is the run's own rule: 'strict' runs (stations advance only on a strict 1 s stand) or 'disc' runs (old rule, stations advance on 1 s in the disc; STRICT there is checked on the window that counted, a lower bound)",
              "%s | ladder step %d, BELOW THE APPARATUS: skill courses and training-map tiles (not an apparatus result) | %s | plant %s | protocol %s" % (
         head.get("label") or head["adapter"], step, head["checkpoint"], head.get("plant"), head["protocol"]),
-             "%-22s %-9s %-14s %-9s %-12s %-6s %-8s %-10s %-7s %s" % ("test", "STRICT", "run's own rule", "rate", "95 % interval", "clean", "penalty", "waypoints", "time", "outcomes / tile")]
+             "%-22s %-9s %-9s %-14s %-9s %-12s %-6s %-8s %-10s %-7s %s" % ("test", "HEADLINE", "STRICT", "run's own rule", "rate", "95 % interval", "clean", "penalty", "waypoints", "time", "outcomes / tile")]
     for r in rows:
-        lines.append("%-22s %-9s %-6s %3d / %-4d %5.0f %%   %3.0f - %3.0f %%   %3d    %6.2f   %4.1f / %-3d %5s   %s%s" % (
-            r["test"], ("%d / %d" % (r["strict"], r["trials"])) if r.get("strict") is not None else "n/s", r.get("rule", "disc"), r["success"], r["trials"], 100.0 * r["success"] / r["trials"], 100 * r["ci95"][0], 100 * r["ci95"][1], r["clean"], r["mean_penalty"],
+        lines.append("%-22s %-9s %-9s %-6s %3d / %-4d %5.0f %%   %3.0f - %3.0f %%   %3d    %6.2f   %4.1f / %-3d %5s   %s%s" % (
+            r["test"], ("%d / %d" % (r["headline"], r["trials"])) if r.get("headline") is not None else "-", ("%d / %d" % (r["strict"], r["trials"])) if r.get("strict") is not None else "n/s", r.get("rule", "disc"), r["success"], r["trials"], 100.0 * r["success"] / r["trials"], 100 * r["ci95"][0], 100 * r["ci95"][1], r["clean"], r["mean_penalty"],
             r["mean_waypoints"], r["of"], ("%.0f s" % r["time_median"]) if r["time_median"] else "-",
             ", ".join("%s %d" % kv for kv in sorted(r["outcomes"].items(), key=lambda kv: -kv[1])), (" | " + r["tile"]) if r["tile"] else ""))
         if r.get("defect"):
             lines.append("    ^ %s" % r["defect"])
     if step == 1:                                          # the skill profile: highest level passed per skill
         by = {r["test"]: r for r in rows}
-        main = lambda r: r["strict"] if r.get("strict") is not None else r["success"]   # noqa: E731  (strict stand where scored)
-        rule = "strict stand" if all(r.get("strict") is not None for r in rows) else "disc only where strict was not scored"
+        main = lambda r: r["headline"] if r.get("headline") is not None else (r["strict"] if r.get("strict") is not None else r["success"])   # noqa: E731  (headline = strict + stopped short, where scored)
+        rule = "headline (strict 0.2 m + stopped short)" if all(r.get("headline") is not None for r in rows) else "strict stand" if all(r.get("strict") is not None for r in rows) else "disc only where strict was not scored"
         flat_ok = all(by.get(t) and main(by[t]) == by[t]["trials"] for t in FLAT_GATE)
         lines += ["", "FLAT GATE (50 of 50 on %s; %s): %s" % (", ".join(FLAT_GATE), rule, "PASSED" if flat_ok else "NOT PASSED"), "",
                   "SKILL PROFILE (a level is passed at %d of 50; highest level passed, with any lower level that failed)" % PASS,
@@ -500,6 +550,9 @@ def main():
     ap.add_argument("--protocol", choices=["nominal", "randomised"], default="nominal")
     ap.add_argument("--out", required=True)
     ap.add_argument("--label", default=None)
+    ap.add_argument("--chunk", type=int, default=None, help="run only chunk k (0-based) of the seeds into <test>/chunks/c<k>.json; "
+                    "the same command without --chunk merges the chunks into summary.json (automatic scorer, 2026-11-14)")
+    ap.add_argument("--chunk-size", type=int, default=5)
     a = ap.parse_args()
     import memcap
     memcap.guard(cap_gb=6, need_free_gb=12, low_priority=True)
@@ -511,7 +564,12 @@ def main():
             if rg is not None:
                 rgf.parent.mkdir(parents=True, exist_ok=True)
                 json.dump(rg, open(rgf, "w"), indent=1)
-        run(a.adapter, a.checkpoint, a.step, a.tests or list(STEPS[a.step]), a.trials, pathlib.Path(a.out), a.protocol, a.label)
+        run(a.adapter, a.checkpoint, a.step, a.tests or list(STEPS[a.step]), a.trials, pathlib.Path(a.out), a.protocol, a.label,
+            chunk=a.chunk, chunk_size=a.chunk_size)
+        if a.chunk is not None:
+            return
+        if os.environ.get("LADDER_NO_COLLECT"):            # parallel jobs on one folder (automatic scorer): the caller collects
+            return
     collect(pathlib.Path(a.out), a.step)
     print(open(pathlib.Path(a.out) / (STEP_DIR[a.step] + ".txt")).read())
 

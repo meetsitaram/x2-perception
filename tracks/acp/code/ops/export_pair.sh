@@ -6,7 +6,7 @@
 set -u
 T=/mnt/filesystem-g4/tracks/acp; PY=$HOME/acp_env/bin/python
 RUN=$1; IT=$2; P=$(printf %06d "$IT"); NAME=$(basename "$RUN"); CK=$RUN/ckpt_$P.pt
-D=$T/eval/pair_${NAME}_${P}; mkdir -p "$D"; [ -f "$D/DONE" ] && exit 0
+D=${PAIR_OUT:-$T/eval/pair_${NAME}_${P}}; mkdir -p "$D"; [ -f "$D/DONE" ] && exit 0
 export CUDA_VISIBLE_DEVICES= ACP_PLANT=mc_20261024
 cd "${ACP_CODE:-$T/code}"
 GR=0.3; case "$NAME" in s3_*) GR=0.2;; esac
@@ -51,5 +51,5 @@ c["trained_model"] = ("data/robots/x2/mjcf/x2_ultra_hipexclude.xml (pelvis / hip
 json.dump(c, open(p, "w"), indent=1)
 PY
 # planner-driven closed loop (4 per set, CPU) for obs_check_pair.npz: the eval monitor checks the planner adapter with it
-timeout 1500 nice -n 19 "$PY" tools/pair_eval.py "$D/tracker_ckpt_$P.pt" "$D/planner_attn.pt" "$D/pair_eval_4" 4 > "$D/pair_eval_4.out" 2>&1 && mkdir -p "$D/pair_eval_40" && cp "$D/pair_eval_4/obs_check_pair.npz" "$D/pair_eval_40/obs_check_pair.npz" || echo "pair_eval for obs_check_pair failed"
+timeout 1500 nice -n 19 "$PY" tools/pair_eval.py "$D/tracker_ckpt_$P.pt" "$D/planner_attn.pt" "$D/pair_eval_4" 4 > "$D/pair_eval_4.out" 2>&1 && mkdir -p "$D/pair_eval_40" && cp "$D/pair_eval_4/obs_check_pair.npz" "$D/pair_eval_40/obs_check_pair.npz" || { echo "pair_eval for obs_check_pair FAILED (no DONE): $(tail -1 $D/pair_eval_4.out | cut -c1-200)"; exit 3; }
 date -u +%FT%TZ > "$D/DONE"; echo "exported $D"

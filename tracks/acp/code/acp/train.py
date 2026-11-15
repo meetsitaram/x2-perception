@@ -18,7 +18,7 @@ import torch.nn as nn
 
 from acp.data import Dataset
 from acp import planner as P
-from acp.env import DT, AcpEnv, W
+from acp.env import DT, AcpEnv, G, W
 
 # Table S6
 STEPS, EPOCHS, MINIBATCHES, CLIP, VCOEF, GRADNORM, GAMMA, LAM = 24, 5, 8, 0.2, 1.0, 1.0, 0.99, 0.95
@@ -66,6 +66,11 @@ class ActorCritic(nn.Module):
         return self.critic(self.cn(co)).squeeze(-1)
 
 
+import sys as _sys
+_sys.path.insert(0, "/mnt/filesystem-g4/tools")
+from simcheck import alarm as _alarm
+
+
 def heartbeat(path, **kw):
     kw.update(track="acp", time=time.strftime("%Y-%m-%dT%H:%M:%S%z"), unix=time.time())
     tmp = path + ".tmp"
@@ -103,11 +108,20 @@ def main():
     ap.add_argument("--gate-rebase", action="store_true", help="drop the gate base carried in the checkpoint; it is re-learned after 100 updates (2026-11-12)")
     ap.add_argument("--gate-signal", default="train", choices=["train", "probe"], help="ramp gate signal: training finish (all envs) or the planner-only probe envs")
     ap.add_argument("--ramp-gate-sets", default="x2_loco_flat_train,x2_loco_blocks_train")
+    ap.add_argument("--eta-anchor-it", type=int, default=-1, help="fixed schedule (2026-11-13): eta_x(it) = min(1, eta_x0 + (it - anchor) / N_ann); no gate, no hold, no ceiling; -1 = off")
+    ap.add_argument("--eta-obs0", type=float, default=0.0); ap.add_argument("--eta-rew0", type=float, default=0.0)
+    ap.add_argument("--replay-balance", default="none", choices=["none", "set_clip"], help="planner replay sampling: uniform over samples, or balanced data sets -> clips -> frames (2026-11-13)")
+    ap.add_argument("--popt-reset", action="store_true", help="fresh planner Adam state (unfreezing a planner whose optimizer state belongs to other weights)")
     ap.add_argument("--u-obs", type=int, default=200); ap.add_argument("--u-rew", type=int, default=700); ap.add_argument("--n-ann", type=int, default=1000)
     ap.add_argument("--bench", type=int, default=0, help="only step the environment this many iterations and print the throughput")
+    ap.add_argument("--goal-share", type=float, default=0.5, help="stage 3: share of goal environments (paper: not given)")
+    ap.add_argument("--s3-warmup", type=int, default=500, help="stage 3: iterations with goal samples out of the actor loss (paper: 500)")
+    ap.add_argument("--s3-paper", type=int, default=0, help="stage 3: the paper's rules (2026-11-13, state/acp.md 17k): success 0.5 m / 0.1 m, "
+                    "0.2 m segment cut, per-tile replay with work-per-metre eviction and types -> tiles -> steps sampling, yaw +-0.4, phase 0, "
+                    "Table 3 stumbling / slippage, qualifying demotion distance, V_fs value clipping off in the warm-up; 0 = previous behaviour")
     args = ap.parse_args()
     dev = torch.device(args.device)
-    target_kl, ent = (TARGET_KL, ENT) if args.stage == 1 else (0.01, 0.005)   # Table S6
+    target_kl, ent = {1: (TARGET_KL, ENT), 2: (0.01, 0.005), 3: (0.01, 0.002)}[args.stage]   # Table S6
     torch.manual_seed(args.seed)
     os.makedirs(args.run, exist_ok=True)
     data = Dataset(args.data, dev, cache=os.path.join(os.path.dirname(args.data), "labels_" + os.path.basename(args.data) + ".pt"))
@@ -134,7 +148,7 @@ def main():
     print(f"[env] envs {N} actor {env.actor_dim} critic {env.critic_dim} actions {A}", flush=True)
     pl = popt = replay = None
     s2_start = it0
-    if args.stage == 2:
+    if args.stage >= 2:
         env.csi = False                                           # Stage 2: initial phase U(0, 0.98)
         hd = 5 * env.PROP
         pl = P.build(args.planner_arch, hd).to(dev)
@@ -149,22 +163,65 @@ def main():
             sm, sv = ac.cn.mean[env.PROP:env.PROP + 187], ac.cn.var[env.PROP:env.PROP + 187]
             pl.s_mu.fill_(float(sm.mean())); pl.s_sd.fill_(float((sv.mean() + sm.var()).sqrt().clamp(min=1e-3)))
         popt = torch.optim.Adam(pl.parameters(), lr=1e-4)        # Table S5
-        if ck is not None and ck.get("popt") is not None:
-            popt.load_state_dict(ck["popt"])
+        if ck is not None and ck.get("popt") is not None and not (args.popt_reset and latest_src != os.path.join(args.run, "latest.pt")):
+            popt.load_state_dict(ck["popt"])                    # --popt-reset applies to the init checkpoint only, not to own resumes
         if args.freeze_planner:
             pl.load_state_dict(torch.load(args.freeze_planner, map_location=dev, weights_only=False)["planner"])
             print(f"[stage 2] planner frozen at {args.freeze_planner}", flush=True)
         pl.eval()
         env.planner = pl
         env.rec = P.Recorder(min(args.rec_envs, N), hd, dev)
-        replay = P.Replay(args.replay, hd, dev)
+        if args.stage == 3 and args.s3_paper:                    # paper stage-3 buffer: types = reference sets + goal families
+            ns0 = len(data.set_names)
+            clip_type = torch.where(data.is_goal, ns0 + data.goal_family.clamp(min=0), data.clip_set)
+            replay = P.TileReplay(args.replay, hd, dev, clip_type)
+            replay_names = list(data.set_names) + ["goal_" + f for f in data.goal_families]
+            env.paper_s3 = True
+            print(f"[stage 3] paper rules on: TileReplay over {int(replay.n_sets)} types ({len(data.goal_families)} goal families), "
+                  f"capacity {args.replay}", flush=True)
+        else:
+            replay = P.Replay(args.replay, hd, dev, clip_set=data.clip_set, balance=args.replay_balance)
+            replay_names = list(data.set_names)
+        if os.environ.get("ACP_SMOKE_PREFILL"):                  # CPU smoke only: random samples with real clip ids, so that a
+            k = int(os.environ["ACP_SMOKE_PREFILL"])              # 3-iteration run reaches the 1,000-entry update threshold
+            cl = torch.multinomial(data.clip_w, k, replacement=True).to(dev)
+            smk = (torch.randn(k, hd, device=dev), torch.randn(k, P.NP, device=dev), torch.randn(k, 3, device=dev),
+                   torch.randn(k, P.NB, 3, device=dev) * 0.3, torch.rand(k, P.NB, device=dev) < 0.5, cl)
+            if getattr(replay, "episodic", False):                  # whole fake episodes of 50 samples, one clip each
+                e = torch.arange(k, device=dev) // 50
+                cl = cl[e * 50]; smk = smk[:5] + (cl,)
+                replay.push_episodes(*smk, e, torch.rand(int(e.max()) + 1, device=dev))
+            else:
+                replay.push(*smk)
+            print(f"[smoke] replay prefilled with {k} random samples (ACP_SMOKE_PREFILL; never set in training)", flush=True)
+        if args.eta_anchor_it >= 0:
+            assert args.ramp_gate == 0 and not args.freeze_planner, "fixed eta schedule: no ramp gate, planner co-trained"
+            print(f"[schedule] FIXED: eta_obs = min(1, {args.eta_obs0} + (it - {args.eta_anchor_it}) / {args.n_ann}), "
+                  f"eta_rew = min(1, {args.eta_rew0} + (it - {args.eta_anchor_it}) / {args.n_ann}); replay sampling {args.replay_balance}", flush=True)
         print(f"[stage 2] planner {args.planner_arch} ({sum(p.numel() for p in pl.parameters())} parameters), stage-2 start iteration {s2_start}, "
               f"u_obs {args.u_obs} u_rew {args.u_rew} N_ann {args.n_ann}, recorder envs {env.rec.n}", flush=True)
+    vfs = vfs_n = vopt = None
+    s3_start = it0
+    gm = torch.zeros(N, dtype=torch.bool, device=dev)
+    if args.stage == 3:                                           # goal environments, V_fs (fixed lr 1e-3), curriculum state
+        env.setup_goals(args.goal_share)
+        gm = env.goal_env
+        vfs, vfs_n = mlp(env.goal_critic_dim, 1).to(dev), Norm(env.goal_critic_dim).to(dev)
+        vopt = torch.optim.Adam(vfs.parameters(), lr=1e-3)
+        if ck is not None and ck.get("vfs") is not None:
+            vfs.load_state_dict(ck["vfs"]); vfs_n.load_state_dict(ck["vfs_norm"]); vopt.load_state_dict(ck["vopt"])
+            s3_start = ck.get("s3_start", it0)
+            if ck.get("g_level") is not None and ck["g_level"].shape[0] == N:
+                env.g_level.copy_(ck["g_level"]); env.g_ema.copy_(ck["g_ema"])
+        print(f"[stage 3] goal envs {int(gm.sum())} of {N}, families {env.data.goal_families}, stage-3 start iteration {s3_start}, "
+              f"warm-up {args.s3_warmup}, V_fs input {env.goal_critic_dim}", flush=True)
     pstat = dict(aff=0.0, occ=0.0, new=0, updates=0)
     env.reset_all()
     ao, co = env.observe()
     B = N * STEPS
+    gdim = env.goal_critic_dim if args.stage == 3 else 1
     buf = dict(ao=torch.zeros(STEPS, N, env.actor_dim, device=dev), co=torch.zeros(STEPS, N, env.critic_dim, device=dev),
+               cg=torch.zeros(STEPS, N, gdim, device=dev),
                a=torch.zeros(STEPS, N, A, device=dev), logp=torch.zeros(STEPS, N, device=dev), r=torch.zeros(STEPS, N, device=dev),
                v=torch.zeros(STEPS, N, device=dev), done=torch.zeros(STEPS, N, device=dev), mu=torch.zeros(STEPS, N, A, device=dev),
                std=torch.zeros(STEPS, N, A, device=dev))
@@ -188,9 +245,10 @@ def main():
     if ck is not None and ck.get("gate_signal", "train") != args.gate_signal:
         gate_base = {}                                            # a base from another signal does not carry over
     if args.gate_rebase: gate_base = {}
+    print(f"[schedule] eta_hold {eta_hold} carried from the checkpoint", flush=True)   # stage 3 continues the ramp
     for it in range(it0, args.iters):
         it_acc = {}
-        if args.stage == 2:                                       # Eq. 3: linear schedules, the reward one starts later
+        if args.stage >= 2:                                       # Eq. 3: linear schedules, the reward one starts later
             if args.ramp_gate > 0 and it > it0:                       # per-set gate on the ramp (2026-11-12)
                 sd, sf = (it_p_done, it_p_fin) if args.gate_signal == "probe" else (it_set_done, it_set_fin)
                 for g in gate_ids:
@@ -205,18 +263,33 @@ def main():
                     if all(gate_ema[g] is not None for g in gate_ids): gate_base = dict(gate_ema)
                 elif gate_base and any(gate_ema[g] is not None and gate_ema[g] < gate_base[g] - args.ramp_gate / 100 for g in gate_ids):
                     eta_hold += 1
-            u = it - s2_start - eta_hold
-            env.eta_obs = min(args.eta_obs_max, max(0.0, (u - args.u_obs) / args.n_ann))
-            env.eta_rew = min(1.0, max(0.0, (u - args.u_rew) / args.n_ann))
+            if args.eta_anchor_it >= 0:                             # fixed linear schedule from the flags (2026-11-13, user):
+                k = (it - args.eta_anchor_it) / args.n_ann               # both at slope 1 / N_ann from their anchor values, to 1
+                env.eta_obs = min(1.0, max(0.0, args.eta_obs0 + k))
+                env.eta_rew = min(1.0, max(0.0, args.eta_rew0 + k))
+            else:
+                u = it - s2_start - eta_hold
+                env.eta_obs = min(args.eta_obs_max, max(0.0, (u - args.u_obs) / args.n_ann))
+                env.eta_rew = min(1.0, max(0.0, (u - args.u_rew) / args.n_ann))
             env.plan_stats.zero_()
         it_set_done, it_set_fin = torch.zeros(nset, device=dev), torch.zeros(nset, device=dev)
         it_p_done, it_p_fin = torch.zeros(nset, device=dev), torch.zeros(nset, device=dev)
         with torch.no_grad():
             for s in range(STEPS):
-                ac.an.update(ao); ac.cn.update(co)
+                ac.an.update(ao)
+                if args.stage == 3:
+                    cg = env.critic_goal
+                    if bool((~gm).any()):
+                        ac.cn.update(co[~gm])
+                    vfs_n.update(cg[gm])
+                    buf["cg"][s] = cg
+                else:
+                    ac.cn.update(co)
                 dist = ac.dist(ao)
                 a = dist.sample()
                 v = ac.value(co)
+                if args.stage == 3:
+                    v = torch.where(gm, vfs(vfs_n(cg)).squeeze(-1), v)
                 buf["ao"][s], buf["co"][s], buf["a"][s], buf["v"][s] = ao, co, a, v
                 buf["logp"][s], buf["mu"][s], buf["std"][s] = dist.log_prob(a).sum(-1), dist.mean, dist.stddev
                 r, term, timeout, info = env.step(a)
@@ -240,6 +313,9 @@ def main():
                 it_set_done.index_add_(0, info["set"], info["done_mask"].float()); it_set_fin.index_add_(0, info["set"], info["finished_mask"].float())
                 if getattr(env, "probe", None) is not None:
                     it_p_done.index_add_(0, info["set"], (info["done_mask"] & env.probe).float()); it_p_fin.index_add_(0, info["set"], (info["finished_mask"] & env.probe).float())
+                if args.stage == 3:
+                    for k in ("goal_done", "goal_success", "goal_fall", "goal_wp"):
+                        it_acc[k] = it_acc.get(k, 0.0) + info[k]
                 ep["done"] += float(info["done"]); ep["term"] += float(info["term"]); ep["fin"] += float(info["finished"]); ep["bad"] += float(info["bad"])
                 set_done.index_add_(0, info["set"], info["done_mask"].float()); set_fin.index_add_(0, info["set"], info["finished_mask"].float())
             steps_log += B
@@ -253,6 +329,8 @@ def main():
                     t_log, steps_log = time.time(), 0                 # skip the compile
                 continue
             last_v = ac.value(co)
+            if args.stage == 3:
+                last_v = torch.where(gm, vfs(vfs_n(env.critic_goal)).squeeze(-1), last_v)
             adv = torch.zeros_like(buf["r"])
             g = torch.zeros(N, device=dev)
             for s in reversed(range(STEPS)):
@@ -262,9 +340,18 @@ def main():
                 g = delta + GAMMA * LAM * nd * g
                 adv[s] = g
             ret = adv + buf["v"]
-            adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+            if args.stage == 3:                                   # advantages normalised separately per environment type
+                for msk in (gm, ~gm):
+                    if bool(msk.any()):
+                        x = adv[:, msk]
+                        adv[:, msk] = (x - x.mean()) / (x.std() + 1e-8)
+            else:
+                adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         flat = {k: x.reshape(B, *x.shape[2:]) for k, x in buf.items()}
         adv_f, ret_f = adv.reshape(B), ret.reshape(B)
+        gm_f = gm.unsqueeze(0).expand(STEPS, -1).reshape(B)
+        warm = args.stage == 3 and (it - s3_start) < args.s3_warmup
+        vgl = []
         kls, vls, pls = [], [], []
         for _ in range(EPOCHS):
             perm = torch.randperm(B, device=dev)
@@ -283,23 +370,45 @@ def main():
                         gp["lr"] = lr
                 ratio = (logp - flat["logp"][mb]).exp()
                 a_ = adv_f[mb]
-                pl_ = -torch.min(ratio * a_, ratio.clamp(1 - CLIP, 1 + CLIP) * a_).mean()
+                pw = torch.ones_like(a_) if not warm else (~gm_f[mb]).float()   # warm-up: goal samples out of the actor loss
+                if warm:                                          # stage-3 warm-up: goal samples out of the actor loss
+                    pl_ = -(torch.min(ratio * a_, ratio.clamp(1 - CLIP, 1 + CLIP) * a_) * pw).sum() / pw.sum().clamp(min=1.0)
+                else:                                             # stages 1, 2 (unchanged) and stage 3 after the warm-up
+                    pl_ = -torch.min(ratio * a_, ratio.clamp(1 - CLIP, 1 + CLIP) * a_).mean()
                 v0 = flat["v"][mb]
+                if args.stage == 3:
+                    g_ = gm_f[mb]
+                    v = torch.where(g_, vfs(vfs_n(flat["cg"][mb])).squeeze(-1), v)
                 vc = v0 + (v - v0).clamp(-CLIP, CLIP)
-                vl = torch.max((v - ret_f[mb]) ** 2, (vc - ret_f[mb]) ** 2).mean()
-                loss = pl_ + VCOEF * vl - ent * dist.entropy().sum(-1).mean()
+                vle = torch.max((v - ret_f[mb]) ** 2, (vc - ret_f[mb]) ** 2)
+                if warm and args.s3_paper:                        # Table S6: V_fs value clipping off during its warm-up
+                    vle = torch.where(g_, (v - ret_f[mb]) ** 2, vle)
+                if args.stage == 3:                               # each critic on its own environments
+                    vl = (vle * (~g_).float()).sum() / (~g_).float().sum().clamp(min=1.0)
+                    vlg = (vle * g_.float()).sum() / g_.float().sum().clamp(min=1.0)
+                    vgl.append(vlg.detach())
+                else:
+                    vl, vlg = vle.mean(), 0.0
+                loss = (pl_ + VCOEF * (vl + vlg) if args.stage == 3 else pl_ + VCOEF * vl) - ent * dist.entropy().sum(-1).mean()
                 opt.zero_grad(set_to_none=True)
+                if vopt is not None:
+                    vopt.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(ac.parameters(), GRADNORM)
                 opt.step()
+                if vopt is not None:
+                    nn.utils.clip_grad_norm_(vfs.parameters(), GRADNORM)
+                    vopt.step()
                 kls.append(kl); vls.append(vl.detach()); pls.append(pl_.detach())
         n = it + 1
-        if args.stage == 2:                                       # planner: hindsight samples in, ten updates of 4,096 (Table S5)
-            pstat = dict(aff=0.0, occ=0.0, new=env.rec.flush(replay), updates=0)
+        if args.stage >= 2:                                       # planner: hindsight samples in, ten updates of 4,096 (Table S5)
+            pstat = dict(aff=0.0, occ=0.0, new=env.rec.flush(replay), updates=0, upd_share=None)
             if replay.size >= 1000 and not args.freeze_planner:
                 pl.train()
-                for _ in range(10):
-                    lp, la, lo = P.planner_loss(pl, *replay.sample(4096))
+                pidx = replay.indices(10 * 4096)                         # one draw per iteration (balanced or uniform)
+                pstat["upd_share"] = replay.set_share(pidx)
+                for b in range(10):
+                    lp, la, lo = P.planner_loss(pl, *replay.take(pidx[b * 4096:(b + 1) * 4096]))
                     popt.zero_grad(set_to_none=True); lp.backward(); popt.step()
                     pstat["aff"] += float(la) / 10; pstat["occ"] += float(lo) / 10; pstat["updates"] += 1
                 pl.eval()
@@ -324,7 +433,21 @@ def main():
             mrow["raw/" + k] = round(fa[k] / STEPS, 6)                       # mean of r_i over envs and steps
             mrow["weighted/" + k] = round(DT * wts[k] * fa[k] / STEPS, 6)    # its share of the per-step reward: dt * w_i * r_i
             mrow["weight/" + k] = round(wts[k], 6)
-        if args.stage == 2:
+        if args.stage == 3:
+            gd = max(fa["goal_done"], 1.0)
+            lv = env.g_level[gm].float()
+            mrow.update({"stage3/iteration": n - s3_start, "stage3/warmup": int(warm), "goal/episodes": int(fa["goal_done"]),
+                         "goal/success": round(fa["goal_success"] / gd, 4), "goal/fall": round(fa["goal_fall"] / gd, 4),
+                         "goal/waypoint_index_mean": round(fa["goal_wp"] / STEPS, 3), "goal/level_mean": round(float(lv.mean()), 3),
+                         "ppo/value_loss_goal": round(float(torch.stack(vgl).mean()), 5) if vgl else None})
+            for fi, fname in enumerate(env.data.goal_families):
+                sel = gm & (env.g_fam == fi)
+                mrow["goal/level/" + fname] = round(float(env.g_level[sel].float().mean()), 3)
+            for k in G:
+                mrow["raw/goal/" + k] = round(fa.get("goal/" + k, 0.0) / STEPS, 6)
+                mrow["weighted/goal/" + k] = round(DT * G[k] * fa.get("goal/" + k, 0.0) / STEPS, 6)
+                mrow["weight/goal/" + k] = G[k]
+        if args.stage >= 2:
             ps = [float(x) for x in env.plan_stats]
             mrow.update({"stage2/eta_obs": round(env.eta_obs, 4), "stage2/eta_rew": round(env.eta_rew, 4), "stage2/eta_hold": eta_hold, "stage2/iteration": n - s2_start,
                          "planner/loss_affordance": round(pstat["aff"], 5), "planner/loss_occupancy": round(pstat["occ"], 5),
@@ -352,6 +475,14 @@ def main():
             if getattr(env, "probe", None) is not None:
                 mrow["probe/finish/" + data.set_names[i]] = round(float(it_p_fin[i] / it_p_done[i].clamp(min=1)), 3); mrow["probe/episodes/" + data.set_names[i]] = int(it_p_done[i])
             mrow["episodes/" + data.set_names[i]] = int(it_set_done[i])
+        if args.stage >= 2:                                           # per-set share of the replay content and of this iteration's
+            rs = replay.set_share()                                   # planner update samples (balanced sampling check, 2026-11-13)
+            for nm, sh in (("planner/replay_share/", rs), ("planner/update_share/", pstat["upd_share"])):
+                if sh is not None:
+                    for i in range(min(len(replay_names), len(sh))):
+                        mrow[nm + replay_names[i]] = round(float(sh[i]), 4)
+            if getattr(replay, "episodic", False):
+                mrow.update({"planner/replay_" + k: v for k, v in replay.stats.items()})
         metf.write(json.dumps(mrow) + "\n"); metf.flush()
         t_it = now
         if n % args.log_every == 0 or n == args.iters:
@@ -372,7 +503,8 @@ def main():
             cks = sorted(glob.glob(os.path.join(args.run, "ckpt_*.pt")))
             heartbeat(args.heartbeat, state="training", stage=args.stage, run=os.path.abspath(args.run), iteration=n, iterations=args.iters,
                       newest_checkpoint=os.path.abspath(cks[-1]) if cks else None, fps=row["fps"], reward=row["reward"],
-                      csi_phase=row["csi_phase"], finish_frac=row["finish_frac"], term_frac=row["term_frac"], e_pos=row["e_pos"])
+                      csi_phase=row["csi_phase"], finish_frac=row["finish_frac"], term_frac=row["term_frac"], e_pos=row["e_pos"],
+                      **_alarm.fields({"sim_fault": ep["bad"]}, total=ep["done"]))
             acc, nacc = {}, 0
             ep = dict(done=0.0, term=0.0, fin=0.0, bad=0.0)
             set_done.zero_(); set_fin.zero_()
@@ -383,7 +515,11 @@ def main():
             ck = dict(model=ac.state_dict(), opt=opt.state_dict(), lr=lr, it=n, phase=env.phase.clone(), actor_dim=env.actor_dim,
                       critic_dim=env.critic_dim, act_dim=A, data=args.data, joint_names=env.x2.joint_names, stage=args.stage,
                       planner=pl.state_dict() if pl is not None else None, popt=popt.state_dict() if popt is not None else None,
-                      planner_arch=args.planner_arch if pl is not None else None, s2_start=s2_start, x2_exclude_pairs=os.environ.get("X2_EXCLUDE_PAIRS", ""), eta_hold=eta_hold, gate_base=gate_base, gate_signal=args.gate_signal)
+                      planner_arch=args.planner_arch if pl is not None else None, s2_start=s2_start, x2_exclude_pairs=os.environ.get("X2_EXCLUDE_PAIRS", ""), eta_hold=eta_hold, gate_base=gate_base, gate_signal=args.gate_signal,
+                      vfs=vfs.state_dict() if vfs is not None else None, vfs_norm=vfs_n.state_dict() if vfs_n is not None else None,
+                      vopt=vopt.state_dict() if vopt is not None else None, s3_start=s3_start,
+                      g_level=env.g_level.clone() if args.stage == 3 else None, g_ema=env.g_ema.clone() if args.stage == 3 else None,
+                      goal_share=args.goal_share if args.stage == 3 else None)
             if save_num:
                 path = os.path.join(args.run, f"ckpt_{n:06d}.pt")
                 torch.save(ck, path + ".tmp"); os.replace(path + ".tmp", path)

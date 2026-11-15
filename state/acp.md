@@ -2205,10 +2205,288 @@ and is not running: it halves the throughput while it runs, so do not start it b
   1[contact > 0.026 s] 1[v_f > 0.5 m/s]; plus the merge of the stage-2 additions (probe gate, eta_hold, data features, simcheck
   patch, ACP_PAPER_DR). Then touch code_s3/MERGED.
 
-## HOW TO RESUME (current at 2026-11-13 04:50 UTC node clock)
-- 06:00 UTC: tmux `acp-restart` runs `code/ops/restart_2h.sh` (17d). Result in `runs/s2_v4/restart.log`. Then `acp-watch2h`
-  writes GATE_A_PASS (~+150 it, about 07:00) / GATE_B_PASS (~+400, about 08:00) or FALLBACK. No planned restart for 2,000
-  iterations after it (user rule). Next agent check: after 08:00 read restart.log, gate_A.txt, gate_B.txt and the new sets' finish.
+### 17e. One code folder: code_s3 / code_next / code_prev folded into code/ (ACP agent, 2026-11-13 05:30-06:35 UTC)
+User rule "One copy of the code per track". s2_v4 started 06:00:46 from s2_v3 10,356 (restart check passed). **Gate A PASS
+06:30:47** (it 10,414-10,513): train finish 0.957 (base 0.987, tolerance 0.05), probe gate 0.902 (base 0.918), fps 75,796
+(base 76,046), sim_fault_share 0.0273 (WARN > 0.02, limit 0.05). What went wrong / open: train finish -3.0 points and sim
+faults above the warn level after the 2h data / DR switch; gate B (+400, it 10,756, about 07:50) and the scorer pairs decide.
+- Found: code_s3 was forked from the 2026-11-11 code (git 70f6817) and lacked every later stage-2 feature (probe gate,
+  freeze, PLANNER_INIT, simcheck, HF fix, paper DR); its env.py had CRLF line ends. code_next = what s2_v4 runs (installed by
+  restart_2h.sh). Also found: `code/staged/` (stale 2026-11-12 mirrors of code_next and code_s3) and `code_prev` (fall-back copy).
+- Merge (3-way, base 70f6817, ours code_next, theirs code_s3; 6 conflicts resolved by hand; scratch `resolve.py`): stage-3 goal
+  envs, V_fs, per-type advantages, warm-up, goal tiles in data.py, curriculum, all behind `--stage 3` / goal envs (gm all False
+  in stage 2). Kept code_next semantics: simcheck faults are truncations in goal envs too, probe envs, ramp gate (now stage >= 2),
+  PAPER_DR target noise also on goal-env planner targets, planner.py unchanged (PLANNER_INIT kept). Stage-2 numerics guarded:
+  the warm-up-weighted policy loss and the V_fs loss term apply only in stage 3. eta_hold carry was already in code_next.
+- Equivalence (CPU, 1,024 envs, s2_v4 flags and env vars, init = s2_v3 latest, seed 0, 3 iterations; /tmp/acp_fold):
+  A (code_next) twice and B (merged): all 174 metric keys per row identical except wall time `iter_s`; checkpoint 10,253:
+  23 model tensors and optimiser state bit-identical A1 = A2 = B. B adds only stage-3 checkpoint keys (None in stage 2).
+- Applied 06:31:18 by `/tmp/acp_fold/fold_wait.sh` after GATE_A_PASS: code/acp/{env,train,data}.py, tools/goal_check.py,
+  ops/to_stage3.sh (rewritten: runs from code/, nothing copied, refuses unless `code/STAGE3_READY`), ops/watch_2h.sh (fall-back
+  no longer copies code_prev: s2_v3 resumes with code/ as is and no 2h flags = pre-2h code except simcheck, which TRACK_RULES
+  requires; restartable, skips gates with a PASS file; acp-watch2h restarted from 10,356, waiting for gate B).
+  tools/mk_stage2h.py repointed to code/. The running trainer is unaffected (modules loaded at 06:00).
+- Moved to `_trash/2026-11-13/`: code_s3_folded_063118, code_next_folded_063118, code_prev_folded_063118 (code_prev_060022 =
+  restart_2h's own roll-back copy), code_staged_mirror_20261112, ops_fired/ (13 fired one-shot restart / switch scripts that
+  copied between folders, incl. restart_2h.sh, old to_stage3.sh, restart_s2*.sh, switch*.sh, to_stage2.sh). grep of code/ and
+  runs/ (.sh .py .json .txt, per-run code_snapshot excluded) for code_s3 / code_next / code_prev: 0 files.
+- From now on the stage-3 rules (17d list) are built directly in code/, behind --stage 3; touch code/STAGE3_READY when done.
+
+### 17f. Gate B fall-back of 07:17 was the gate's fault, not a regression; s2_v4 re-armed once (ACP agent, 2026-11-13 07:30 UTC)
+- What went wrong: gate B compared s2_v4 (data 2h + paper DR) on the 11 old 2g sets with s2_v3's base measured WITHOUT the DR.
+  The gate already used old sets only (pico_2x2 v1 is weight 0 in 2h, reads 0.0, excluded). Old-set mean 0.9565 vs 0.9870 - 0.03.
+- Evidence the drop is the DR/data shock: s2_v3 weights under 2h+DR, first rows of s2_v4: it 10357-10366 old 0.9157 / probe-gate
+  0.7894; 10357-10406 0.9486 / 0.8571; then s2_v4 recovered to 0.9576 by 10407 and stayed 0.956-0.957 to 10759 (probe-gate 0.904).
+  No downward trend on any old set in 50-iteration windows. Largest step drops (base -> 10660-10759): gst_v1 0.978->0.882,
+  gs2dn 0.983->0.927, stairs_x10 0.982->0.937, gs2lo 0.986->0.948 (stairs: scan noise U(+-0.1) and odometry drift bite there);
+  flat 0.991->0.978, blocks 0.991->0.978. New sets: pico v1_1 0.980 / mir 0.977, ramp mir 0.971, 4x4 mir 0.963, stairs v1_1 0.956 /
+  mir 0.947 / turn 0.937 (probe: turn 0.36, pico mir 0.60, ramp mir 0.66: the weak spots).
+- Fix: watch_2h.sh takes BASE / PERSET / REARM (backup _trash/2026-11-13/watch_2h.sh.pre_rearm). Gate C at 11,150: base = s2_v4's own
+  10660-10759 window (runs/s2_v4/base_2h.json, same data + DR): old-set mean >= base - 0.015, probe-gate >= base - 0.03, no old set
+  > 0.04 below its own base value, fps, sim faults; fail = s2_v3 resumes as before. Dry test: PASS on itself, FAIL on the old base.
+- Re-armed 07:32 by code/ops/rearm_2h.sh: s2_v3 stopped at 10,428; s2_v4 resumed from its latest.pt at 10,750 (content unchanged).
+- Open: the stairs sets under DR (gst 0.88) and stairs-turn probe 0.36 are the base gaps to watch; pair_s2_v4_010750 on the scorer
+  (s2_v3 8,000: legs 49/43/45/50/44; 9,500 and 10,000 failed the hold-out gate on turn-around).
+
+### 17g. s2_v4 pairs failed the scorer's fetch: pair_eval crashed on a zero-weight set (ACP agent, 2026-11-13 08:35 UTC)
+- What went wrong: every s2_v4 pair (010500, 010750, 011000) failed the desktop hand-over check: mlp/obs_check_pair.npz missing.
+  export_pair.sh's planner closed loop (code/tools/pair_eval.py) crashed: torch.multinomial "probability entry < 0" because data 2h keeps
+  the replaced pico_2026-10-29_2x2_train_hold set with clip weight 0 (w / w.sum() = NaN). export_pair.sh only echoes the failure and still
+  writes DONE, so acp_export.json said "done". Files and metadata otherwise match s2_v3's passing pairs.
+- Fix: pair_eval.py samples a zero-weight set's clips uniformly (backup _trash/2026-11-13/pair_eval.py.pre_zerow); code/ops/fix_pairs_s2_v4.sh
+  (tmux acp-fixpairs, CPU, niced) re-runs the loop for 011000, 010750, 010500 and writes eval/fix_pairs_s2_v4.log; the scorer retries.
+- Open: export_pair.sh should not write DONE when pair_eval fails (to fix next turn, it touches the hand-over contract).
+- 08:55: all three s2_v4 pairs repaired (eval/fix_pairs_s2_v4.log: 011000 08:38, 010750 08:46, 010500 08:55 ok). Gate C PASSED 08:50.
+- NEW defect (open): with today's code/ the CPU pair_eval collapses after its first mode. s2_v4 011000: oracle 0.91, planner 0.20,
+  both fall-rule modes 0.18 (episodes don't end early, they just never finish). Control: s2_v3 010000 re-run with the current code gives
+  oracle 0.98 / planner 0.27 / fall-rule 0.29, against 0.875 planner and 1.0 fall-rule in its own export from the older code. So it is
+  the code, not the s2_v4 weights; ACP_HF_FIX=1 changes nothing. Suspect state carried between modes in eval_mode (simcheck truncation
+  or the 2h env changes). Training probe (planner contacts 0.90) is unaffected. To fix next: diff code/acp/env.py against
+  _trash/2026-11-13/code_prev_060022. Until then the pair_eval numbers in s2_v4 exports are not valid; obs_check_pair is still a plumbing check.
+- Interim gate C at 08:31 (it 10954-11053): old-set 0.9557 (base 0.9565), probe-gate 0.9025 (0.9033): PASS, but flat for 700 iterations
+  under DR: a plateau to diagnose if it persists (stairs sets gst 0.88, stairs v1_1 0.950).
+
+### 17h. pair_eval collapse explained: the simcheck fault detector was not cleared on manual resets (ACP agent, 2026-11-13 09:25 UTC)
+- Cause: env.step parks and ends a world when FaultDetector (simcheck, added 06:00) sees a body jump. The trainer clears the detector
+  after its own resets (env.py step: reset(ids); fault_det.reset(ids)); tools that call env.reset() directly (pair_eval, paper_eval,
+  handover, riser/sole checks) did not. In the second pair_eval mode every robot "jumped" from where mode 1 ended: diag showed a
+  32 m root move at step 0, episodes ended at step 0, and the env tensors were otherwise identical to mode 1.
+  Proof: s2_v3 010000, two identical oracle modes: 0.958 / 0.333 before, 0.958 / 0.958 with the detector reset. The original
+  04:47 export (no simcheck yet) had 1.0 / 0.875 / 1.0 / 1.0. Planner-first order gives 0.875 (= original).
+- TRAINING IS NOT AFFECTED: its reset path already clears the detector. The "code_prev vs code" comparison of 08:59 was void:
+  pair_eval hard-codes sys.path to code/, so both runs used code/.
+- Second defect found: fix_pairs_s2_v4.sh (17g) ran without X2_EXCLUDE_PAIRS=hip (export_pair.sh reads it from the checkpoint), so
+  its oracle numbers were off too (s2_v3 010000: oracle 0.979 without hip vs 1.0 with it).
+- Fixes: env.reset() now clears the detector itself (training behaviour unchanged; it takes effect at the next trainer start; backup
+  _trash/2026-11-13/env.py.pre_faultreset). pair_eval also clears it after its reset loop (backup pair_eval.py.pre_faultreset).
+  export_pair.sh exits 3 without DONE when pair_eval fails, so export_every writes EXPORT_FAILED and status FAILED (backup
+  export_pair.sh.pre_failnodone). The s2_v4 pairs' pair_eval_40 files moved to _trash/2026-11-13/pair_eval40_nohip; tmux acp-fixpairs
+  re-records them with hip exclusion and the fixed code (eval/fix_pairs_s2_v4.log).
+
+### 17i. s2_v4 pairs still failed the hand-over check: pair_eval recorded the unclamped action (ACP helper, 2026-11-13 10:32 UTC)
+- What went wrong: pair_s2_v4_011500 (exported 10:09) FAIL mlp/obs_check_pair.npz, history/actor_input/action 1.3. Not DR or simcheck:
+  from step 28 the policy's raw action for joint 30 exceeds the +-20 clamp (up to -21.25). env.step clamps (env.py:474), so the
+  history's a_prev is -20, but tools/pair_eval.py (and tools/handover.py) recorded the raw a. The checker replays a_prev from the
+  recorded action and clips its own, hence the gap. s2_v3 pairs never exceeded 20, so they passed.
+- Proof: clamping the recorded actions of the fetched 011500 copy to +-20 gives ALL PASS (history 1.8e-7, action 5.6e-6).
+- Fix (export side only, training untouched): both tools record a.clamp(-20, 20) (backups _trash/2026-11-13/*.pre_cliprec).
+  code/ops/fix_pairs_clip.sh (tmux acp-fixclip, CPU, niced, X2_EXCLUDE_PAIRS=hip) re-records 011500, 011250, 011000, 010750, 010500;
+  log eval/fix_pairs_clip.log; old files in _trash/2026-11-13/pair_eval40_unclamped. Then remove the s2_v4 entries from
+  `done` in eval/autoscore/state.json (repo) so the scorer retries.
+- 11:20 all five re-recorded; acp_handover_check.py on fetched copies: ALL PASS for 010500-011500 (history <= 1.8e-7, action <= 6.4e-6).
+  s2_v4 entries removed from `done` 11:22; the scorer retries them. Later exports use the fixed pair_eval automatically.
+
+### 17j. s2_v5 prepared and ARMED: stage 2 by Eq. 3, deterministic (ACP agent, 2026-11-13 13:28 UTC; not started)
+- Why (user decision 2026-11-13): the frozen planner (16r) and the capped / held eta ramp (0.8 ceiling, ramp gate, eta_hold, probe
+  back-off) were judgement-based deviations. Training must follow Eq. 3 on a fixed schedule.
+- Recipe (flags in code/ops/arm_s2v5.sh): resume from s2_v4 latest.pt at GO; data 2h, ACP_HF_FIX, ACP_PAPER_DR, hip pairs excluded;
+  planner unfrozen, co-trained online (10 Adam updates x 4,096 per iteration after 1,000 replay entries, Table S5), fresh planner Adam
+  state (--popt-reset: the stored state belonged to the 6,750 planner); probe envs 720 log only; --ramp-gate 0, no ceiling.
+- Schedule (--eta-anchor-it / --eta-obs0 / --eta-rew0): eta_x(it) = min(1, eta_x0 + (it - IT0) / 3000) for both, N_ann = 3,000 as the
+  run. IT0 and the start values are read from the checkpoint by code (s2_v4's own formula at IT0, hold frozen). At s2_v4 12,500:
+  0.781 / 0.281, eta_obs = 1 at about IT0 + 657, eta_rew = 1 at about IT0 + 2,157. Written to runs/s2_v5/schedule.json at GO.
+- Rare-skill forgetting (16q/16r cause) handled the paper's way: replay sampling balanced data sets -> clips -> frames (stage-3 rule
+  types -> tiles -> steps applied to stage 2's reference sets). The recorder now stores each episode's clip; Replay.weights() gives a
+  sample 1 / (sets present x clips of its set present x samples of its clip); one torch.multinomial draw of 10 x 4,096 per iteration.
+  Logged per iteration: planner/replay_share/<set>, planner/update_share/<set>.
+- CPU evidence (tools/replay_balance_check.py, runs/s2_v5/replay_balance_check.json; buffer filled with the 2h clip weights, 1.5 M):
+  rarest set (pico 2x2 mir) content 0.9 % -> update share 0.9 % uniform, 5.6 % balanced; turn_place 3.4 % -> 5.4 %; blocks 20.9 % ->
+  5.8 %. After flooding 80 % of the ring with blocks only: blocks 85 % of content, uniform gives every other set 0.1-3 %, balanced keeps
+  every set at 5.3-5.9 % (18 sets).
+- Fall-back (code/ops/watch_s2v5.sh, fixed constants): crash > 3 trainer starts or no metrics row 45 min (continuous); gates at IT0 +200,
+  +700, +1,400, +2,200, +3,000 on a 100-row window: throughput >= 0.70 x s2_v4 base, heartbeat sim_fault_share <= 0.05, every training
+  set's finish >= its s2_v4 base - 0.05 (window noise sd <= 0.005 in s2_v4), planner updates = 10 per iteration. Fail = s2_v5 stops and
+  s2_v4 resumes from its own latest with its rearm_2h.sh flags. Scorer legs are reported, not a gate.
+- Pre-flight (runs/s2_v5/preflight/preflight.txt): simcheck acp_s2v5.json identical to the running build's acp_s2h_fix1.json; 3-iteration
+  CPU smoke from s2_v4 12,500 PASS (updates 10/10/10, eta_obs 0.7810 -> 0.7813 -> 0.7817, init planner = the 5,750 planner exactly,
+  planner changed after 3 iterations, update shares 5.4-5.7 % per set); export dry-run DONE; acp_handover_check ALL PASS (action 6.6e-6).
+- Code changed (backward compatible, defaults = old behaviour; backups _trash/2026-11-13/code_pre_s2v5): acp/train.py, acp/planner.py,
+  acp/env.py (recorder gets the clip id), ops/export_pair.sh (PAIR_OUT override), ops/export_every.sh (+ s2_v5). New: ops/arm_s2v5.sh,
+  ops/watch_s2v5.sh, ops/preflight_s2v5.sh, tools/replay_balance_check.py. ACP_SMOKE_PREFILL is a smoke-only hook, never set in training.
+- What went wrong on the way: the first balanced-check run crashed (Replay.indices used self.hist; fixed to self.clip) and its first flood
+  phase overwrote the whole ring (chunk too large; fixed). Neither touched training.
+
+### 17k. s2_v5 STARTED on the user's fixed schedule; automatic stage-3 switch; stage 3 built to the paper (ACP agent, 2026-11-13 13:30-)
+**User rules applied** (USER_RULES "ACP fixed stage lengths", 2026-11-13; "do not stop the training runs", 2026-11-13).
+- **Started 13:39:27 UTC from s2_v4 latest.pt = iteration 12,604** (s2_v4 had reached about 12,620; its last ~16 iterations after the
+  last latest.pt save were lost at the stop). schedule.json: eta_obs0 0.781, eta_rew0 0.281, N_ann 6,000 (1/6,000 per iteration),
+  **eta_obs = 1 at 13,918, eta_rew = 1 at 16,918, stage 3 starts at 19,218 (= 16,918 + 2,300), run end 34,218 (stage 3 = 15,000)**.
+  At about 12 s per iteration: stage-2 end about 2026-11-14 11:40 UTC.
+- Pre-flight of the change (runs/s2_v5/preflight_sched/preflight.txt): 3-iteration CPU smoke from s2_v4 12,604 with N_ann 6,000: eta
+  per row = anchor + k/6,000 within 2e-4 (0.781 / 0.7812 / 0.7813), planner updates 10/10/10; scripts syntax OK. Everything else of
+  17j's pre-flight (simcheck, export, hand-over) is unchanged code and was not re-run.
+- **Per-set finish gate demoted to information** (watch_s2v5.sh). Evidence (s2_v4 last 1,000 rows, 100-row windows): window sd <= 0.004
+  per set, worst window drop 0.011, so noise alone cannot fire it; but the schedule itself moves training finish toward the
+  planner-contact probe finish as eta_obs -> 1, and probe is > 0.05 below training finish on 6 sets (stairs turn -0.13, blocks -0.09,
+  flat -0.08, stairs_all -0.08, turn_place -0.06, chains -0.05): the gate would stop a healthy run doing what Eq. 3 demands.
+  Fault gates kept at +200/700/1,400/2,200/3,000: throughput >= 0.70 x base, sim_fault_share <= 0.05, planner updates = 10; continuous
+  crash loop (> 3 trainer starts in 2 h; was > 3 in total) and no metrics row 45 min, until the stage-2 end checkpoint.
+- **Nothing pauses training for evaluation**: exports are CPU (export_every.sh, nice 19, cores 8-23; s3_v2 added to its list); no live
+  GPU eval runs; the only automatic stops are the fault fall-backs and the stage-2 -> 3 switch itself (the trainer ends at 19,218 and
+  stage 3 starts at once, a few minutes of start-up).
+- **Automatic switch** (ops/auto_stage3.sh, tmux acp-s3auto): s2_v5 is supervised to exactly 19,218. From 18,918 a CPU smoke of stage 3
+  from s2_v5/latest.pt with ops/stage3_flags.env (needs code/STAGE3_READY) -> S3_CPU_CHECK_OK; at 19,218 stage 3 starts in runs/s3_v2
+  from ckpt_019218 to +15,000. Without the OK the run HOLDS (stage 2 continues in +500 chunks with s2_v5's flags, the check retried
+  when READY or the flags change). Stage-3 crash loop / stale -> S3_FAULT, s2_v5 continues stage 2. eta: both 1 at 19,218; stage 3 runs
+  --eta-anchor-it <switch it> --eta-obs0 1 --eta-rew0 1 (no jump). Sandbox test (ops/test_auto_stage3.sh, stub tmux / GPU / python,
+  runs/s3_build/test_auto_stage3.txt): S1 ready -> switch, S2 not ready -> hold then switch, S3 crash loop -> hold: ALL PASS.
+- **Stage 3 to the paper** (`--s3-paper 1`; default 0 = previous behaviour, so s2_v5 is unaffected): env.py success latch within
+  0.5 m horizontal / 0.1 m vertical of the final waypoint (earlier waypoints passed), also the replay admission and curriculum success;
+  recorder segment cut at the first step within 0.2 m; goal reset yaw U(+-0.4); initial phase 0 for all envs; demotion distance measured
+  only while |dz| < 0.1 m, > 1.0 m demotes; EMA 0.8/0.2, promote above 0.5 (unchanged); stumbling = sum over feet 1[F_xy > 1.1 F_z + 1];
+  slippage = sum over feet 1[contact > 0.026 s] 1[|v_foot,xy| > 0.5 m/s]; move2goal 40 / standatgoal 20 / planned contact 1.5 (unchanged
+  weights). planner.py TileReplay: partition per tile (goal tile or reference clip), quality = positive mechanical work / max(0.5 m,
+  initial horizontal goal distance), a better episode replaces its tile's worst, a worse one at a full tile is dropped, an under-share
+  tile evicts the largest tile's worst; sampling types (reference sets + goal families) -> tiles -> steps. train.py: V_fs value
+  clipping off during the 500-iteration warm-up; V_fs lr 1e-3 (unchanged). Data cfg stage3v2h_sets.json (tools/mk_stage3v2h.py):
+  the 2h reference sets unchanged + goal tiles v2b (6 ACP families + 9 extended-map families, 1,604 tiles, no ladders / vaults) on
+  one raster hmap_ext_v2h_40mm.npz (extended v2 + the 2h ramp raster with its mirror; checks: same origin, mirror area empty, no goal
+  tile in it).
+- CPU tests (runs/s3_build/s3_rules_test.out/.json): A1-A7 TileReplay bookkeeping, eviction, drop, sampling shares (types 0.333 each,
+  tiles 1/9, 1/6, 1/3 within 0.01) PASS; B1 phase 0 all envs; B2 goal yaw max 0.399, sd 0.248 (U(+-0.4): 0.231), reference envs 0;
+  B3 success at 0.10 / 0.40 m yes, 0.70 m no, 0.10 m but 0.35 m high no; B4 cut at the teleport step; B5 demotion distance ignores the
+  wrong-height step; B6 stumbling / slippage within [0, 2]; B7 recorder -> TileReplay keeps exactly the cut length, quality = work /
+  max(0.5, d0). ALL PASS. Build test (ops/s3_build_test.sh, runs/s3_build/): **stage-2 regression PASS** (3-iteration stage-2 smoke,
+  live code vs new code, seed 0: 212 metrics x 3 rows, 0 differences, so s2_v5 on a restart behaves identically); **stage-3 smoke PASS**
+  from s2_v5's init (eta 1.0 / 1.0, warm-up on, 10 planner updates on TileReplay, 40 episodes added, 16 goal episodes, raw stumbling
+  0.005, slippage 0.10, V_fs loss 25.5 finite). Installed 13:54 UTC into code/acp (backup _trash/2026-11-13/code_pre_s3paper);
+  **code/STAGE3_READY written**; the old manual ops/to_stage3.sh moved to _trash (superseded by auto_stage3.sh).
+- What is not the paper (kept, with reason): waypoint pass radius and standatgoal / move2goal radius 0.2 m and 1 s stations (user eval
+  rule); goal share 0.5 and 36,000 envs (paper silent / ours); replay capacity 1.5 M and per-tile share = capacity / tiles present
+  (paper silent); slippage foot speed horizontal (paper "v_f" unspecified); goal-env terminations falls only (paper "configured
+  failure conditions", silent).
+- Coordinator's Pico finding (training plots, 10,356 on): **a plotting artefact, not a regression.** Episode-weighted training finish
+  on the corrected Pico sets is 0.98 (2x2 v1_1) / 0.979 (mirror) at 12,500-12,700, the same as the old 2x2 set's 0.995 before; the
+  0.65 / 0.45 curves are row means that count rows with zero episodes as 0 (the old 2x2 slot is kept at weight 0 and logs finish 0
+  with 0 episodes; rare sets get 0-2 probe episodes per iteration). Episode-weighted probe: 2x2 v1_1 0.98, mirror 0.965. The diverged
+  share 0 -> 0.028 is the new simcheck fault detector introduced with s2_v4 (faults now counted as truncations), under the 0.05 limit;
+  GPU use 81 % before 10,356 and 76-83 % after (unchanged). Real but small changes since 10,356: stairs x10 0.98 -> 0.935, ramp 0.986
+  -> 0.97 (2h data + paper DR). Balanced replay acts on the planner (probe), not on tracker finish. Nothing changes before or after GO;
+  the plot should weight by episodes and skip zero-episode rows (eval/metrics is the coordinator's).
+
+### 17l. Stage 3 finish_frac fall: composition + spawn faults, not tracker degradation (ACP helper, 2026-11-14 14:30-15:30 UTC)
+- Asked: heartbeat finish_frac 0.957 (s2 end) -> 0.63 at 19,890. Done on CPU only, run untouched.
+- finish_frac counts every episode; stage 3 has goal share 0.5 (goal episodes ~48% of ends). Split (runs/s3_v2_diag/diag_1430.txt):
+  reference clips (episode-weighted) 0.957 (s2_v5 18,919-19,218) -> 0.925 (19,219-19,318) -> 0.933 / 0.935 / 0.937 / 0.939 / 0.938 / 0.938
+  (to 19,899): a step at the switch (paper phase-0 starts = whole clips, half the reference envs), then flat or rising on every set.
+  Per set s2 end -> now: flat 0.965 -> 0.922, blocks 0.964 -> 0.917, chains 0.967 -> 0.954, stairs turn 0.945 -> 0.910, stairs x10
+  0.934 -> 0.918, ramp sh2 0.966 -> 0.929, ramp mir 0.971 -> 0.956, stairs_all 0.957 -> 0.941, 4x4 0.968 -> 0.962, gst 0.882 -> 0.895,
+  gs2dn 0.928 -> 0.948, turn_place 0.988 -> 0.984, stand_edge 0.984 -> 0.975, Pico 0.979/0.980 -> 0.972/0.972. Tracker errors steady
+  (track_joint_pos 0.774 -> 0.777, track_base_pos 0.930 -> 0.933 over stage 3).
+- Goal envs: goal/success 0.26 / 0.47 / 0.41 / 0.35 / 0.27 / 0.24 / 0.25 per window while level_mean 0 / 0.96 / 3.4 / 5.7 / 7.2 / 7.8 / 8.1
+  (max 9); fall 0.03-0.05. 63% of goal episodes end in a simulator fault (end/term_diverged 0.147 -> 0.317 of all ends; heartbeat
+  sim_fault_share 31.8%, WARN). Clean-episode success ~0.43 at level 0 -> ~0.67 at level 8 (the curriculum EMA excludes faulted
+  episodes, so promotion is real).
+- Fault cause (fault_diag.py wraps AcpEnv.reset / FaultDetector.update, train unchanged; 128 envs CPU from latest.pt 19,913, 20 iterations,
+  goal levels random 0-9; fault_diag_lv1.json): goal 281 faults vs reference 18 in equal steps; 219/281 within 10 steps of reset;
+  ext_homes 79, ext_log_corridors 82, ext_tight_spots 67, ext_street_front 17, rest <= 10 (our six families 6); depth > 5 cm 240
+  (77 >= 1 m, max 2.24 m), qvel 102, speed jump 70, NaN 0 = spawns inside geometry. Reference faults: 18, all 5-10 cm (stage-2 level).
+- Other checks: eta 1.0 / 1.0 from the first row (continuous); V_fs warm-up 19,219-19,718, value_loss_goal 6.4 -> 10.5 (peak) -> 8.0
+  after; TileReplay empty at the switch, full (1.5 M) within 100 rows, planner updates 10 from then; NaN in metrics 0; action std
+  0.268 -> 0.208; fps 73 k -> 58 k (goal envs + V_fs). watch_s3 gates crash/stale only, so the fault share cannot stop the run.
+- Decision: no action on the run (not crash-level; spawn faults cost ~0.2% of steps; user rule no stops). Queued: CPU spawn check of all
+  1,604 goal tiles -> bad-tile list -> data cfg without them, used only at the next restart. Read finish on reference envs and goal
+  success on clean episodes, not heartbeat finish_frac. pair_s3_v2_019500 not in results.csv at 15:30 UTC.
+
+### 17m. Spawn fix prepared and ARMED on GO (ACP agent, 2026-11-14 15:00-16:10 UTC; coordinator's request; run untouched)
+- Spawn check (tools/spawncheck/spawn_dyn.py, CPU): every tile x 4 training resets (yaw U(+-0.4), joint noise, +0-5 cm), 10 steps, simcheck
+  detector. v2 (runs/s3_v2_diag/dyn_all.json): 80 of 1,604 tiles fault - ext_homes 17/33, ext_beam_fields 15/89, ext_tight_spots 9/20,
+  ext_stairs 8/366, ext_single_beams 7/90, ext_blocks 6/80, ext_wedges 6/138, ext_street_front 6/40, ext_log_corridors 5/28, stairs_down
+  1/120, our other five families 0; 181 fault events / 6,416 resets, 111 in tiles with deep (> 0.3 m) contacts. Causes depth 174, qvel 86,
+  speed jump 10. Cause: spawns against tall raster walls (homes 2 m, tight spots 1 m); the static check (raster in a 0.3 m disc above the
+  spawn floor) flags 57 of the 80, the rest are walls within arm reach under the reset yaw.
+- Fix (tools/spawncheck/spawn_fix.py, spawn_search.sh, mk_tiles_v2c.py, mk_tiles_v2c_pass2.py): candidates on the same tile along the
+  spawn -> first waypoint line (+-1 m, >= 0.5 m short of the waypoint) and sideways (+-0.45 m), flat floor (range <= 2 cm in 0.3 m),
+  clearance to cells > floor + 0.1 m >= 0.6 / 0.45 / 0.35 m; still-faulting tiles searched dynamically over ranks 1-12 (8 resets each);
+  tiles with no clean spawn take the spawn and route of the cleanest sibling of the same family and level (tile count, order, clip ids,
+  curriculum levels unchanged). Result data/goals/goal_tiles_v2c.json: 62 spawns moved (median shift 0.9 m, max 1.45 m), 20 tiles
+  substituted (ext_stairs 8, ext_homes 7, ext_log_corridors 2, ext_street_front 2, ext_tight_spots 1), 2 unchanged (clean on re-check);
+  no tile dropped. Zero-action re-check: 181 -> 20 events.
+- cfg/stage3v2i_sets.json = stage3v2h + goal_tiles v2c (only goal_tiles / note differ); label cache cfg/labels_stage3v2i_sets.json.pt
+  built on CPU (differs from v2h only in 39 goal-tile frames), so the start does not recompute labels.
+- Pre-flight (runs/s3_v2_diag/preflight.log): CPU resume of s3_v2 latest (it 20,082) with v2i, 128 envs, 20 iterations: rc 0, NaN-free,
+  planner updates 10. Its fault counts are confounded (CPU PPO on 128 envs drifts the policy: reference faults 18 -> 80, all shallow),
+  so the decisive measure is the frozen-policy A/B (ab_policy.sh: init_pf.pt actor sampled + planner eta 1, all tiles x 4 resets x 30
+  steps): v2h 203 fault events (114 deep) -> v2c 49 (8 deep); extended families 201 / 3,536 resets (5.7%) -> 47 (1.3%, the order of the
+  reference envs' 2.7% per episode in stage 2); homes 48 -> 4, tight spots 33 -> 0, beam fields 26 -> 2, single beams 24 -> 7, stairs
+  21 -> 9, wedges 20 -> 10, street 14 -> 5, blocks 9 -> 3, log corridors 6 -> 7 (unchanged, small); our six families 2 -> 2 of 2,880.
+  PREFLIGHT_SPAWNFIX_OK written.
+- ARMED: tmux acp-spawnfix runs code/ops/arm_spawnfix.sh (sandbox test PASS, runs/s3_v2_diag/arm_sandbox). On runs/s3_v2/GO_spawnfix
+  (needs PREFLIGHT_SPAWNFIX_OK, no S3_FAULT, flags still v2h): waits for the next latest.pt save, STOP, restarts supervise.sh in the
+  same run with only DATA=cfg/stage3v2i_sets.json (old flags kept as launch_flags_v2h.txt; STOP moved to _trash). Resume keeps
+  iteration, s3_start (no new warm-up), curriculum levels, optimisers; the planner TileReplay is not checkpointed and refills (~100 its,
+  as after any resume). Cost: a few minutes of start-up. GO not created (user's decision; it is a stop of the run).
+
+## HOW TO RESUME (current at 2026-11-14 16:10 UTC node clock)
+- Running: s3_v2 stage 3 (tmux acp, 19,218 -> 34,218, at ~20,300); acp-s3auto (crash/stale only); acp-export; acp-backup;
+  acp-spawnfix = armed data switch, waiting for runs/s3_v2/GO_spawnfix (17m). Its log lines: [spawnfix] in runs/s2_v5/restart.log.
+- Read progress as: reference-clip finish (episode-weighted, 0.938 at 19,899) and goal success on clean episodes (~0.67), via
+  code/tools/spawncheck/s3diag.py (CPU, seconds); heartbeat finish_frac and sim_fault_share are dominated by spawn faults until the switch.
+- After a GO: check the [spawnfix] lines, then sim_fault_share (expect well below 31.8%) and end/term_diverged over the next 100 rows.
+- Scorer: pair_s3_v2_019500 and later in eval/autoscore/results.csv.
+
+## HOW TO RESUME (previous, 2026-11-14 15:30 UTC node clock)
+- Running: s3_v2 stage 3 (tmux acp) from 19,218 to 34,218; acp-s3auto watches crash/stale only; acp-export (s3_v2 pairs); acp-backup.
+- Read progress as: reference-clip finish (episode-weighted, 0.938 at 19,899) and goal success on clean episodes (~0.67), via
+  runs/s3_v2_diag/s3diag.py (python3 s3diag.py, CPU, seconds). heartbeat finish_frac and sim_fault_share are dominated by spawn faults (17l).
+- Next: spawn check of all goal tiles on CPU (not started); scorer results for pair_s3_v2_019500 and later in eval/autoscore/results.csv.
+
+## HOW TO RESUME (previous, 2026-11-13 14:00 UTC node clock)
+- Running (tmux): acp = s2_v5 trainer to 19,218 (runs/s2_v5); acp-watch5 = fault watcher (gates +200 at 12,804 about 14:20 UTC, +700,
+  +1,400, +2,200, +3,000; then crash/stale until 19,218); acp-s3auto = automatic stage-3 switch (log lines [s3auto] in
+  runs/s2_v5/restart.log); acp-export = CPU pair export (s2_v5, s3_v2); acp-backup.
+- Schedule: runs/s2_v5/schedule.json (eta_obs 1 at 13,918, eta_rew 1 at 16,918, stage 3 at 19,218, end 34,218).
+- **Gate +200 PASS** (it 12,713-12,812): fps 71,697 (base 74,797, 0.96x), sim_fault_share 0.0275, planner updates 10.00, eta_obs
+  0.8155 / eta_rew 0.3155, fed share 0.82; mean set finish 0.960 (base 0.959), no set > 0.05 below base (stairs turn 0.955 vs 0.942,
+  gst 0.878 vs 0.882).
+- Next checks: gate_700.txt (it 13,304, about 15:55 UTC) and later gates in runs/s2_v5; the scorer on s2_v5 pairs; about 18,918 (~2026-11-14 10:40 UTC) the
+  [s3auto] CPU check line; at 19,218 "STAGE 3 STARTED" (or HOLD = read s3_cpu_check/smoke.out).
+- No hand step needed for the switch. Stage 3 code: code/acp (--s3-paper), flags code/ops/stage3_flags.env, cfg stage3v2h.
+
+## HOW TO RESUME (previous, 2026-11-13 13:28 UTC node clock)
+- s2_v4 still training (tmux acp). s2_v5 ARMED in tmux acp-arm5: waits for runs/s2_v5/GO (touch after the user's yes); PREFLIGHT_OK present.
+  At GO it stops s2_v4, starts s2_v5 (tmux acp), watcher acp-watch5, restarts acp-export. Log: runs/s2_v5/restart.log.
+- After GO: read restart.log, schedule.json, gate_<n>.txt at +200 (about 40 min after start), and planner/update_share in metrics.
+- Earlier blocks below still apply for s2_v4.
+
+## HOW TO RESUME (previous, 2026-11-13 11:22 UTC node clock)
+- 11:22: s2_v4 pairs 010500-011500 re-recorded with the clamped action (17i) and released to the scorer. Next: read scorer results
+  for them (hold-out gate, legs). Earlier block below still applies.
+
+## HOW TO RESUME (previous, 2026-11-13 09:25 UTC node clock)
+- 09:25: pair_eval defect fixed (17h); acp-fixpairs re-recording the three s2_v4 pairs (log eval/fix_pairs_s2_v4.log, about 30 min).
+- 08:58: s2_v4 training past gate C (PASS 08:50, it 11,150); the watcher has ended. s2_v4 pairs repaired for the scorer (17g). Next: fix the pair_eval
+  mode-carry-over defect (17g) and export_pair.sh writing DONE after a failed pair_eval; read the scorer results for the s2_v4 pairs.
+- s2_v4 re-armed 07:32 from its own 10,750 (17f); tmux `acp`. Watcher `acp-watch2h` (REARM=1, gate C at 11,150, about 08:35):
+  writes runs/s2_v4/GATE_C_PASS or FALLBACK (s2_v3 resumes). Next check after 08:40: restart.log, gate_C.txt, scorer results for
+  pair_s2_v4_010750 and the next s2_v4 pairs (hold-out gate, legs vs 8,000's 231/250).
+- One code folder: code/ only. Stage-3 switch: CK=<ckpt> code/ops/to_stage3.sh, refuses until code/STAGE3_READY.
+
+## HOW TO RESUME (previous, 2026-11-13 06:35 UTC node clock)
+- s2_v4 training (tmux `acp`), started 06:00:46 from s2_v3 10,356; gate A PASS 06:30 (17e). `acp-watch2h` (code/ops/watch_2h.sh)
+  writes GATE_B_PASS or FALLBACK at it 10,756 (about 07:50). Next check after 08:00: runs/s2_v4/restart.log, gate_B.txt, the new
+  sets' finish, sim_fault_share (0.027 at gate A, warn level), scorer pairs. No planned restart for 2,000 iterations (user rule).
+- One code folder: code/ only (17e). Stage-3 switch: CK=<ckpt> code/ops/to_stage3.sh, refuses until code/STAGE3_READY.
 - Everything below this line (23:00 block) is the state before 17d; the run is s2_v4 after 06:00.
 
 ## HOW TO RESUME (previous, 2026-11-12 23:00 UTC node clock)

@@ -16,6 +16,7 @@ import sys
 import time
 
 import os
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -110,27 +111,165 @@ def label_core(c, pts, root, valid, every=2):
 class Replay:
     """The planner's hindsight replay buffer (ring), on the training device."""
 
-    def __init__(self, cap, hist_dim, dev):
-        self.cap, self.size, self.ptr = cap, 0, 0
+    def __init__(self, cap, hist_dim, dev, clip_set=None, balance="none"):
+        """clip_set: (n_clips,) data-set index of every clip; balance "set_clip" = balanced sampling over data sets ->
+        clips -> frames (the paper's stage-3 rule types -> tiles -> steps applied to stage 2's reference sets; 2026-11-13)."""
+        assert balance in ("none", "set_clip"), balance
+        assert balance == "none" or clip_set is not None, "balanced sampling needs clip_set"
+        self.cap, self.size, self.ptr, self.balance = cap, 0, 0, balance
         self.hist = torch.zeros(cap, hist_dim, dtype=torch.half, device=dev)
         self.scan = torch.zeros(cap, NP, dtype=torch.half, device=dev)
         self.goal = torch.zeros(cap, 3, device=dev)
         self.pos = torch.zeros(cap, NB, 3, device=dev)
         self.occ = torch.zeros(cap, NB, dtype=torch.bool, device=dev)
+        self.clip = torch.full((cap,), -1, dtype=torch.long, device=dev)    # source clip of each sample (-1 = unknown)
+        self.clip_set = clip_set.to(dev).long() if clip_set is not None else None
+        self.n_sets = int(self.clip_set.max()) + 1 if self.clip_set is not None else 0
 
-    def push(self, hist, scan, goal, pos, occ):
+    def push(self, hist, scan, goal, pos, occ, clip=None):
         n = hist.shape[0]
         if n == 0:
             return
+        if clip is None:
+            clip = torch.full((n,), -1, dtype=torch.long, device=hist.device)
         if n > self.cap:
-            hist, scan, goal, pos, occ = (x[-self.cap:] for x in (hist, scan, goal, pos, occ)); n = self.cap
+            hist, scan, goal, pos, occ, clip = (x[-self.cap:] for x in (hist, scan, goal, pos, occ, clip)); n = self.cap
         idx = (self.ptr + torch.arange(n, device=hist.device)) % self.cap
         self.hist[idx], self.scan[idx], self.goal[idx], self.pos[idx], self.occ[idx] = hist.half(), scan.half(), goal, pos, occ
+        self.clip[idx] = clip.long()
         self.ptr = int((self.ptr + n) % self.cap); self.size = min(self.cap, self.size + n)
 
-    def sample(self, n):
-        i = torch.randint(0, self.size, (n,), device=self.hist.device)
+    def weights(self):
+        """Per-sample probability of the balanced rule: 1 / (sets present x clips of its set present x samples of its clip)."""
+        c = self.clip[: self.size]
+        assert bool((c >= 0).all()), "balanced sampling: samples without a source clip"
+        nc = self.clip_set.numel()
+        cnt = torch.bincount(c, minlength=nc)                                   # samples per clip
+        present = (cnt > 0).nonzero().squeeze(-1)
+        cps = torch.bincount(self.clip_set[present], minlength=self.n_sets)      # clips present per set
+        n_sets = int((cps > 0).sum())
+        return 1.0 / (n_sets * cps[self.clip_set[c]] * cnt[c]).double()
+
+    def indices(self, n):
+        if self.balance == "set_clip":
+            return torch.multinomial(self.weights().float(), n, replacement=True)
+        return torch.randint(0, self.size, (n,), device=self.clip.device)
+
+    def take(self, i):
         return self.hist[i].float(), self.goal[i], self.scan[i].float(), self.pos[i], self.occ[i]
+
+    def sample(self, n):
+        return self.take(self.indices(n))
+
+    def set_share(self, i=None):
+        """Share per data set of the given sample indices (default: the buffer content); None without clip_set."""
+        if self.clip_set is None:
+            return None
+        c = self.clip[: self.size] if i is None else self.clip[i]
+        c = c[c >= 0]
+        if c.numel() == 0:
+            return None
+        h = torch.bincount(self.clip_set[c], minlength=self.n_sets).double()
+        return h / h.sum()
+
+
+class TileReplay(Replay):
+    """Stage-3 hindsight buffer as in the paper (Methods, Table S5; state/acp.md 17k): partitioned by terrain tile (tile = a goal
+    tile or a reference clip), quality-based eviction (keep the episodes with the lower positive mechanical work per metre of
+    initial horizontal goal distance, floor 0.5 m), sampling uniform over types (goal families and reference data sets), then
+    tiles of the type, then samples of the tile. Capacity is not given in the paper (ours). Partition size: the capacity shared
+    evenly by the tiles present (the paper gives no per-tile size). When the buffer is full, an episode of a tile at or over its
+    share replaces that tile's worst episode if it is better, otherwise it is dropped; an episode of a tile under its share
+    evicts the worst episode of the largest tile. Slot bookkeeping is on the CPU; the samples stay on the training device."""
+    episodic = True
+
+    def __init__(self, cap, hist_dim, dev, clip_type):
+        super().__init__(cap, hist_dim, dev, clip_set=clip_type, balance="set_clip")
+        self.balance = "type_tile"
+        self.used = torch.zeros(cap, dtype=torch.bool, device=dev)
+        self.free = np.arange(cap - 1, -1, -1, dtype=np.int64); self.nfree = cap
+        self.tile_cnt = np.zeros(self.clip_set.numel(), dtype=np.int64)
+        self.tile_eps = {}                                                    # tile -> [episode ids]
+        self.eps = {}                                                         # episode id -> (tile, quality, slots)
+        self.next_id = 0
+        self.stats = dict(added=0, dropped=0, evicted=0)
+
+    def _evict(self, eid, freed):
+        k, q, sl = self.eps.pop(eid)
+        self.tile_eps[k].remove(eid)
+        self.tile_cnt[k] -= len(sl)
+        self.free[self.nfree:self.nfree + len(sl)] = sl; self.nfree += len(sl)
+        freed.append(sl); self.stats["evicted"] += 1
+
+    def _alloc(self, n, k, q, freed):
+        if n > self.cap:
+            return None
+        while self.nfree < n:
+            mine = self.tile_eps.get(k)
+            present = int((self.tile_cnt > 0).sum()) + int(self.tile_cnt[k] == 0)
+            if mine and self.tile_cnt[k] + n > self.cap / present:
+                worst = max(mine, key=lambda e: self.eps[e][1])
+                if self.eps[worst][1] <= q:
+                    return None                                               # not better than this tile's worst: dropped
+                self._evict(worst, freed)
+            else:
+                v = int(self.tile_cnt.argmax())
+                if self.tile_cnt[v] == 0:
+                    return None
+                self._evict(max(self.tile_eps[v], key=lambda e: self.eps[e][1]), freed)
+        sl = self.free[self.nfree - n:self.nfree].copy(); self.nfree -= n
+        eid = self.next_id; self.next_id += 1
+        self.eps[eid] = (k, float(q), sl); self.tile_eps.setdefault(k, []).append(eid); self.tile_cnt[k] += n
+        return sl
+
+    def push_episodes(self, hist, scan, goal, pos, occ, clip, e, q):
+        """Samples sorted by episode index e (0..m-1, as Recorder.flush gives them); q (m,) quality per episode (lower = better)."""
+        if hist.shape[0] == 0:
+            return
+        e_c, clip_c, q_c = e.cpu().numpy(), clip.cpu().numpy(), q.float().cpu().numpy()
+        cnt = np.bincount(e_c, minlength=len(q_c)); off = np.concatenate(([0], np.cumsum(cnt)))
+        freed, src, dst = [], [], []
+        for j in np.nonzero(cnt)[0]:
+            k = int(clip_c[off[j]])
+            sl = self._alloc(int(cnt[j]), k, q_c[j], freed)
+            if sl is None:
+                self.stats["dropped"] += 1; continue
+            src.append(np.arange(off[j], off[j + 1])); dst.append(sl); self.stats["added"] += 1
+        if freed:
+            f = torch.from_numpy(np.concatenate(freed)).to(self.used.device)
+            self.used[f] = False; self.clip[f] = -1
+        if dst:
+            s = torch.from_numpy(np.concatenate(src)).to(hist.device); d = torch.from_numpy(np.concatenate(dst)).to(self.used.device)
+            self.hist[d], self.scan[d], self.goal[d], self.pos[d], self.occ[d] = hist[s].half(), scan[s].half(), goal[s], pos[s], occ[s]
+            self.clip[d] = clip[s].long(); self.used[d] = True
+        self.size = self.cap - self.nfree
+
+    def push(self, *a, **k):
+        raise RuntimeError("TileReplay takes whole episodes (push_episodes)")
+
+    def weights(self):
+        """1 / (types present x tiles of its type present x samples of its tile) on used slots, 0 on free slots."""
+        u = self.used
+        c = self.clip[u]
+        cnt = torch.bincount(c, minlength=self.clip_set.numel())
+        present = (cnt > 0).nonzero().squeeze(-1)
+        tpt = torch.bincount(self.clip_set[present], minlength=self.n_sets)       # tiles present per type
+        n_types = int((tpt > 0).sum())
+        w = torch.zeros(self.cap, dtype=torch.double, device=u.device)
+        w[u] = 1.0 / (n_types * tpt[self.clip_set[c]] * cnt[c]).double()
+        return w
+
+    def indices(self, n):
+        return torch.multinomial(self.weights().float(), n, replacement=True)
+
+    def set_share(self, i=None):
+        """Share per type (goal family / reference set) of the given sample indices (default: the buffer content)."""
+        c = self.clip[self.used] if i is None else self.clip[i]
+        c = c[c >= 0]
+        if c.numel() == 0:
+            return None
+        h = torch.bincount(self.clip_set[c], minlength=self.n_sets).double()
+        return h / h.sum()
 
 
 class Recorder:
@@ -151,11 +290,30 @@ class Recorder:
         self.state = torch.zeros(n, dtype=torch.long, device=dev)          # 0 idle, 1 recording, 2 finished successfully (waiting)
         self.ar = torch.arange(n, device=dev)
         self.episodes, self.successes = 0, 0
+        self.clip = torch.full((n,), -1, dtype=torch.long, device=dev)     # clip of the episode being recorded
+        # stage-3 paper rules (Table S5): positive mechanical work and initial horizontal goal distance of each episode (eviction
+        # quality = work / max(0.5, d0)); cut = recorded length at the first step within 0.2 m of the goal (-1 = none)
+        self.work = torch.zeros(n, device=dev)
+        self.d0 = torch.zeros(n, device=dev)
+        self.cut = torch.full((n,), -1, dtype=torch.long, device=dev)
 
-    def start(self, ids):
-        ids = ids[ids < self.n]
-        ids = ids[self.state[ids] != 2]
+    def start(self, ids, clip=None, d0=None):
+        m = ids < self.n
+        ids = ids[m]; clip = clip[m] if clip is not None else None; d0 = d0[m] if d0 is not None else None
+        m = self.state[ids] != 2
+        ids = ids[m]; clip = clip[m] if clip is not None else None; d0 = d0[m] if d0 is not None else None
         self.state[ids], self.len[ids] = 1, 0
+        self.clip[ids] = clip.long() if clip is not None else -1
+        self.work[ids], self.cut[ids] = 0.0, -1
+        self.d0[ids] = d0 if d0 is not None else 0.0
+
+    def add_work(self, w):
+        """w: (n,) positive mechanical work of this control step; added to the episodes being recorded."""
+        self.work += w * (self.state == 1).float()
+
+    def mark_cut(self, near):
+        """near: (n,) bool, within the cut distance of the goal now; the first such step fixes the recorded length."""
+        self.cut = torch.where(near & (self.state == 1) & (self.cut < 0), self.len, self.cut)
 
     def observe(self, env, S, goal, scan17):
         n = self.n
@@ -185,14 +343,25 @@ class Recorder:
         if len(i) == 0:
             return 0
         ln = self.len[i]
+        if getattr(replay, "episodic", False):                               # stage 3: goal segments cut 0.2 m before the goal
+            ln = torch.where(self.cut[i] >= 0, torch.minimum(ln, self.cut[i]), ln)
         T = int(ln.max())
+        if T == 0:
+            self.state[i] = 0
+            return 0
         tt = torch.arange(T, device=self.dev)
         valid = (tt[:, None] < ln[None, :])
         pos, occ = label_core(self.c[i, :T].transpose(0, 1), self.pts[i, :T].transpose(0, 1), self.root[i, :T].transpose(0, 1), valid, self.every)
         K = pos.shape[0]
         keep = valid[:: self.every][:K].transpose(0, 1)                       # (n_i, K)
         e, k = keep.nonzero(as_tuple=True)
-        replay.push(self.hist[i][e, k].float(), self.scan[i][e, k].float(), self.goal[i][e, k], pos.transpose(0, 1)[e, k], occ.transpose(0, 1)[e, k])
+        args = (self.hist[i][e, k].float(), self.scan[i][e, k].float(), self.goal[i][e, k], pos.transpose(0, 1)[e, k], occ.transpose(0, 1)[e, k],
+                self.clip[i][e])
+        if getattr(replay, "episodic", False):
+            q = self.work[i] / self.d0[i].clamp(min=0.5)                      # positive work per metre of initial goal distance
+            replay.push_episodes(*args, e, q)
+        else:
+            replay.push(*args)
         self.state[i] = 0
         return int(len(e))
 

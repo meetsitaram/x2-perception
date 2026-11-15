@@ -62,6 +62,9 @@ class SSRHandover(Adapter):
         dc = c["observation"]["depth"]
         self.cam_body, self.cam_pos, self.cam_pitch = dc["body"], np.array(dc["pos_in_body"], float), float(dc["pitch_down_rad"])
         self.near, self.far, self.march = float(dc["near"]), float(dc["far"]), float(dc["ray_march_range"])
+        # training's ray march reaches at most tmin + iters * step_cap (3.88 m for chest_rs); a farther hit reads as "no hit"
+        # (t = ray_march_range). Cards from 2026-11-13 15:40 UTC on carry it; older cards: exact cast (fix 2026-11-13).
+        self.hit_range = float(dc["ray_hit_range"]) if "ray_hit_range" in dc else None
         z = np.load(os.path.join(d, "obs_check.npz"))
         self.rays_cam = z["camera_rays_cam_frame"].astype(float)          # (1296, 3), unit, camera frame x fwd y left z up
         self.rays_cam /= np.linalg.norm(self.rays_cam, axis=1, keepdims=True)
@@ -115,6 +118,8 @@ class SSRHandover(Adapter):
     def ray_lengths(self, view: View):
         o, dw = self.camera(view)
         t = view.rays(np.tile(o, (len(dw), 1)), dw, far=self.march)
+        if self.hit_range is not None:
+            t = np.where(t > self.hit_range, self.march, t)
         if self.occlude:
             d = view.d
             for b, off, r in self._occ:

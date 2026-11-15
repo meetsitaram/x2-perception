@@ -47,6 +47,11 @@ OUT = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith("--") else
 OBS_FILE = _opt("--obs")
 CARD_ONLY = "--card-only" in sys.argv
 os.makedirs(OUT, exist_ok=True)
+# 2026-11-13: each export carries its own run's params (env.yaml, agent.yaml) as run_params/, so the scorer never falls back to
+# another run's copy (the autoscorer copied the 4,750 params for exports without them).
+import shutil
+if os.path.isdir(os.path.join(RUN_DIR, "params")):
+    shutil.copytree(os.path.join(RUN_DIR, "params"), os.path.join(OUT, "run_params"), dirs_exist_ok=True)
 
 env = yaml.unsafe_load(open(os.path.join(RUN_DIR, "params/env.yaml")))
 agent = yaml.unsafe_load(open(os.path.join(RUN_DIR, "params/agent.yaml")))

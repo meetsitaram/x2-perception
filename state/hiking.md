@@ -1482,7 +1482,73 @@ Plan: a small monitor term for per-type terrain level, actual vs commanded speed
 
 None. Open: the user's measured camera height and angle; which pelvis mass is right (URDF 3.52 kg or MJCF 5.03 kg).
 
-## HOW TO RESUME (updated 2026-11-13 02:17 node clock; supersedes everything below where they differ)
+## HOW TO RESUME (updated 2026-11-13 13:40 node clock; supersedes everything below where they differ)
+
+- v7 = THE LAST PLANNED RESTART (user approved paper reference v4 on 11-13; user rule 11-13: no pauses, stops or planned restarts
+  for evaluation; checkpoints go to the desktop, evals run there). Run goes to --total 30000 (fixed end iteration 30,000).
+- 13:28 v6 disarmed (tmux cont6 killed; GO_v6 never written; v6 used the flawed v3). 13:31:57 GO_v7 ("now") written,
+  tmux `cont7` = `code/x2_port/v7/continue_v7.sh`, restart from model_11125 (v5b was at 11,235).
+- v7 content = v6 minus v3: motion `data/motion_v7/parkour_motion_without_run_x2_v4_retargetted.npz` (byte copy of
+  hiking_release_x2/..._v4.npz; already in the loader's format: framerate, joint_names (31 X2 joints, same order as v2),
+  joint_pos, base_pos_w, base_quat_w; yaml lists it); t cap `AIR_TD_CAP=ref` x 140 (variants/staged.py.v6); `--extra=--seed=42`
+  (train.py --seed -> agent and env seed 42; was 42 by default before); all other env vars = v5b (precheck compares).
+- Discriminator CARRIES OVER (decision 13:30): same 550 inputs, so the v5 style loader keeps it with its optimiser and
+  normalisers. v4 vs v2: leg joints mean |d| 0.0014 rad, waist pitch 0.138 rad (p95 0.63), waist at -18 deg limit 0 frames
+  (v2 2,901), at +18 deg 2,926. The leg features stay valid and only the waist must be relearned (tens of iterations);
+  a fresh one would give a random style reward for the whole adaptation (v5b's fresh start cost episode 833 -> 610 in the trial).
+- Pre-flight 13:30 by hand: `precheck_v7_manual.log` PASS (launcher = v5b except cap and motion; refcap tests; motion v4 checks;
+  code tree 32 = installed), `cfgscan_v7_manual.log` 42 terms, touchdown = refcap x 140. The gate repeats both before stopping v5b.
+- Trial: 75 iterations, marks over the last 30 (level >= 0.8 x, episode >= 0.4 x, turn >= 0.5 x), else fallback_v5b.sh. Then guard7.
+- Nothing pauses training: auto_export_v4.sh (tmux autoexp) exports on CPU (`CUDA_VISIBLE_DEVICES=` , nice) without STOP;
+  crashguard stops only after two error exits from one checkpoint; the supervisor restarts only on a stall/crash. No eval on the node.
+- Not taken into v7: 16,384 robots (approved for "the next planned restart"): untested PhysX buffers (contact drops at 12,288);
+  a trial failure would have cost the v4 switch, and no later planned restart exists now. Stays at 8,192. Open for the user.
+- Coordinator questions 13:45 (training plots), answered from code and metrics.jsonl 11,000-11,125:
+  1. Levels at about 6 = the curriculum is SATURATED, not stuck. Promotion (paper `tracking_exp_vel`): up if the episode mean of
+     exp(-|v_cmd - v|^2 / 0.5^2) > 0.6, down if < 0.3. Isaac's `update_env_origins` sends a robot that passes level 9 to a
+     uniform random level 0-9; a robot that passes every level then has mean level sum k(k+1)/sum(k+1) = 330/55 = 6.0. Per type
+     now: 5.88-6.85, gaps 5.21 (still climbing). So the 10 rows are exhausted for every type but gaps; time-outs 91-99% per group
+     agree. More difficulty needs harder rows (terrain change), not more iterations.
+  2. Half speed (walk_monitor speed_ratio 0.496: 0.247 / 0.498 m/s over all robots with a forward command > 0.1 m/s). Route
+     robots away from props track 0.74-0.90 of command (stairs 0.56, tight spots 0.66, homes 0.74); so the low mean comes from the
+     rest: paper-column target robots get a forward command also while turning toward a target (only routes zero it over 60 deg),
+     high-level obstacle tiles, stairs. Nothing pays for closing the gap: the reward and the promotion kernel (std 0.5) keep 76%
+     at half of a 0.5 m/s command (above the 0.6 promotion bar), overspeed (-3) charges only above the command. Not separated
+     per column for paper tiles (no log); MuJoCo flat eval at 4,125 tracked 0.5 within 2%, so it is not a flat-ground inability.
+     (`slow_fwd_ratio` 0.059 is a per-env metric diluted over all robots; not read as a ratio.)
+  3. v7 changes neither rule. The t cap `ref` raises the paid swing at 0.5 m/s from 0.30 to 0.48 s (reference cadence 1.9
+     steps/s instead of 2.9): speed then rests on step length from the style reference; watch speed_ratio after the trial. Fixes
+     (tighter tracking std / promotion on speed ratio, harder rows) need a restart: under the 11-13 rule (no planned restarts)
+     they are open for the coordinator/user, not taken.
+- TRIAL VERDICT 13:57:05: PASS after 76 iterations (last 30): level 6.153 (before 6.153), episode 877 (before 981, 0.89 x),
+  turn rate 1.206 (before 1.201). GPU idle 1,460 s for the restart. Run dir `20261113_133809_from20261113_023937`, trainer
+  command has `--seed=42`, params/agent.yaml seed 42; no "discriminator shapes changed" line = discriminator carried over
+  (discriminator reward 0.615 vs 0.627 before). guard7 (crash-loop fall-back v5b) running; cont7 finished.
+- NEXT: nothing planned on the node; run ends at 30,000 (about 9.6 s/it -> about 50 h, ~16 Nov). Read speed_ratio and the
+  desktop scorer's results on the v7 exports (11,250 onward); resume this agent only for a crash-guard event or a finding.
+
+## (older) HOW TO RESUME 2026-11-13 12:42 (v6 below never started; superseded by v7)
+
+- RUNNING: v5b (x2_parkour_v4, run dir 20261113_023937_from20261113_020626), iteration ~10,940 at 12:41; guard5, autoexp.
+- ARMED, NO GO: tmux `cont6` = `code/x2_port/v6/continue_v6.sh`, waits for `runs/x2_parkour_v4/_supervisor/GO_v6` (coordinator
+  writes it after the user approves; "now" inside = newest checkpoint at once). v6 = v5b + (a) option t with a speed-dependent cap
+  (`HIKING_X2_AIR_TD_CAP=ref`, weight 140 kept; `variants/staged.py.v6` = live staged.py + `v6/mk_v6.py`): cap = 1/f_ref(|v|) - 0.05,
+  f_ref 1.4/1.9/2.0 steps/s at 0.3/0.5/0.7 m/s (flat outside); CPU estimate: paid optimum moves from 2.86 steps/s at every speed to
+  1.40/1.90/2.00 (no double support); at 0.7 m/s 2.9 steps/s now earns 5% less than 2.0 (before: about 40% more); swings < 0.35 s
+  pay as before, so feet still lift. (b) paper reference v3 (`data/motion_v6`, copy of hiking_release_x2/..._v3.npz). Slow commands,
+  VX_MIN 0.45, backward rule: unchanged (user push-back 2026-11-13: both earlier fixes answered real stalls; do not remove).
+- Pre-flight passed by hand 12:40 (`v6/precheck_manual.log`, `v6/cfgscan_manual.log`): launcher = v5b except the two changes;
+  refcap tests; v3 motion reader, 0 waist frames at the limit (v2 2,901), changes only frames 0-2974; code tree 32 files =
+  installed; cfg scan 42 terms, touchdown term = refcap x 140. Then construction check, 75-iteration trial, fall-back `fallback_v5b.sh`.
+- ONE CODE SOURCE: `files_instinctlab` is the source; `apply.sh` installs; precheck_v6 and continue_v6 (`tree_ok`, after apply) fail
+  on any difference or extra file. Variants live in `x2_port/variants/` (old .v4j/.v4k/.next files still sit in both trees, identical).
+- WHAT WENT WRONG: (1) the reference itself leans back on stairs/blocks: G1 waist -21.3 deg median, past the X2 -18 deg limit (not a
+  sign bug); v3 moves the excess to the pelvis, torso error vs G1 2.6 -> 0.1 deg median. (2) exports had no run_params, so the
+  autoscorer used the 4,750 copy: `export_for_eval.py` now copies params/ as run_params/ (backup in _trash/2026-11-13), 83
+  exports backfilled. (3) X2 shoulder roll sits at -0.061 rad (limit) in every reference frame, v2 and v3: open, not fixed.
+- NEXT: when GO_v6 appears the gate runs by itself; check launch.txt for "v6 trial" about 40 min after GO.
+
+## (older) HOW TO RESUME (updated 2026-11-13 02:17 node clock; supersedes everything below where they differ)
 
 - WHAT WENT WRONG (2nd): v5b's construction check failed at 02:06 for the same reason as v5. `simfault.py` `_unless_sim_fault`
   wrapped the termination terms (bad_orientation, root_height, stalled) as `wrapped(env, *args, **kwargs)`, and Isaac Lab's
@@ -1575,3 +1641,313 @@ None. Open: the user's measured camera height and angle; which pelvis mass is ri
 - Eval: model_4125 0/50 on the apparatus; model_4750 queued (flat gate and station legs first, on the plane-and-box floor).
 - Open: lean -16.7 deg (camera explanation; user / hardware decision); camera height and pelvis mass from the user.
 - Rules: no commits or pushes; one GPU job; never touch the desktop G1 reproduction.
+
+## 2026-11-14 02:35 node clock: v7 reward drop investigated (coordinator request; CPU only, nothing changed on the node)
+- See docs/FINDINGS.md H7. Three trainer crashes (NaN std after critic divergence: value_loss 0.3 -> 1e10 -> 1e21 -> 1e33 -> NaN
+  in 4 iterations) at 14,246 / 14,921 / 15,050, resumed by the supervisor from 14,125 / 14,875 / 15,000; run dirs
+  20261113_224549_..., 20261114_010924_..., 20261114_014623_... (current, pid 666793, iteration about 15,210).
+- The "missing termination shares" are the ~40-iteration warm-ups after each resume (all robots restart at t = 0; no time-outs
+  yet), plus 220 duplicated iterations in metrics.jsonl / tensorboard. Clean series: 101 / 970 (13k) -> 92-98 / 910-945 (post-
+  restart mixes) -> 96.6 / 954 (15,200). Level 6.1, speed ratio 0.51 unchanged. Not real collapse; mild drift at most.
+- Scorer 14,625 partial: legs 42/34/1/0 (11,750: 46/45/6/5). No newer hiking export scored.
+- HAZARD: guard7 falls back to v5b on two exit-1s from one checkpoint (FB_START=code/x2_port/fallback_v5b.sh). A NaN loop would
+  revert v7. Proposed to the coordinator (not done): disarm that fallback for NaN exits; add a finite guard to ppo.update
+  (skip non-finite / >1e3 value-loss minibatches, clamp returns) to load at the next crash resume; log max |reward| / |critic obs|
+  when value_loss > 1e3. Scripts used: /tmp/term_hk.py, /tmp/clean_hk.py on the node (read metrics.jsonl only).
+- 02:39 node clock (coordinator decision, crash-level): finite guard installed in instinct_rl ppo.py (pre-flight PASS, see FINDINGS
+  H7), crashguard_v7.sh running in tmux guard7 (old v5b-fallback guard killed). Trainer pid 666793 untouched; the guard loads at
+  the next crash resume. NEXT CHECK: `grep -a "^\[GUARD\]" _supervisor/train.log | tail` and `_supervisor/ALERTS.txt`; the first
+  [GUARD] line names the critic-obs column / return size that triggers the divergence -> fix the source term.
+
+## HOW TO RESUME (2026-11-14 02:40 node clock; supersedes the 13:40 block above where they differ)
+- v7 training to 30,000 (tmux hiking_x2, supervisor v5; current run dir `20261114_014623_from20261114_010924`, about 15,220).
+- guard7 = `code/x2_port/crashguard_v7.sh` (no fallback; alerts; stop after 5 crash exits in 2 h). autoexp exports on CPU.
+- instinct_rl ppo.py carries the finite guard (FINDINGS H7); not yet active in the running process.
+- Read v7 metrics only with resume warm-ups (~45 iterations after each resume) and re-run iterations removed (/tmp/clean_hk.py
+  pattern; see FINDINGS H7). Open: the divergence trigger; scorer results for 14,625 and later.
+
+## 2026-11-14 08:45 node clock: gap to the paper on its own terrains - diagnosis and armed v8 (user priority 11-14)
+Scope: the walled-ramp tiles / toe-strike penalty brief was dropped on the user's 11-14 rule ("That gap has to go away first");
+nothing of it was built. X2 capability taken as established (user 11-14, SSR paper deploys the X2 on 0.20 m stairs, gaps, platforms).
+
+Check before acting (numbers):
+- Eval on the paper's generator rows (eval/autoscore/train_results.csv; courses rebuilt line by line from InstinctLab
+  hf_terrains / parkour_env_cfg, difficulty (k+0.5)/10, so rows 8-9 ARE the paper's Table 8 hard settings: stairs 0.20 m at
+  row 8, platform 0.39 m, gap 0.61 m, boxes 0.39 m; slope row 8 = 0.595 rise/run, steeper than the paper's 0.40 rad):
+  15,500: stairs_up L5 0/20 (14,625 16/20), L8 0/20; platform_up L5 0/20, L8 0/20; gap L5/L8 0/20; slope_up L8 0/20;
+  small_boxes L8 5/20, boxes L8 3/20. Rows 2 pass; downhill types (stairs_down, platform_down L8 20/20) pass.
+- Every failure of stairs_up L5, platform_up L5, gap L5, slope_up L8 at 15,500 is reason 'stalled' at waypoint 0 (45 s, no
+  fall, pelvis 0.67-0.68 m, final x 0.91-0.95 m with the riser at 1.18 m / gap edge at 1.25 m, command 0.7 m/s); platform_up
+  logs repeated edge steps at the same x (marking time). A refusal, not a fall.
+- Training says the opposite: every type's level sits at the recycling equilibrium (17,285: pyramid_stairs_inv 6.63,
+  inv_high 6.77, square_gaps 5.26, slope_inv 6.91; equilibrium 6.0). So the curriculum does not see refusals.
+- Cause 1 (curriculum signal): paper rule = episode mean exp(-|v_cmd - v|^2/0.25) > 0.6 up, < 0.3 down, commands U(0.45, 0.8)
+  toward a far target, 5% stand. Ours adds stand 0.10, turn in place 0.15 (4-6 s then stand), slow forward cap U(0.1, 0.45) for
+  25%, on the paper columns too (slow.py: only the random-velocity columns are exempt). Monte Carlo (200k episodes, two 10 s
+  command segments, robot stops at the obstacle foot after 2 s): paper commands 7% up / 59% down; ours 42% up / 21% down.
+  A refuser drifts UP under our mix, so rows saturate while the policy refuses rows 5-9. (Half-speed climber under the paper
+  rule: 89% up, so the paper rule also tolerates half speed; not changed.)
+- Cause 2 (pay for marking time): option t (ours; paper feet_air_time 0.5, episode sum about 1) pays 26.1 per episode at 17,288
+  (linear tracking 30.3) for any touchdown under a moving command, including stepping in place at a refusal.
+- Not causes: generator rows = eval rows (checked above); the X2 task inherits the paper's terrain cfg, curriculum term and
+  thresholds unchanged (x2_parkour_target_amp_cfg.py header); the paper's G1 was scored in Isaac, ours in MuJoCo (a sim2sim
+  share of the gap cannot be excluded on CPU; the refusal pattern with no falls points to the policy, not physics).
+Decision 08:43 (mine, logged): arm v8 = v7 + two changes, nothing else:
+  (1) HIKING_X2_FAIR=1: an episode with any stand / turn / slow-forward command is neither promoted nor demoted; the paper's
+      rule unchanged for the rest (about 20-35% of episodes stay eligible: 0.9 x 0.85 x 0.75 per resample). [fix, paper-aligned]
+  (2) HIKING_X2_AIR_TD_PROGRESS=1: t pay x clamp(v . c / |c|^2, 0, 1) under walking commands; turn-in-place unchanged. [ours]
+  Not taken: harder rows (rows 8-9 already hold Table 8), removing slow / turn / stand commands (needed for the apparatus
+  stations), the 0.6 bar or kernel std (paper values), robots 16,384.
+Files (node, one code folder): code/x2_port/v8/{fair.py, extended.py.v8 (3-line hook), continue_v8.sh, precheck_v8.sh,
+  cfgscan.py, cfgscan_v8.sh, test_fair.py, crashguard_v8.sh}. Installed into files_instinctlab only at GO (v7 untouched now).
+CPU pre-flight 08:40-08:44 (`runs/x2_parkour_v4/_supervisor/preflight_v8/`): precheck_v8 PASS (v7 checks; only the two v8 vars
+  differ from v5b), cfgscan_v8 PASS (42 terms; touchdown = feet_air_touchdown_refcap_progress x 140; curriculum terrain_levels =
+  tracking_exp_vel_paper_cmd; command FairSlowRouteFarTargetPoseVelocityCommand), test_fair PASS, start-command smoke
+  (start_x2_parkour_v8.smoke.sh = v7's + the two vars, bash -n OK), export dry-run of model_17250 PASS (onnx vs torch 1.67e-6).
+  The GPU construction check (needs [X2 fair] line, routes >= 100) runs at GO while training is stopped.
+Expected effect: levels on stairs_inv / inv_high / gaps / platforms / boxes fall from ~6 toward the real frontier within a few
+  hundred iterations (only eligible episodes move), then climb only where the robot actually climbs; mean level is no longer a
+  saturation number. t episode sum falls from 26 toward 13-20 (speed ratio 0.5); expect speed_ratio to rise. Read the eval rows
+  5/8 of the first exports 500-1,000 iterations after the start.
+What went wrong since the last report: the 11-14 brief (walled ramps) was on the wrong problem by the user's priority; dropped
+  after one CPU look at the apparatus ramp (corridor = post-and-rail fences 2.44 m apart, rails at 0.565 / 0.87 m, ramp cells
+  1.22 m, crest 0.15 m = 14 deg; recorded here for later). No crash since 01:46 (17,288 at 08:30, [GUARD] 0 lines).
+
+## HOW TO RESUME (2026-11-14 08:45 node clock; supersedes the 02:40 block above where they differ)
+- v7 training (tmux hiking_x2, about 17,300 at 08:30), guard7 = crashguard_v7.sh, autoexp exports on CPU.
+- ARMED: tmux cont8 = `code/x2_port/v8/continue_v8.sh`, waits for `/mnt/filesystem-g4/tracks/hiking/runs/x2_parkour_v4/_supervisor/GO_v8`
+  (content "now" = newest checkpoint, anything else = the next one). The coordinator writes it only on the user's yes.
+  At GO: pre-flight again -> kill guard7 -> STOP v7 -> install fair.py + extended.py.v8 -> apply.sh -> tree check -> GPU
+  construction check -> start_x2_parkour_v8.sh -> 76-iteration trial (level >= 0.7 x, episode >= 0.4 x, turn >= 0.5 x) ->
+  guard8 (crashguard_v8.sh); any failure -> fallback_v7.sh (v7 files, start_x2_parkour_v7.sh, guard7). All lines in launch.txt.
+- Next check after GO: launch.txt trial line; then per-type levels (Curriculum/walk_monitor/level/*), Metrics paper_cmd_episode,
+  t episode sum, speed_ratio; eval rows 5/8 of the exports after +500 iterations. Resume this agent at GO+2 h or on a guard alert.
+
+## 2026-11-14 09:05 node clock: v8 did not start (launcher bug), fixed and re-run; v8b armed as its fallback
+What went wrong: v8's GO at 08:47 stopped v7 at 17,375, CPU pre-flight passed, but the GPU construction check failed
+(FileNotFoundError `/data/extended_v4k/single_beams.npz`, `_check_v8_084921/check.log`): continue_v8.sh defined ENVV on line 8
+before T and S on line 9, so every `$T`/`$S` path in ENVV was empty (extended terrains, motion dir, level files). cfgscan_v8.sh
+substitutes $T/$S itself and precheck compares text, so the CPU pre-flight could not see it. fallback_v7 resumed v7 at 08:50.
+Not a trial failure and not an unfair criterion: v8 never trained. Fixes: T/S defined before ENVV; a path check (ENVV's
+terrain and motion dirs must exist) before anything stops; old script in `_trash/2026-11-14/continue_v8.sh.envbug_*`.
+Trial criterion reviewed for a curriculum meant to drop levels: under FAIR only all-walking episodes (33-57%) move, at most
+one level per episode, about 2 episodes per robot in 76 iterations, so the mean level can drop about 0.5 at most from ~6.15;
+the 0.7 x gate (4.3) is not binding on the intended effect. Kept.
+Decision 08:58 (mine, logged; user rule 11-14 "don't give up quickly"): re-run v8 on the existing GO_v8 (user's yes stands);
+v8b armed behind it.
+v8b = v8 + fewer non-walking commands: stand 0.10 -> 0.05 (the paper's rel_standing_envs), turn-in-place 0.15 -> 0.10,
+slow-forward share 0.25 -> 0.12 (cap U(0.1, 0.45) unchanged), slow-yaw cap share 0.4 kept (walkers still walk; not
+FAIR-excluded). Evidence: all-walking share per resample 0.9x0.85x0.75 = 0.57 -> 0.95x0.90x0.88 = 0.75, per two-resample
+episode 0.33 -> 0.57 (1.7 x the curriculum signal and 1.3 x the full-speed commands on stairs/platform/gap); stop-stand 50/50 at
+every scored checkpoint since 11,750 (paper share is enough); flat turn-in-place 28/47/12/50 of 50 (11,750/14,625/15,500/16,125)
+and apparatus legs 3-4 0-7/50, so turn-in-place keeps 2/3 of its share, not less; slow forward halved (final approaches).
+Chain now: cont8 (v8) -> on any failure after GO: fallback_v7 resumes v7, EXIT trap writes GO_v8b "now" -> cont8b (v8b, own
+pre-flight, stops v7, trial against v7's pre-v8 numbers in `baseline_v7_for_v8.txt`) -> on failure fallback_v7 (final).
+Files: `code/x2_port/v8/{continue_v8.sh (fixed), continue_v8b.sh, precheck_v8b.sh, cfgscan_v8b.sh, crashguard_v8b.sh,
+setup_v8b.py}`; start_x2_parkour_v8b.sh is generated at v8b's start (smoke copy in `_supervisor/preflight_v8b/`).
+Pre-flight 08:55-08:58 (`_supervisor/preflight_v8b/`): precheck_v8 (fixed) PASS, precheck_v8b PASS (negative test with slow
+fwd 0.20 fails as it should), cfgscan_v8b PASS (42 terms, refcap_progress x 140, tracking_exp_vel_paper_cmd, Fair command),
+test_fair PASS, expanded ENVV paths of both launchers checked absolute, start-line smoke bash -n OK with the three shares.
+
+## HOW TO RESUME (2026-11-14 09:05 node clock; supersedes the 08:45 block above where they differ)
+- tmux cont8 = `code/x2_port/v8/continue_v8.sh` (fixed), re-run 08:58 on the existing GO_v8 from model_17375: CPU pre-flight
+  passed 08:59, then stop v7 -> install -> construction check -> start_x2_parkour_v8.sh -> 76-iteration trial -> guard8.
+  09:04:46: construction check PASS (exit 0, 768 routes, [X2 fair] line), v8 training started; trial verdict expected about
+  09:35 in launch.txt ("v8 trial after ..." then "is training" or "FAILED" -> v8b).
+- tmux cont8b = `code/x2_port/v8/continue_v8b.sh`, waits for `_supervisor/GO_v8b`, which only continue_v8.sh's EXIT trap
+  writes when v8 does not reach "is training". v8b failure -> fallback_v7.sh (final). Never write GO_v8b by hand while v8 trains.
+- Read `_supervisor/launch.txt` (lines "v8 ..." / "v8b ..."), gates.txt for guard lines.
+- If v8 trains: judge it on the paper rows (stairs_up / platform_up / gap L5 and L8, eval/autoscore/train_results.csv) of the
+  exports 500-1,000 iterations after 08:58 (about 17,900-18,400), plus Curriculum/walk_monitor/level/* (expected to fall from
+  ~6 on stairs_inv / gaps / platforms), t episode sum (26 -> 13-20), speed_ratio. If those rows have not moved off 0/20 by
+  ~1,000 iterations, v8b is the next experiment: stop v8 by hand (STOP + guard8 first), then write GO_v8b "now" (cont8b still
+  armed; its baseline file is older than 3 h by then, so it uses v8's own last numbers).
+- Rate about 340 iterations/h: +500 near 10:40, +1,000 near 12:10. Resume this agent at about 12:15 (v8 +1,000, eval rows of
+  the ~17,875 and ~18,375 exports), or earlier on a guard alert / a "v8b" line in launch.txt.
+
+## 2026-11-14 12:45 node clock: v8 judgement at about +1,130 iterations (coordinator request 12:30)
+v8 trial passed 09:25 (77 iterations: level 6.13 vs 6.11, episode 870, turn rate 0.98, paper-command episode share 0.41);
+training since, no crash, at 18,507 by 12:40.
+Training side, v7 (last 20 before 17,374) -> v8 (fifths of 17,376-18,507; last 20):
+  square_gaps 5.13 -> 4.51 2.71 1.27 0.67 0.60 (0.61): FAIR made the curriculum see the gap refusal; gaps now train from
+    rows 0-1 upward (the intended effect, first on gaps).
+  pyramid_stairs_inv (stairs up) 6.66 -> 6.81; pyramid_stairs_inv_high 6.79 -> 6.15 (falling); hf_pyramid_slope_inv 6.61 -> 6.72;
+    pyramid_stairs / _high (down) 6.0 -> 6.1; boxes 6.22 -> 6.32; mesh_boxes 6.0. Mean terrain level 6.14 -> 5.88.
+  speed_ratio 0.51 -> 0.60; touchdown episode sum 24.5 -> 19.8 (progress weighting, as predicted 13-20).
+CPU rows of export 18,375 (paper courses, 20 trials, same commands and env as the scorer's train job, low priority on the
+desktop; out `eval/out/hiking/x2_parkour_v4_18375/manual_v8_rows/`): see the next entry.
+CPU rows, export 18,375 (v8, +1,000) vs v7 15,500 / 17,000 (train_results.csv), 20 trials each:
+  stairs_up   L2 20/20 (20, 20)   L5 20/20 (0, 15)   L8 0/20 (final), all stalled at x 1.04 (riser 1.18), pelvis 0.68 (0, 0)
+  platform_up L2 20/20 (20, 20)   L5 5/20 (0, 17), 15 stalls   L8 0/20 stalled (0, 0)
+  gap         L2 18/20 (20, 0)    L5 0/20 (0, 0) but 14 falls + 6 stalls (v7: all stalls; now it attempts)   L8 0/20, 19 stalls
+  slope_up    L2 20/20, L5 20/20 (20/20 both)   L8 0/20 (final), all stalled at x 1.2 (0, 0)
+Decision 12:55 (mine, logged; user rule "don't give up quickly"; coordinator's rule: switch only if rows 5 and 8 are still 0/20
+AND training shows no climbing): KEEP v8. Rows 5 are not 0/20 (stairs 20/20, platform 5/20), gap went from refusing to
+attempting, and the training levels move (square_gaps re-learned from ~0.6). v8b stays armed (cont8b, GO_v8b absent).
+Open (owner me, next check ~15:45 at about 19,400): row-8 refusals on stairs / platform / slope are unchanged (stall at the foot,
+no fall) while the training levels of pyramid_stairs_inv (6.8) and slope_inv (6.7) sit at saturation; read the per-row level
+distribution of those types from terrain_levels.pt and the generator's row-8 geometry vs the eval's (riser 0.20 m) before
+choosing between "wait" and v8b. platform_up L5 fell 17 -> 5/20 since 17,000 (stalls): watch.
+
+## HOW TO RESUME (2026-11-14 12:55 node clock; supersedes the 09:05 block where they differ)
+- v8 training since 09:04 (tmux hiking_x2, guard8), about 18,500 at 12:40, about 340 iterations/h. cont8b (v8b) armed on GO_v8b;
+  create GO_v8b ("now") only after stopping v8 by hand (touch STOP after killing guard8) - or simply write GO_v8b: continue_v8b
+  stops hiking_x2 itself, but kill guard8 first so it does not restart v8.
+- Manual CPU eval (12:40): per course `eval/ladder.py --adapter hiking:HikingHandover --step 20 --trials 20 --tests hik_<type>_L<row>`
+  with autoscore's run_env('hiking', hdir) (+ PHYS_FLOOR=heightfield for slope), hdir = scp -r of the node export; out
+  `eval/out/hiking/<export>/manual_v8_rows/`. The desktop scorer also scores v8 exports (score_every 500).
+- Next check ~15:45 (export ~19,375): the 12 paper rows again + per-row levels of pyramid_stairs_inv / slope_inv / square_gaps.
+  Switch to v8b only if stairs/platform/gap rows 5 AND 8 are 0/20 and no training level climbs.
+
+## 2026-11-14 16:10 node clock: v8 second check (coordinator request); decision KEEP v8
+CPU paper rows, 20 trials, low priority (`eval/out/hiking/x2_parkour_v4_{19375,19250}/manual_v8_rows/`), vs 18,375 / 18,000 (scorer):
+  stairs_up   L2 20 | L5 19,375: 0, 19,250: 0 (18,375: 20, 18,000: 20) all stalled | L8 0 stalled
+  platform_up L2 20 | L5 19,375: 0, 19,250: 18 (5, 20)                              | L8 0 stalled
+  gap         L2 20 | L5 19,375: 0 (17 stall, 3 fall), 19,250: 1 (13 falls = attempts) (0, 0) | L8 0 stalled
+  slope_up    L2 20, L5 20 | L8 0 stalled (1430 s course time: they stand at the foot)
+Training levels (terrain_levels.pt, 17,384 pre-v8 -> 19,520; rows 0-9 counts):
+  pyramid_stairs_inv (stairs up) 6.61 -> 6.58, now peaked rows 6-7 (235/280), row 8 124, row 9 16 (was 148/129): FAIR removed
+    the recycling at the top; the frontier is row 7-8 (0.18-0.21 m) in Isaac.
+  pyramid_stairs_inv_high (platform) 6.91 -> 5.99, peak row 6 (310 of 512; 0.31 m), rows 8-9 15. Still falling slowly.
+  hf_pyramid_slope_inv 6.58 -> 6.89, peak row 7, rows 8-9 125. Slowly climbing (tb fifths 6.53 6.75 6.80 6.87 6.90).
+  square_gaps 5.11 -> 0.63, rows 0/1/2 = 249/207/50, FLAT at 0.58-0.63 since 18,355 (1,100 iterations).
+  speed_ratio 0.60 (flat), paper_cmd_episode share 0.41.
+Geometry: generator params (env.yaml of this run) = eval builder (eval/train_terrains.py): stairs step 0.05-0.23 x 0.3 m,
+  platform 2.5; high 0.05-0.45 x 1.5 m, platform 4.0; gaps 0.1-0.7, depth 0.4-0.6 (eval 0.5); slope 0-0.7. Training row k
+  draws difficulty U(k/10,(k+1)/10), eval uses (k+0.5)/10. Differences: training adds wall_prob 0.3 per side and a perlin
+  overlay on stairs/slope; eval has neither. Not a geometry mismatch at row 8.
+Decision 16:10 (mine; rule "keep if any hard-row progress or climbing levels"): KEEP v8. platform L5 18/20 at 19,250 (> 5 at
+  18,375), gap L5 first success and attempts instead of refusals, slope level still climbing. v8b stays armed (GO_v8b absent).
+What went wrong / open (owner me):
+  (1) Checkpoint-to-checkpoint oscillation of the refusal: stairs L5 20/20 at 18,000/18,375, 0/20 at 19,250/19,375; platform L5
+      20, 5, 18, 0. One export is not a verdict; score at least two neighbours before any switch.
+  (2) Train/eval disagreement: Isaac robots sit at stairs rows 6-7 while MuJoCo eval refuses row 5 (stall at the riser foot,
+      no fall). Either a sim2sim share or the eval command (0.7 m/s straight) differs from training. Next: a 10-trial
+      stairs_up L5 with command 0.5 m/s and with walls on one side, to separate command from scene.
+  (3) Gap level stuck at rows 0-1 in training although eval gap L2 (0.25 m) passes 20/20: the promotion test fails on gaps
+      for another reason (tracking under gap terrain resets / depth 0.4-0.6 falls?). Read per-row gap terminations next.
+  (4) Row 8 unchanged 0/20 on all four types, all stalls.
+Next check ~19:00 (about 20,400): the 12 rows on two neighbouring exports + the level files; v8b if rows 5 and 8 have no
+  progress across both AND stairs_inv / inv_high / gaps levels are flat or falling.
+
+## HOW TO RESUME (2026-11-14 16:10 node clock; supersedes the 12:55 block where they differ)
+- v8 training (tmux hiking_x2, guard8), about 19,550 at 15:30, ~340 it/h. cont8b armed on GO_v8b (kill guard8 first if used).
+- Manual rows: scratchpad driver pattern = autoscore names/run_env + hiking_check + eval/ladder.py per hik_<type>_L<row>
+  (env TESTS list), out `eval/out/hiking/<export>/manual_v8_rows/`. Level distribution: /tmp/lvl_dist.py on the node
+  (node python env, args: [geom] <terrain_levels*.pt>); tb trends /tmp/tb_lv.py (both in /tmp, rewrite if gone).
+- Next check ~19:00: open items (1)-(4) of the 16:10 entry.
+
+## 2026-11-14 17:25 node clock: attempt-vs-refusal replay, v9 built and armed (user: "Please fix"; decisions "Hiking v9 decisions")
+Replay (CPU, MuJoCo, exports 20,000 and 19,250, 4-8 trials per course (row-8 courses cut by the 50-min wall limit); every v8 reward term recomputed per control step as
+weight x 0.02 x raw from the MuJoCo state, the policy's command and action; scripts `replay_terms.py` / `summ_terms.py` and
+per-trial traces in the coordinator desktop's session scratchpad, not in the repo). Windows: "stand" = within 0.7 m before the
+edge, |vx| < 0.15; "foot-stepping" = within 0.35 m of the edge on a course where every trial stalled (row 8: marking time at the
+riser / platform face); "climb" = the same window on row-5 successes. Per second (sum without the unnormalised energy term;
+AMP style reward not replayed):
+
+| term /s | stairs L8 stand | stairs L8 foot-stepping | platform L8 stand | platform L8 foot-stepping | stairs L5 climb | platform L5 climb (20k / 19,250) |
+|---|---|---|---|---|---|---|
+| touchdown (ours, 140) | 0.00 | **+4.36** | 0.00 | **+3.74** | +0.92 | +1.38 / +1.76 |
+| track_lin_vel | +0.29 | +0.58 | +0.30 | +0.56 | +0.95 | +1.26 / +1.27 |
+| dont_wait | -0.77 | -0.80 | -0.74 | -0.81 | -0.28 | -0.09 / -0.11 |
+| feet_stumble (user rule, -2) | 0.00 | 0.00 | 0.00 | 0.00 | -0.03 | -0.01 / -0.02 |
+| wall_contact_graded (user rule) | 0.00 | 0.00 | -0.01 | -0.21 | 0.00 | -0.05 / -0.10 |
+| is_alive + track_ang + rest | +3.4 | +3.4 | +3.5 | +3.3 | +3.3 | +3.4 |
+| sum | 3.64 | **8.17** | 3.79 | **7.33** | 5.22 | 6.11 / 6.63 |
+
+Reading: (1) marking time at the foot of a row-8 obstacle pays MORE per second than climbing a row-5 one (7.3-8.2 vs 5.2-6.6);
+the whole difference is the touchdown term t (ours; 3.7-4.4 /s at the foot; v8's progress weighting does not stop it because the
+oscillating vx is positive at touchdown). That is the eval's refusal pattern (stall at the foot, steps at the same x). Without
+t: stand 3.6-3.8, foot-stepping 3.5-3.8, climb 4.3-4.9 /s, so climbing pays about +0.6-1.0 /s, as in the paper's reward.
+(2) feet_stumble and the graded contact cost 0.01-0.03 and 0.00-0.10 /s during real climbs (row 5), 1-2% of the climb reward and
+well below the climb advantage; at row 8 the graded contact charges the foot-stepping refusal (knees on the platform face,
+0.21 /s), not the climb. In these data they do NOT make attempting cost more than refusing. Caveat: hard row-8 strikes are never
+observed (the policy never attempts); a 300 N shin hit costs 0.08 per step (4 x 0.02), a 0.2 s 200 N toe strike about 0.8,
+small against losing the climb by a fall (value about 7-8 with gamma 0.99). Proposal: keep both at 1.0 (no evidence for a cut);
+if the user wants a test, 0.5 on the paper columns only (flag below).
+(3) Gap row 8 (0.61 m): foot-stepping at the edge pays touchdown 2.4 /s; gap L5 attempts (5 falls of 8) pay graded contact 0.17 /s.
+Gap block (square_gaps at rows 0-1 since FAIR): the paper's promotion score is sum of exp(-err^2/0.25) / max episode length, so an
+early termination scores only its survived fraction and a robot stepping at the gap edge scores about exp(-0.5^2/0.25) = 0.37
+(< 0.6). Under v7 the non-walking commands hid this; under FAIR only walking episodes count and they fail the bar. Falls vs
+marking time at the edge are both plausible; t pays the second. v9 removes t and logs per type the score, up, down and
+early-termination shares of eligible episodes (Curriculum/by_type/*) to separate the two within about an hour.
+Decision 17:25 (mine, on the user's decisions 1-2): v9 = v8 (FAIR kept) + release command mix + no touchdown term, nothing else.
+  Release values (InstinctLab parkour_env_cfg.py CommandsCfg): rel_standing_envs 0.05; obstacle columns lin_vel_x (0.45, 0.8),
+  lin_vel_y 0, ang_vel_z (-1, 1) via the heading rule; perlin_rough (0.45, 1.0); random-velocity column perlin_rough_stand with
+  lin_vel_x (0, 0), lin_vel_y (0, 0), ang_vel_z (-1, 1) (the only turn in place); no slow-forward or slow-yaw commands.
+  v9 env: STAND_SHARE 0.05, TURN_SHARE 0, SLOW_FWD_SHARE 0, SLOW_TURN_SHARE 0, OPTS without t, AIR_TD_PROGRESS 0, AIR_TD_WEIGHT 0,
+  V9 1, PAPER_STAND 1 (stand column back to vx 0 / vy 0 / wz +-1; the extended velocity column keeps vx 0..0.8, vy +-0.3).
+  Kept: feet_air_time 0.5 (paper), stumble -2 and graded contact (user rules), FAIR, routes and sidesteps on the user's map.
+  Optional flag (default 1.0 = off; user decision pending): HIKING_X2_STUMBLE_SCALE, HIKING_X2_CONTACT_SCALE, HIKING_X2_SCALE_SCOPE
+  (paper = robots on the paper's 20 columns only; all). Wiring tested: cfgscan with 0.5 / 0.25 gives feet_stumble_x0.5_paper and
+  wall_contact_graded_x0.25_paper and passes Isaac's term check (`preflight_v9/cfgscan_flagtest.log`).
+  Not taken: 16,384 robots (approved; the level keeper restores levels only when the robot types match, so a robot-count change
+  resets the curriculum; needs its own restart and PhysX check; owner me, next planned restart); stall penalty (user: TODO only).
+Files (node, one code folder): code/x2_port/v9/{v9.py, extended.py.v9 (v8's + 3-line hook), continue_v9.sh, precheck_v9.{sh,py},
+  cfgscan_v9.sh, test_v9.py, crashguard_v9.sh}. Installed into files_instinctlab only at GO (v8 files untouched now).
+CPU pre-flight 17:20 (`runs/x2_parkour_v4/_supervisor/preflight_v9/`): precheck_v9 PASS (every launcher var equals v8's except
+  the 12 listed; live staged / fair / extended = v8's), test_v9 PASS, test_fair PASS, cfgscan_v9 PASS (43 terms; no
+  feet_air_touchdown; stumble -2.0 and wall_contact -1.0 unchanged; curriculum tracking_exp_vel_paper_cmd_v9 + by_type; command
+  V9Command), start-line smoke bash -n OK (OPTS without t, shares 0.05 / 0 / 0, --total 30000), export dry-run of model_20000
+  PASS (onnx vs torch 1.91e-6). The GPU construction check (needs [X2 fair] and [X2 v9] lines, routes >= 100) runs at GO.
+What went wrong since the last report: (a) t, ours, pays the row-8 refusal (marking time at the foot) 3.7-4.4 /s, more than
+  climbing; v8's progress weighting did not close it (found by today's replay; v9 removes t). (b) My first v9 files written on
+  the desktop had CRLF line ends (cfgscan_v9.sh failed on $'\r'); stripped, pre-flight re-run and passed. (c) A wrong `cp -r`
+  copied the repo into my scratchpad (scratchpad only; nothing in the repo or on the node changed).
+
+## HOW TO RESUME (2026-11-14 17:25 node clock; supersedes the 16:10 block where they differ)
+- v8 training (tmux hiking_x2, guard8), about 20,100 at 17:15, ~340 it/h.
+- ARMED: tmux cont9 = `code/x2_port/v9/continue_v9.sh`, waits for `_supervisor/GO_v9` ("now" = newest checkpoint). At GO:
+  pre-flight again -> kill guard8 and cont8b (v8b superseded by the user's paper-mix decision) -> STOP v8 -> install v9.py +
+  extended.py.v9 -> apply.sh -> tree check -> GPU construction check -> start_x2_parkour_v9.sh (generated) -> 76-iteration trial
+  (level >= 0.7 x, episode >= 0.4 x, paper-command episode share >= 0.6, by_type lines present; no turn gate: v9 has no
+  turn-in-place robots off the stand column) -> guard9. Any failure -> fallback_v8.sh (v8 files, start_x2_parkour_v8.sh, guard8).
+  Lines "v9 ..." in launch.txt. The run then continues to 30,000.
+- GO is written by the desktop script `check1900.sh` (session scratchpad; log check1900.log, marker check1900.DONE) after it has
+  scored the 12 paper rows (stairs_up / platform_up / gap / slope_up L2/5/8, 20 trials, 45-min wall limit per course) on exports 20,500 and 20,625 into
+  `eval/out/hiking/x2_parkour_v4_{20500,20625}/manual_v8_rows/` (the 19:00 check data). If that script died: score them by
+  hand (ladder.py --step 20 --trials 20 per course with autoscore.run_env('hiking', hdir), PHYS_FLOOR=heightfield for slope),
+  then write GO_v9 "now" on the node.
+- After v9 starts: Curriculum/by_type/{score,up,down,early,elig}_<type> (square_gaps: early high = falls; early low with score
+  ~0.3-0.4 = marking time); per-type levels; paper_cmd_episode (~0.9 expected); speed_ratio; then the 12 rows on two
+  neighbouring exports +500 and +1,000 iterations after the start. Resume this agent at GO + 2 h or on a "v9 FAILED" line.
+
+## 2026-11-15 00:55 node clock: v9 collapse at 22,113-22,118 - rollback to 22,000, rollout guard, collapse watchdog (FINDINGS H7b)
+What went wrong: v9 collapsed with no crash and no alert (reward 77.8 -> -1.4, episode 970 -> 40, level 5.88 -> 0 by 22,135).
+  Trigger (metrics.jsonl + train.log [GUARD]): one runaway robot, its unclipped actions fed back through the action-history
+  obs (critic columns 713/742/771/800, 29 apart) growing ~1.6x per step to 1.1e8; action_rate_l2 episode sum -9.1e9; max |reward|
+  5.4e11 at 22,113 (returns clamped, update APPLIED, value loss 0.53), 22,114 all 20 minibatches skipped, 22,115 APPLIED (value
+  loss 85, surrogate 0.141, std 0.92 -> 0.93). Batch-wide advantage normalisation lets that one robot set the std, so normal
+  robots' advantages ~0 and the update trains only on the runaway; the 1e3 value-loss threshold misses it. Same runaway at 20,560
+  (critic obs 1.7e18; 3 full skips -> raise -> resume). Not FAIR, levels bookkeeping, lr or a terrain reset.
+  My error: the first resume (00:35) loaded model_22250 from the backup folder I had put inside the run dir (supervisor globs
+  run/*/model_*.pt); stopped at 00:35:38 before any iteration; backups now in runs/_collapse_backups/ (outside the run folder).
+Done: STOP 00:33; model_22125 / 22250 + collapsed levels -> runs/_collapse_backups/x2_parkour_v4_v9_22114/; levels file =
+  terrain_levels_prestop_v9.pt (mean 5.84 vs log 5.83 at 22,000); v9 resumed from model_22000 at 00:36:30, same flags
+  (start_x2_parkour_v9.sh), 22,012 at 00:45, level 5.84. 22,000 is pre-collapse by the log (rollouts 22,001-22,112 used its
+  descendants: episode 920-975, level 5.88); 22,125 was saved at episode 40. MuJoCo check (flat + stairs_up L5, 5 trials) of both
+  exports: 22000 flat 5/5, stairs_up L5 5/5; 22125 flat 0/5, stairs_up L5 0/5 (all falls) - eval/out/hiking/x2_parkour_v4_{22000,22125}/collapse_check/.
+Guard (safety only; CPU pre-flight PASS, code/x2_port/v9/guard2/preflight_guard2.log): ppo.py / wasabi.py skip the whole update
+  (PPO + discriminator) if any rollout obs / critic obs > 1e4, action > 1e3, reward > 1e4 or non-finite; log robot, step, columns;
+  raise after 3 in a row (-> supervisor resume); log Train/guard_rollout_{obs,critic_obs,action,reward}_absmax_max and
+  guard_rollout_skipped_max each iteration. Normal updates bit-identical. Built by v9/guard2/make_guard2.py from guard2/orig.
+  crashguard_v9b (code/x2_port/v9/crashguard_v9b.sh): v9 + levels copy per checkpoint (_supervisor/levels_hist/tl_<it>.pt) +
+  collapse watchdog (v9/guard2/collapse_check.py: >= 350 rows since restart, last-10 episode < 0.4x and reward < 0.5x the median
+  of rows -300..-50) -> STOP, checkpoints > onset-25 to runs/_collapse_backups/, levels of the newest kept checkpoint, restart; a
+  second collapse within 3 h -> STOP + ALERT only. Replay over all 23,271 metrics rows: fires only at 22,116 (first at 22,123).
+  Installed by one planned restart at model_22125 (v9/guard2/install_guard2.sh, tmux inst_g2, marker guard2/INSTALL.DONE,
+  originals in _trash/2026-11-15/).
+Open: root cause (unclipped actions) not fixed; propose an env action clip (+-100) once the logged normal maxima show it never
+  binds. Check guard_rollout maxima ~1 h after the restart (normal obs should be O(10), well below 1e4).
+
+## HOW TO RESUME (2026-11-15 00:55 node clock; supersedes the 2026-11-14 17:25 block where they differ)
+- v9 training (tmux hiking_x2) from model_22000 (00:36:30), ~11 s/it; at model_22125 inst_g2 restarts it once with the rollout
+  guard and starts crashguard_v9b in tmux guard9 (lines "v9 guard2 ..." in _supervisor/launch.txt). If "NOT installed" or
+  "import failed": v9 keeps running on the old guard and crashguard_v9 is NOT running - start it (tmux guard9) and fix.
+- Rollbacks: automatic (crashguard_v9b), backups in runs/_collapse_backups/; never put backups inside runs/x2_parkour_v4/.
+- Next check ~02:00: guard_rollout_* maxima in train.log (no [GUARD] rollout skip on normal rollouts), episode / level back to
+  ~950 / 5.9; then the 17:25 block's v9 checks (by_type, 12 paper rows at +500 / +1,000 iterations).
+- 01:11 update: guard2 installed 01:05:03 (import OK), v9 restarted from model_22125 (healthy: 00:36 run's episode back to 970,
+  level 6.05 at 22,125), crashguard_v9b running (tmux guard9), levels_hist/tl_22125.pt written. First guarded iteration 22,125:
+  rollout maxima obs / critic obs / action 28.4, reward 0.415 (bounds 1e4 / 1e3 / 1e4), no skip. Level 5.05 in the first row
+  is restart warm-up; check that it returns to ~5.9-6.0 by ~01:45.

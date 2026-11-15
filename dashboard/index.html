@@ -351,7 +351,7 @@
             <div class="pa-stat"><span class="pa-stat-lab">Iteration</span><span class="pa-stat-num" data-draw="v" data-fmt="int" data-source="run_latest" data-field="iteration" data-where="run=acp">—</span><span class="pa-stat-of">of <span data-draw="v" data-fmt="int" data-source="run_latest" data-field="total" data-where="run=acp">—</span></span></div>
             <div class="pa-stat"><span class="pa-stat-lab">Reward</span><span class="pa-stat-num" data-draw="v" data-fmt="num2" data-source="run_latest" data-field="reward" data-where="run=acp">—</span></div>
             <div class="pa-stat"><span class="pa-stat-lab">Terrain level</span><span class="pa-stat-num" data-draw="v" data-fmt="num2" data-source="run_latest" data-field="terrain_level" data-where="run=acp">—</span></div>
-            <div class="pa-stat"><span class="pa-stat-lab">Episode length</span><span class="pa-stat-num" data-draw="v" data-fmt="int" data-source="run_latest" data-field="episode_len" data-where="run=acp">—</span></div>
+            <div class="pa-stat"><span class="pa-stat-lab">Episode length (s, mean clip segment)</span><span class="pa-stat-num" data-draw="v" data-fmt="num1" data-source="run_latest" data-field="episode_len" data-where="run=acp">—</span></div>
           </div>
           <div class="pa-grid2" data-when="run:acp">
             <div><h4 class="pa-h4">Mean episode reward by iteration</h4><div class="pa-chart" id="chart-acp-reward" data-draw="chart-series" data-run="acp" data-field="reward" data-source="progress"></div></div>
@@ -381,7 +381,7 @@
             <div class="pa-stat"><span class="pa-stat-lab">Iteration</span><span class="pa-stat-num" data-draw="v" data-fmt="int" data-source="run_latest" data-field="iteration" data-where="run=hiking">—</span><span class="pa-stat-of">of <span data-draw="v" data-fmt="int" data-source="run_latest" data-field="total" data-where="run=hiking">—</span></span></div>
             <div class="pa-stat"><span class="pa-stat-lab">Reward</span><span class="pa-stat-num" data-draw="v" data-fmt="num1" data-source="run_latest" data-field="reward" data-where="run=hiking">—</span></div>
             <div class="pa-stat"><span class="pa-stat-lab">Terrain level</span><span class="pa-stat-num" data-draw="v" data-fmt="num2" data-source="run_latest" data-field="terrain_level" data-where="run=hiking">—</span></div>
-            <div class="pa-stat"><span class="pa-stat-lab">Episode length (steps of 1,000)</span><span class="pa-stat-num" data-draw="v" data-fmt="int" data-source="run_latest" data-field="episode_len" data-where="run=hiking">—</span></div>
+            <div class="pa-stat"><span class="pa-stat-lab">Episode length (s of 20)</span><span class="pa-stat-num" data-draw="v" data-fmt="num1" data-source="run_latest" data-field="episode_len" data-where="run=hiking">—</span></div>
           </div>
           <div class="pa-grid2" data-when="run:hiking">
             <div><h4 class="pa-h4">Mean episode reward by iteration</h4><div class="pa-chart" id="chart-hiking-reward" data-draw="chart-series" data-run="hiking" data-field="reward" data-source="progress"></div></div>

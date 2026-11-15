@@ -39,3 +39,10 @@ the nodes need no approval; camera = chest RealSense (`docs/camera/`), gains = `
 
 ## Token efficiency
 Read `docs/TOKEN_EFFICIENCY.md` before anything else. Start fresh agents from their state files; do not resume the large ones from the previous session.
+
+## State at 2026-11-15 06:45 UTC (coordinator)
+- **ACP** (best): stage 3 (paper rules, spawn fix) training to 34,218 (about 17-18 UTC 16 Nov). Full apparatus route: best 92% (pair_s2_v5_016250), stage 3 80-87% (21,000-22,500); leg 5 refusals 0.
+- **Hiking**: v9 (paper command mix, no touchdown reward, FAIR curriculum; rollout guard + collapse watchdog after the 22,114 collapse) training to 30,000 (about 23-24 UTC 15 Nov). 22,000: legs 50/50/45/38/31, leg-5 refusals 0.
+- **SSR**: stopped by the user at 32,750; node shut down. Backups on the shared FS: tracks/ssr/backups/r7_v20x_final_32750 and r7_v21_29550. Refusal cause found (FINDINGS E8c: separate advantage normalisation + style/foothold groups paying standing at the stair foot).
+- Key lessons: FINDINGS E8a-E8c, H8-H9, H7b; TRACK_RULES reward-hacking check; refusal-first evaluation (eval/metrics/refusal_watch.py).
+- Next (user): depth camera -> height map for ACP, starting with a literature review (docs/USER_TODO.md).

@@ -18,6 +18,10 @@ import os
 import pathlib
 import sys
 
+# Single-threaded maths (2026-11-13): a multi-threaded run changed 3 of the 10 regression trials (baseline adapter); the
+# eval sets one thread unless the caller chose otherwise. Must come before numpy / torch / onnxruntime are imported.
+for _k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+    os.environ.setdefault(_k, "1")
 import numpy as np
 
 HERE = pathlib.Path(__file__).resolve().parent

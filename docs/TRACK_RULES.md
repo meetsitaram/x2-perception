@@ -47,3 +47,5 @@ height field). Package: `/mnt/filesystem-g4/tools/simcheck/` (README there; mirr
 
 ## One code folder (user, 2026-11-13)
 One code folder per track; stages and variants by flags; per-run `code_snapshot` protects running jobs. No copied code trees. Where an installed copy must exist (Hiking's InstinctLab files), keep one source and an install step that verifies the installed copy is identical before every launch (part of the pre-flight).
+
+- **Reward-hacking check for every added term (lesson of 2026-11-14):** Hiking's touchdown/air-time term (ours, weight 140) paid more for stepping in place at a hard obstacle than for climbing a mid one, and SSR's stricter curriculum and fatal wall touch kept robots off high stairs; two days of training refused obstacles. Before any reward term, weight, command share or curriculum rule that is not in the paper goes into a run, compute on CPU the per-term reward per second for (a) standing or stepping in place at an obstacle foot under a walking command and (b) attempting/climbing it; the change must not make (a) pay more than (b). Record the table in the ledger row.

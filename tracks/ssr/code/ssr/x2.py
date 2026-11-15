@@ -110,6 +110,9 @@ def _terrain_guards(spec):
         add(f"{side}_wrist_roll_link", f"{side}_hand_guard", (0.04, 0.0, 0.0), 0.045)
 
 
+import os as _os_t
+
+
 def build(hfield: dict | None = None, walls: list | None = None, foot_boxes: bool = True) -> X2:
     """hfield: dict(z (nx, ny) metres, x0, y0, res, base); walls: boxes (center, half, quat wxyz)."""
     plant = load_plant()
@@ -167,6 +170,16 @@ def build(hfield: dict | None = None, walls: list | None = None, foot_boxes: boo
                                                 pos=[hfield["x0"] + (i0 + (sx - 1) / 2) * res, hfield["y0"] + (j0 + (sy - 1) / 2) * res, smin],
                                                 rgba=[0.55, 0.5, 0.45, 1.0])
                     g.contype, g.conaffinity = 0, TERRAIN_BIT
+        _sr = _os_t.environ.get("X2_TERRAIN_SOLREF", "")
+        if _sr:                                                         # v15 (FINDINGS B8 / B11, simcheck): stiffer terrain contact against the edge foot trap
+            _pri = _os_t.environ.get("X2_TERRAIN_MIX", "solmix")         # solmix: terrain solref dominates, friction stays max-combined (the
+            for geom in spec.geoms:                                     # per-world friction randomisation relies on it); priority: MuJoCo
+                if geom.type == mujoco.mjtGeom.mjGEOM_HFIELD:            # takes all contact parameters from the terrain, friction included
+                    geom.solref = [float(_sr), 1.0]
+                    if _pri == "priority":
+                        geom.priority = 1
+                    else:
+                        geom.solmix = 1.0e4
         for geom in spec.geoms:                                         # the hfield is the floor
             if geom.type == mujoco.mjtGeom.mjGEOM_PLANE:
                 spec.delete(geom)
@@ -195,7 +208,7 @@ def build(hfield: dict | None = None, walls: list | None = None, foot_boxes: boo
             dq[names.index(_n)] = _v
     asc = np.array([plant.action_scale_for(n) for n in names])
     if _os.environ.get("X2_ACTION_SCALE_PAPER") == "1":                  # paper Table 14 (needs the user's agreement under the plant rule): 0.25 legs / waist, 0.2 arms
-        asc = np.array([0.2 if ("shoulder" in n or "elbow" in n or "wrist" in n) else 0.25 for n in names])
+        asc = np.array([0.2 if ("shoulder" in n or "elbow" in n or "wrist" in n or "waist" in n) else 0.25 for n in names])   # v15 fix: waist 0.2 (Table 14)
     return X2(m, names, np.array([names.index(n) for n in NAMES21]), kp, kd, eff,
               asc, dq,
               rng[:, 0].copy(), rng[:, 1].copy(), qd_max, dq_plant)

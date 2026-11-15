@@ -430,3 +430,28 @@ only after the model runs pass all of the individual stations." Implemented in `
   200 for a candidate) only when every leg passes. Pass mark (coordinator's recommendation, to be confirmed by the user): 45 of 50 on
   each leg. A checkpoint that fails a leg is reported by its leg scores with "full route not run: leg X at N/50". Exceptions: ACP
   7000's 200 started before this rule finishes; an ACP pair gets 50 full-route trials if ACP's stage-3 rule needs the number.
+
+## Final-station stop (user, 2026-11-13; docs/USER_RULES.md "Final-station stop")
+Every adapter commands toward the final station until within 0.2 m. A trial ending in a stable stand within 0.4 m of the final station
+(outside 0.2 m) is a success flagged "stopped short"; reports give the headline count (0.2 m + stopped short) and the strict 0.2 m count.
+
+Implementation (eval monitor, 2026-11-13, live in the scorer from 16:43 UTC):
+- `eval/harness.py` `SHORT_R = 0.40`. A trial is `stopped_short` when it is not a strict success, its outcome is "stalled", "time
+  limit" or "not a stand: end stand never held", every waypoint before the last was reached, no earlier station failed the strict
+  stand, no 4x4 was gone round, and its last 1 s (END_STAND) was a continuous strict stand (feet >= 50 % of the weight, pelvis
+  < 0.15 m/s, standing height within Z_TOL, heading within the station's tolerance if it has one) with the pelvis within 0.4 m
+  of the final station. Only for routes whose last waypoint is a station. The outcome (reason) and the strict count do not change.
+  Per trial: `stopped_short`, `headline_success`, `end_dist_m` (also trials.csv). Per summary: `headline_successes`,
+  `headline_ci95`, `stopped_short` beside `strict_successes`.
+- Main number: the headline count (ladder tables and flat gate / skill profile, legs and their product, the scorer's flat, legs,
+  route, train columns and route-eligibility). The strict 0.2 m count is reported beside it: ladder column STRICT, legs.txt
+  "strict", results.csv `flat_strict`, `legs_strict`, `product_strict`, `route_strict`, `train_strict`, `stopped_short`;
+  train_results.csv `strict_successes`, `stopped_short`. Results scored before the rule have no headline: their main number
+  is the strict count (blank new columns).
+- Adapters: Hiking's card command stands within `HIKING_STOP_R` = 0.20 m of a station (was the card's 0.4 m), and also stands
+  when an overshot station is behind it within 0.4 m (no turn on the spot). Between 0.20 and 0.4 m it commands at least
+  0.5 m/s forward (`HIKING_RING_VMIN`; the policy marks time in place at 0.4 m/s) and stands after 6 s there without reaching
+  the disc (`HIKING_RING_T`). `HIKING_STOP_R=0.4` restores the old rule. SSR (harness command, floor40, keep) and ACP (goal
+  bounded at goal_r toward the waypoint) already command until the 0.20 m disc: unchanged.
+- Thread count: the eval runs single-threaded maths (OMP / MKL / OPENBLAS_NUM_THREADS = 1). A multi-threaded regression run
+  changed 3 of the 10 trials (all baseline-adapter); harness.py and regression.py now default these to 1 before numpy loads.

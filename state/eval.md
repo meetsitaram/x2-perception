@@ -1002,6 +1002,27 @@ legs 1+5 once its export exists). Next report: when solidq2 is in. Open: ramp-sl
   (phys_ramp_633) and the stair side; the solid ramp top runs about 2 cm on over it. Not changed (no physics hole; a real gap of
   under 2 cm, if any, cannot catch a foot). So no regression run needed.
 
+## 2026-11-13 ~05:40-06:10 UTC: review renders on each track's own training terrain (user request via coordinator)
+- New: eval/train_terrains.py (ladder step 20): SSR tiles from the track's own generator (ramp/stairs/beam/platform, levels 5/10/15/19),
+  Hiking paper types rebuilt as approximations (pyramid stairs up/down, platform up, slope, large box, small boxes, rough, gap; 3 levels),
+  ACP box steps 15/25 cm (other ACP props = ladder step-1 courses). Registered in eval/ladder.py STEPS[20]. eval/render.py gained
+  caption=, out_path=, crf= and font scaling with height (defaults unchanged).
+- Runs: eval/out/renders_20261113/run_track.sh <track> (3 trials per course, 2 on extended-map tiles, strict, autoscore settings),
+  outputs runs/<track>/; compose.py <track> makes <track>_review.mp4, <track>_sheet.png, <track>_clips.json (successes only).
+- Checkpoints: ACP pair_s2_v3_010000 (10,000; 010250 exists, not used); SSR r9_v16_p300 (8,250); Hiking x2_parkour_v4_8375.
+- What went wrong: SSR r9_v16_p300 hand-over check FAILS on depth only (depth median 0.089, ray_t max 3.7 m; ray origins/dirs,
+  frame, gru, target, action all match). Rays identical, hit distances differ -> the check's rebuilt scene differs from v16's training
+  scene (likely check-side, not the adapter). r8_v15_p100 passes. Rendered r9 anyway, flagged; SSR should look at obs_check for v16.
+
+- Done ~07:00 UTC: reels eval/out/renders_20261113/{acp,ssr,hiking}_review.mp4 (71 / 70 / 69 s, 3.4 / 3.5 / 4.0 MB) and *_sheet.png;
+  per-clip MP4s in <track>/, levels in <track>_clips.json. 3 trials per course (2 on extended tiles): previews, not results.
+  SSR: ramp L10-19 3/3 (L5 down-then-up 0/3 stalled in the trough), stairs L5 only (L10+ 0/3, stalls), beam L5-19 3/3, platform L5 only
+  (23 cm+ 0/3, stalls before it); extended tiles all but stairs-up. Hiking: rough L1-3, small boxes L1-2, large box / gap / stairs down
+  L1 only; stairs up, platform up, slope up 0/3 (stalls one riser / slope short of the goal; approximated courses). ACP: every ladder
+  skill at L3 incl. 4x4 from the slot, box 15 and 25 cm 2/3.
+- Bugs found and fixed on the way: train_terrains <-> ladder circular import; solid floor (phys_floor.plan) crashes on planar ramps
+  outside its 10-20 deg band (open: guard it); render.py frames resized to 368 by imageio (macro_block_size=1 now).
+
 HOW TO RESUME (21:55 UTC, for the next eval session)
 - Running: the automatic scorer, eval/autoscore/autoscore.py (pid in eval/autoscore/status.json; log eval/autoscore/autoscore.log).
   It needs no agent. Stop: touch eval/autoscore/STOP. Read results in eval/autoscore/results.csv and status.json. README there.
@@ -1013,3 +1034,184 @@ HOW TO RESUME (21:55 UTC, for the next eval session)
 - Open: SSR r7_v13_p250 is a priority in config.json; it is scored when its export appears. Renders are not made by the scorer.
   Hiking exports every ~125 iterations: the scorer takes only the newest when it is free.
 - Heartbeat: the scorer writes /mnt/filesystem-g4/status/eval.json every 10 minutes.
+
+### 13:10 UTC 2026-11-13: training-terrain job in the automatic scorer (user rule "Judge training progress on the training terrain")
+- What changed: the scorer runs `train` first for every export: the track's courses in `eval/train_terrains.py` TRAIN_SETS (ladder
+  step 20), 20 strict trials each, jobs of <= 6 courses (SSR 22 courses / 4 jobs, Hiking 32 / 6, ACP 17 / 3; ramp, slope and rough
+  on PHYS_FLOOR=heightfield). Rows: `eval/autoscore/train_results.csv`; `results.csv` column `train_summary`;
+  `dashboard/data/train_terrain.json` (not registered, not published). Hold-out gate: information only, blocks nothing.
+- What went wrong and the fix: Hiking's rebuilt stairs-up and slope (review renders, hik_*_L1..L3) were not the training shape.
+  Old stairs: 10 risers from r 0.5 m to the end waypoint; training (InstinctLab pyramid_stairs_inv, 8 m tile, 1 m border, step
+  0.30 m, platform 2.5 m) has 6 risers from r 1.18 to 2.68 m, then flat. The policy stalled at x 3.09 = after 9 risers, before the
+  10th. Old slope never flattened (to 4 m); training slopes from r 1.31 to 2.98 m then flat; the policy stalled at x 2.92-3.11.
+  Fix: all nine Hiking types rebuilt from the generator code (rows 2/5/8 of 0-9). Smoke check, Hiking 9625, 2 trials: stairs-up
+  row 2 1/2 (old L1 0/3), slope row 2 2/2 (old 10 deg 0/3). Course shape, not only the policy, caused those stalls.
+- Exact copies: SSR generator tiles, extended-map tiles, Hiking stairs/platforms up/down (no tread noise), slope, gap (depth 0.5).
+  Approximations: Hiking small boxes (mesh generator not ported), boxes and rough = one sampled layout of the same generator;
+  all ACP courses (its clip prop scenes are not rebuilt; ladder step-1 obstacles and box steps stand in).
+- ACP pair_s2_v4_012250 finished under the old code (legs 48/38/49/50/44) before the restart: no train rows; to score it, stop the
+  scorer, delete its entry under `done` in state.json, restart.
+
+HOW TO RESUME (13:10 UTC 2026-11-13)
+- Running: automatic scorer (pid in eval/autoscore/status.json), restarted 13:08 with the train job; first: Hiking
+  x2_parkour_v4_10375 train_1..6, then its leg5. Stop: touch eval/autoscore/STOP. README: eval/autoscore/README.md.
+- Read: `grep TRAIN eval/autoscore/autoscore.log`, eval/autoscore/train_results.csv. Expected runtime per export on 3 cores
+  (smoke check: 4-10 s per success, 15-20 s per stalled trial): Hiking about 40-70 min, SSR 20-40 min, ACP about 20-40 min.
+- Open: register train_terrain.json on the dashboard (coordinator); ACP 12250 train rows (above).
+
+### ~15:30 UTC 2026-11-13: Hiking on its own extended map, every route type (coordinator request for the user)
+- Checkpoint x2_parkour_v4_11125 (newest export; no export at 11,250 or later existed at 14:05 UTC; hand-over check PASS). Terrain:
+  the set Hiking trains on, data/extended_v4k (v4j + prop routes), copied to eval/data/terrains/extended_v4k. MuJoCo CPU, desktop.
+- 56 route types (9 tile types x route kinds: stairs straight / side L-R / oblique / far straight / cross / L / C / S / descend /
+  side down / amphitheatre; prop kinds on beams, beam fields, blocks, wedges, log corridors; homes, street front, tight spots).
+  10 strict trials each = one per level 0-9 (ladder.tile(), export route, card command, solid trimmed floor). 560 trials.
+- Result: strict 380/560 (68 %); falls 13; failures 180 of which 109 are the known END-RING artefact (stopped 0.20-0.45 m from the
+  last station; the adapter's 0.4 m stop radius = training's, eval disc 0.20 m); 58 other stalls / not-a-stand / left course.
+  Stumbles (no fall; harness side hit, non-foot body contact or pelvis tilt > 25 deg) in 433/560; clean strict 86/560.
+  Side hits are mostly foot toe strikes on riser / beam / wedge faces in swing (stairs 17.9 per trial, 40 % move the pelvis
+  >= 0.3 m/s or tilt it >= 5 deg). Side hits are only classified on stair / 4x4 / wedge faces: 0 on blocks, homes, street
+  and tight spots means NOT MEASURED there (feet were checked for landings). Homes 0/10 (stuck at walls/counters, arm contact).
+- Files: eval/out/renders_20261113/hiking_extmap_11125/ (table.txt, table.json, endring.json, frames_sheet_0..3.jpg, mp4/<type>.mp4,
+  scripts). Scratch runs: session scratchpad extmap/out (per-trial results + traj).
+- Open: the end-ring artefact keeps biting every Hiking score (harness disc 0.20 vs card 0.40 m): fix proposed again (adapter
+  creeps in 0.20-0.40 m, or score Hiking's end with the card's 0.4 m). Side-hit classes for blocks/homes/street not defined.
+
+HOW TO RESUME (15:30 UTC 2026-11-13)
+- Nothing from this request is running. The automatic scorer is untouched (see the 13:10 block). Re-run: extmap.py in the folder
+  above (python extmap.py run OUT <route types>, env as autoscore BASE_ENV + HIKING_CMD=card + HIKING_HANDOVER_DIR + PA_TERRAIN_DIR).
+
+### 16:45 UTC 2026-11-13: final-station stop rule (user: "don't penalize heavily if it can't stop there"; docs/EVAL.md)
+- What changed (CPU desktop only, nothing committed):
+  - eval/harness.py: SHORT_R 0.40. Per trial `stopped_short` (not strict; ended stalled / time limit / end stand never held;
+    all earlier waypoints and stations fine; last 1 s a strict stand within 0.4 m of the final station), `headline_success`,
+    `end_dist_m` (also trials.csv). Summary: `headline_successes`, `headline_ci95`, `stopped_short`. Reasons and strict count
+    unchanged. `main_count()` / `strict_count()` helpers. OMP/MKL/OPENBLAS threads default to 1 (also regression.py).
+  - eval/adapters/hiking.py card: stop radius HIKING_STOP_R 0.20 (was card 0.4); stand if an overshot station is behind
+    within 0.4 m; between 0.2 and 0.4 m forward >= 0.5 m/s (HIKING_RING_VMIN) and a stand after 6 s there (HIKING_RING_T).
+    SSR and ACP adapters already command to the 0.20 m disc: unchanged.
+  - eval/ladder.py (HEADLINE + STRICT columns; flat gate / skill profile on headline), eval/legs.py (headline, strict,
+    stopped short, product and product_strict), eval/autoscore/autoscore.py (main columns = headline; new columns
+    flat_strict, legs_strict, product_strict, route_strict, train_strict, stopped_short; train_results.csv strict_successes,
+    stopped_short; route eligibility on headline; old rows readable, new columns blank). README and docs/EVAL.md updated.
+- Regression: 10/10 OK, bit-identical, single thread, before and after the change. Thread count matters: multi-threaded,
+  7/10 (3 baseline-adapter trials change). Now forced to 1 by default.
+- Extended map, Hiking 11125, 560 trials (strict/headline): old adapter 380 / 474 (94 stopped short); new adapter 465 / 485
+  (20 stopped short); falls 13 / 13. 4 old strict successes lost (3 now stopped short, 1 fall beam_fields side_left L9).
+  Files: eval/out/renders_20261113/hiking_extmap_11125/finalstop_20261113/ (compare.json, scripts); per-trial results in the
+  session scratchpad ba/full/{before,after}.
+- What went wrong: (1) cleanup.py had deleted 11125's onnx files; re-fetched from the shared filesystem (read-only scp).
+  (2) First new-adapter try (0.2 m stop only): the policy marks time in place at 0.2 m with a 0.4 m/s command (wedges L1) ->
+  added the 0.5 m/s floor and the 6 s give-up. (3) Open: a target beside the robot at ~0.4 m (wedges.generator L1) still
+  marches in place without turning: neither strict nor stopped short.
+- Scorer: STOP 16:09, "autoscore exit" 16:17, one instance restarted 16:43 (pid in status.json). Old exports not re-scored.
+
+HOW TO RESUME (16:45 UTC 2026-11-13)
+- Running: automatic scorer only (new code: headline + strict columns from its next row). Stop: touch eval/autoscore/STOP.
+- Next check: first new results.csv row has flat_strict / legs_strict filled; train_results.csv strict_successes filled.
+- Open: wedges side-target marching (above); hiking_v4_11125 onnx will be removed again by cleanup.py (re-fetch if needed);
+  old rows are strict-only (re-score an export by deleting its `done` entry in state.json if a headline is needed).
+
+### 01:15 UTC 2026-11-14: Hiking on the wedge tiles of its own extended map (user: "evaluate hiking on the wedge routes that are part of the training first")
+- Checkpoint x2_parkour_v4_14750 (newest export at 00:50 UTC; fetched read-only to the session scratchpad wedge/h14750, hand-over
+  check PASS; 14625 was being scored by the automatic scorer, untouched). MuJoCo CPU, desktop, single-thread BLAS, current adapter
+  (HIKING_STOP_R 0.20), strict + headline, time limit 120 s, solid trimmed floor.
+- 900 trials: 9 wedge route kinds x levels 0-9 x 10 (trial i of a kind/level = i-th route of that kind at that level, seed 1000+i).
+  Strict 623/900, headline 746/900 (123 stopped short), falls 55, stalls 181. Pinwheel tiles (2x2 cells) 326/537 strict, long ramps
+  297/363. Best: cross 93, straight 89 strict /100; worst: generator 42 (35 stopped short), side_left 54, side_right 60.
+- Apparatus legs 3/4 versus wedge tiles (per trial): arm contacts 100-170 (10375) / 59-69 (11750) vs 0.1; edge landings 135-141
+  vs 14 per trial; edge landings per step 0.41-0.59 vs 0.19. The apparatus arm contacts are ALL on the side WALLS (events.csv
+  class wall, 8631 leg3 / 5101 leg4 at 10375, z ~0.6 m); the wedge tiles have no walls (rails false). So the wedge tiles do NOT
+  reproduce the apparatus failure: no walls, lower slopes (8-12 deg vs 15), larger cells (1.2-2.0 m vs 1.22).
+- Files: eval/out/renders_20261113/hiking_wedges_14750/ (wedges.py, full.sh, analyse.py, renders.py, table.txt, table.json,
+  mp4/). Per-trial results + traj: session scratchpad wedge/out/wedges/.
+- What went wrong: renders.py mkdir without parents (fixed, re-run). Nothing else.
+- Failure breakdown (900): falls 55; not-headline non-falls 99 = stalled at the last station within 0.6 m 45 (side-target turn
+  fault: e.g. w_oblique_L6_1, 0.395 m from the target, yaw command -1 rad/s held 13 s, yaw stays -142 deg, 80 edge landings from
+  stepping in place), left the course 41, stalled mid-route 8, end stand not held 5. The table's "stall" column includes the 123
+  stopped-short (headline) trials.
+- Renders (pinwheel = closest to the apparatus 2x2 ramp pinwheel; oblique = the diagonal crossing of leg 4): mp4/success/
+  (w_oblique_L8_5, strict, 10 side hits, 23 edge landings) and mp4/stall/ (w_oblique_L6_1), chase + legs each, sheet.jpg per
+  folder. Every still checked: robot visible, magenta pole floating clear of the wedges, side hits shown match results.json.
+- What went wrong: eval/render.py's default footer credits "Bones Studio" motion data for every track; wrong for Hiking (paper
+  motions retargeted to X2, CC BY-NC 4.0). Re-rendered with RENDER_CREDIT set. Earlier Hiking renders that used the default
+  carry the wrong footer: fix = per-track default credit in render.py (not changed here; coordinator to decide).
+
+HOW TO RESUME (01:35 UTC 2026-11-14)
+- Nothing from this request is running; the automatic scorer was not touched. Re-run: full.sh SCRATCH HANDOVER_DIR, then
+  analyse.py SCRATCH/out, renders.py SCRATCH/out test:tag (set RENDER_CREDIT for Hiking).
+- Open: Hiking footer credit default in render.py; side-target turn fault at the last station (45/900 wedge trials).
+
+## Scorer chunking (2026-11-14, 04:52 UTC restart)
+User request: break the scorer's work into small pieces for all three tracks. Done (no commit):
+- `eval/ladder.py --chunk k --chunk-size 5` and `eval/legs.py --legs K --chunk k`: run seeds 1000+5k..1004+5k only, into
+  `<course|legK>/chunks/c<k>.json` (saved after every trial) + `c<k>.done`. The usual unchunked command merges chunk files (and old
+  partial.json) and writes summary/results exactly as before; it then deletes `chunks/`.
+- `eval/autoscore/autoscore.py`: jobs `train.<course>.c<k>` / `train.<course>` (merge) and `leg<K>.c<k>` / `leg<K>`; a `regress`
+  job runs the regression check once per export, single-threaded, before the chunks (chunks use EVAL_REGRESSION=0). Chunk attempt
+  2,700 s, wall 1,800 s. Config `chunk_trials` 5 (`train_job_size` unused). Flat tests, ACP gate, route not chunked (route = 4 jobs).
+  Backups of the pre-chunk files: `%TEMP%/autoscore.py.pre_chunk`, `%TEMP%/ladder.py`, `%TEMP%/legs.py` (desktop temp, not repo).
+- Identity check (scratchpad chunk_identity.py): SSR r7_v17_12000 ssr_platform_L10 20 trials, 4 chunks vs unchunked: 20/20 trial
+  records byte-identical (15/20 both), also identical to the scorer's earlier run; ACP pair_s2_v5_016750 leg 3, 10 chunks vs
+  unchunked: 50/50 identical (48/50), also identical to the earlier run.
+- Speed-up: SSR course 244 s unchunked -> 93 s in 4 chunks (2.6x; bounded by the slowest chunk, which holds the stalls); ACP leg
+  140 s -> 28 s (5x, 10 chunks). A 26-min SSR v18 course should take about 7-10 min on 4 cores.
+- Went wrong: one edit put a raw newline in a string in ladder.py for a few minutes (syntax error); fixed before any scorer run
+  used it, the identity test's processes had already imported the good copy. The old scorer was drained with STOP (exit 04:51:53).
+- Regression check after the change: OK 10/10, 10 bit-identical (single-threaded).
+
+HOW TO RESUME (04:55 UTC 2026-11-14)
+- Running: one scorer, pid in eval/autoscore/status.json (started 04:52:18 UTC with nohup; check `ps -ef | grep [a]utoscore.py`
+  shows one line). Active: ssr:r7_v18_016000, hiking:x2_parkour_v4_15500, acp:pair_s2_v5_016750 (route_1150 left).
+- Next check: autoscore.log for `end ... failed` on chunk jobs and that merge jobs (`train.<course>`, `leg<K>`) end `done`;
+  train_results.csv rows for SSR v18 once its 22 courses are merged.
+- Open: flat tests (50 trials, one process each) are not chunked yet; chunk them the same way if they become the bottleneck.
+
+## Showcase renders with overlays (2026-11-14/15; user: successes on the apparatus and the extended map for all three, plus failures)
+- Folder: eval/out/renders_20261114/showcase/ (capture.py, extsel.py, jobs.py, show.py, render_all.py, ba.py; runs/, mp4/<job>/,
+  beforeafter/). Every apparatus trial is a re-run of the scored seed with capture hooks: 12/12 bit-identical qpos to the scored
+  trajectory (show.py writes mp4/<job>/check.json). Extended-map trials are new (seed 1000, PHYS_FLOOR=heightfield, 90 s).
+- Code changed (no commit): eval/x2.py build(dress=...) visual-only hook; eval/dress.py (apparatus from its own MJCF and
+  materials, tiles per primitive class, venue dark blue checker floor, softer light: tracking spot 0.18, headlight 0.38/0.25);
+  eval/overlays.py (ACPOverlay: planner 17x11 map tiles, tracker 9x7 dots, side obstacles red / 0.10 m margin pink, planned ring vs
+  physics stance square; DepthOverlay: RealSense-style 424x240 87x58 deg chest-camera depth + the policy's actual input thumbnail);
+  eval/render.py (app / overlay / dress / speed args; dressed walls see-through or hidden as before; legend line). Old look:
+  RENDER_DRESS=0. Pre-change render.py copy: %TEMP%/render.py.pre_dress.
+- Went wrong: ACP 016250 hand-over had lost planner_attn.onnx to cleanup.py; re-fetched read-only from the shared filesystem
+  (md5 8d4dc438 = autoscore_fetch.json). Robot MJCF tracking spotlight blew out the floor under the robot; dimmed in dress.py.
+- Extended-map picks (strict successes): ACP stairs.C_3, wedges.oblique_7, log_corridors.generator_4 (ACP stalled on wedges.C_5);
+  Hiking and SSR stairs.C_3, wedges.C_5, log_corridors.generator_4 (SSR stalled on stairs.L_3, not a stand on homes_3).
+
+HOW TO RESUME (2026-11-15)
+- Running: automatic scorer only (untouched). Showcase renders: python render_all.py 12 in the showcase folder (DONE line in
+  mp4/render_all.log). Re-render one: show.py <job> chase [legs] with X2_EXCLUDE_PAIRS=hip (+PHYS_FLOOR=heightfield for ext jobs).
+- Open: coordinator to decide whether dressed rendering stays the default for all renders (it is now: RENDER_DRESS=1).
+- 2026-11-15 update: all 21 MP4 jobs rendered and every frame sheet checked (mp4/<job>/sheet_<view>.jpg). Legs view: raised dressed
+  geoms and overlay obstacle blocks between camera and legs are now faded (rails and red blocks hid the feet in the first pass);
+  depth inset notes "black: no return (< 0.3 m or > 6 m)" (own forearm at 0.10-0.15 m, room beyond 6 m). Two ACP legs MP4s
+  re-encoded at crf 29 (7.5-7.8 MB). Open: ACP ext stairs.C_3 shows a 4515 N stair-side hit on the heightfield floor (check
+  plausibility before quoting); hiking dressed-scene renders made earlier than this batch keep the old look.
+
+### 2026-11-15: extended-map batch 2 (user: "i asked for renders from the extended map ... these include the setup for the home")
+- Went wrong: showcase batch 1 rendered only stairs.C / wedges / log corridors on the extended map, no homes (homes_3 was captured
+  but not rendered). Fix: batch 2 per track (ACP pair_s3_v2_022500, Hiking x2_parkour_v4_22000, SSR r7_v20_final_26000), courses
+  jobs.py EXT2: homes 0-9 (routes 0/1/2 at several levels), tight_spots 0-5, street_front 0-5, stairs side_left/side_right/L/S,
+  single_beams C/S, beam_fields, blocks generator/L. Seed 1000, heightfield floor, 90 s. Running: python jobs.py 14 _ext_
+  (runs/jobs2.log, ALL DONE at the end). Then render one chase MP4 per route type (best success, else typical failure).
+  jobs.py / show.py backups: *.bak_1115.
+- 2026-11-15 results (seed 1000, one trial per course, strict): ACP 22500 34/39 courses (homes 8/10: route 1 1/3 - L1 ok, L5/L8
+  fall on the big block; street_front 5/6; tight 6/6; stairs side/L/S 8/8; beams 3/3; beam fields 2/2; blocks 3/4).
+  Hiking 22000 31/39 strict (homes 7/10: route 1 0/3 - L1/L8 stall on a small block with turn command not followed, L5 left
+  the course; street 5/6; tight 6/6; stairs 6/8; single beams 2/3; blocks 4/4). 17 chase MP4s in mp4/<job>/ (render2.py,
+  1-4 MB each), every sheet checked.
+- Went wrong: SSR r7_v20_final_26000 hand-over lost policy.onnx to eval/autoscore/cleanup.py (folder mtime 21:28 on 2026-11-14)
+  although it is SSR's best training-terrain checkpoint (18/22) - the "best checkpoint keeps everything" rule did not protect
+  it. All 30 SSR batch-2 captures FAILED (NO_SUCHFILE). Not re-fetched: this session is desktop-only. Needs a read-only
+  re-fetch from the shared filesystem (autoscore_fetch.json lists the files), then: python jobs.py 14 ssr26000_ext_, then
+  add ssr26000 jobs to render2.py.
+- Render defects seen: homes chase first frame (t 0.02 s) shows the robot behind a solid tall block (only walls are faded);
+  Hiking stairs.L_2 side hit 5104 N peak on the heightfield floor (same family as the 4515 N ACP stairs hit - check before
+  quoting); ACP blocks.generator_3 route goes between blocks (no block stepped on).
+
+HOW TO RESUME (2026-11-15, batch 2)
+- Nothing running. Outcomes: runs/<tk>_ext_<test>/extmap/<test>/results.json. Renders: mp4/<job>/<job>_chase.mp4 + sheet_chase.jpg.
+- Open: SSR re-fetch + capture + render (above); cleanup.py protection of the best checkpoint (coordinator/autoscore owner).

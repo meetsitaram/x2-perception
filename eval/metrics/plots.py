@@ -155,10 +155,33 @@ def load(track):
 
 # --------------------------------------------------------------------------------------------------------- panel specs
 
+def _weight_key(k):
+    """Episode-count key for a finish-rate key (ACP logs episodes/<set> and probe/episodes/<set>), else None."""
+    if k.startswith("probe/finish/"):
+        return "probe/episodes/" + k[len("probe/finish/"):]
+    if k.startswith("finish/"):
+        return "episodes/" + k[len("finish/"):]
+    return None
+
+
 def mean_of(keys):
+    """Mean over keys; finish rates are weighted by their episode counts and sets with 0 episodes are skipped
+    (2026-11-13: an unweighted mean counted empty sets as 0 and showed a false Pico drop at 10,356)."""
     def f(r):
-        v = [r[k] for k in keys if k in r and r[k] is not None and math.isfinite(r[k])]
-        return sum(v) / len(v) if v else None
+        num = den = 0.0
+        for k in keys:
+            v = r.get(k)
+            if v is None or not math.isfinite(v):
+                continue
+            wk = _weight_key(k)
+            if wk is not None and wk in r:
+                w = r[wk] or 0
+                if w <= 0:
+                    continue
+            else:
+                w = 1.0
+            num += w * v; den += w
+        return num / den if den else None
     return f
 
 

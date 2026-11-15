@@ -57,7 +57,7 @@ def main():
             ao, _ = env.observe()
             a = ac.actor(ac.an(ao))
             rec["qpos"].append(env.qpos[0].clone().numpy()); rec["qvel"].append(env.qvel[0].clone().numpy())
-            rec["actor_input"].append(ao[0].numpy()); rec["action"].append(a[0].numpy())
+            rec["actor_input"].append(ao[0].numpy()); rec["action"].append(a[0].clamp(-20.0, 20.0).numpy())   # as env.step applies it (17i)
             H = 5 * env.PROP
             rec["scan"].append(ao[0, H:H + 63].numpy()); rec["contact_targets"].append(ao[0, H + 63:H + 90].numpy())
             rec["goal"].append(ao[0, H + 90:].numpy()); rec["ref_frame"].append(int(env.f[0]) - int(m.clip_start[clip]))

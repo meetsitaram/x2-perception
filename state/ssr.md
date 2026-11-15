@@ -1976,17 +1976,420 @@ All outputs in `runs/v16_checks/` (script `code_v15/scripts/v16_checks.py`; chec
   (built from queue32 with an off-by-one); killed after 15 s, nothing ran (log kept as `v16_checks/queue33_badstart.log`).
 - The node has 24 cores (not 28): one replay failed taskset on 24-27 and was rerun on 16-19.
 
-## HOW TO RESUME (current at 04:00 UTC 2026-11-13, node clock)
+### 2026-11-13 05:28-05:55 UTC: one code copy, cause separation of the v15 / v16 shuffle (fresh agent)
+- **One code copy (user rule, via coordinator)**: code_v16 (= code_v15 + v16 transition) folded into `code/` behind flags whose defaults
+  reproduce v14. Unflagged v15 items now flags: `--paper_terrain` (terrain.py PAPER layout: discrete in slot 4, beam = gap slot heading 15,
+  FREE column; env X2_TERRAIN_PAPER=1, set by train before the imports; also disc_index and the heading table), `--simcheck` (simcheck
+  faults = truncations, reward 0, no level move; default: v14 NaN / |qvel|>60 terminate). Files merged: ssr/{env,train,terrain,networks,x2}.py,
+  scripts/supervise_node.py, new scripts build_amp_v5.py / smoke_v15_env.py / v16_checks.py, tests/test_equivariance.py, data/amp_v5*.
+  Fixes added: home_type follows the resumed types on --resume (paper mode); init_from's flat->discrete level reset only in paper layout.
+  Diagnostic flags (default off): `--diag_out --diag_disc_from --diag_disc_frozen`.
+- **Equivalence (CPU, all RNGs seeded, 32 robots, 2 iterations, runs/merge/equiv/compare*.txt)**: old code/ twice = identical (so the check
+  is deterministic); old code/ vs merged with v14 flags: 0 differing log values, max weight diff 0 (only new log keys added); old code_v16
+  vs merged with v16 flags + `--paper_terrain --simcheck`: 0 / 0. Re-run after the diagnostic patch: same 0 / 0.
+- Installed 05:43: old code/ kept as `_trash/2026-11-13/code_v14_before_merge`; code_v15, code_v16 and the staging tree moved to
+  `_trash/2026-11-13/`. Flags r7_flags_v15/v16 carry `--paper_terrain --simcheck`; queue32/33, v15/v16 check scripts, replay scripts
+  point at code/. grep code_v15|code_v16 over runs/*.sh|txt|py, runs/v16_checks/*.sh, code/: only runs/merge/equiv*.sh / install.sh
+  (the check itself). Running r7 (started 04:40) keeps its imports; every restart now runs code/. Not merged: code_pre/, simcheck_v15/
+  (older copies, left for the coordinator; not used by any script I found).
+- **r9 timeline (runs/r9/log.jsonl)**: warm-up end 8150 vx_ratio 0.724; 8160 0.697 (to_paper 0.03, sig_v 0.105), 8170 0.659, 8180 0.586
+  (0.10, 0.115), 8200 0.513 (0.16, 0.125), double 0.27 -> 0.48. The resumed v14 (r7, same code, same iterations) stays 0.72-0.76. So the
+  shuffle starts within 30 policy iterations while the blend is <= 10 % separate and sigma_v <= 0.115: not "half way".
+- **CPU gradient check (runs/merge/diag/summary.txt; v14 policy frozen, 96 robots, 20 iterations after 10 of critic fit)**: corr(A, speed
+  over the next 10 steps), same rollouts: joint vs separate differ by <= 0.015 in every run (R0 v14 env +0.030 / +0.017; R1 paper env,
+  fresh D, sigma 0.1 -0.021 / -0.020; R2 sigma 0.25 +0.035 / +0.033; R3 v14's D -0.054 / -0.053), standard error 0.04-0.05. The style
+  advantage pulls toward slower in every setting incl. the stable v14 env (-0.08 / -0.07 / -0.03 / -0.01). Verdict: normalisation does not
+  turn the step direction; sigma and D effects are below the CPU noise. Not separable on CPU -> GPU tests.
+- **Decision (mine, 05:52)**: GPU tests by queue34 (tmux ssr34, runs/queue34.log, prefix QUEUE34), one at a time, v14 = fall-back:
+  T1 = r9 repeated from r9/ckpt_008000 with joint norm and sigma 0.1 HELD after the warm-up (the only difference from r9 after 8150).
+  If T1 falls (mean vx_ratio of 3 logs < 0.65): T2 = v14 env + flags, only fresh amp_v5 discriminators (init_from r7_v14_final3,
+  warm-up 200). If T1 holds 150 policy iterations: TA = T1 with separate normalisation at once. Then r7 resumes (v14 flags, code/).
+  Deviation from the coordinator's A/B/C order: T1 tests A and B together against r9's own run first (r9 data already makes them unlikely).
+### What went wrong this turn
+- Seed-less equivalence (first try) differed between two runs of the SAME code: train.py never seeds torch. Fixed for the check with
+  runs/merge/seeded.py (all RNGs seeded, deterministic kernels); training itself still unseeded (noted, not changed).
+- A pkill pattern matched my own ssh command twice (exit 255); no run was affected.
 
-- **Running**: r7 **v14** (tmux `ssr32`, code `code/`) until queue33 (tmux `ssr33`) switches to **r9 = v16** at the next r7 save
-  (~04:05). Never close a tmux holding a supervisor. Stop training: touch runs/STOP.
-- **Next check** (~06:00, r9 +500): `grep QUEUE33 runs/queue33.log` for +60 / +350 / +500 lines or FALL BACK. Healthy: vx_ratio
-  >= 0.57 (0.75 x v14 0.76), to_paper 1.0 and sig_v 0.25 at +500, gait.double near 0.2. Then score `eval/export/r9_v16_p500`.
-- **If v16 falls back**: separate the causes on CPU with the frozen-policy replay (`runs/v16_checks/replay_train.sh`, NE/K env):
-  v15 flags with only one of {adv_norm joint, sig_v 0.1, fresh D warm 200} changed.
-- **Exports**: `r7_v14_p250` top priority; `r8_v15_p100` low.
-- **Open**: preflight terrain not a pass (ext edge site, chunk-border guards; FINDINGS B11); actor mirror error 0.080 (tol 0.10);
-  backward / sidestep / open-floor turning missing from the prior; beam D scores ~48 % of style samples (tight_spots / homes routes
-  are mapped to beam).
-- **Helper**: ssh `~/bin/ssr_ssh.sh <timeout_s> '<cmd>'` (stdin is not passed: upload files as base64 in the command). CPU work from
-  `code_v16/`: `env CUDA_VISIBLE_DEVICES= X2_PLANT=mc_20261024 X2_EXCL_PELVIS_HIPROLL=1 X2_HF_CHUNK=400 nice -n 10 ../env/venv/bin/python ...`.
+### 2026-11-13 08:29-08:33 UTC: GPU idle 2h15m (06:13-08:30), T2 crash loop; r7 resumed (coordinator-directed fix)
+- **What went wrong**: T1 fell at 8180 (vx_ratio 0.63, 06:12). queue34 then started T2 (v14 env and flags, fresh amp_v5 D, init_from
+  r7_v14_final3 at 8600) at 06:12:53. Every T2 start died before iteration 1: `KeyError: 'flat is not a file in the archive'`
+  (runs/t2.log): the v14 flags build a 'flat' discriminator group, amp_v5.npz has no 'flat' group. The supervisor restarted it 92 times
+  (`crash(1) at iter None`, runs/queue34_t2.sup; its own limit is 200) and queue34 only checked for the supervisor's exit, so the GPU
+  trained nothing for about 2h15m. No CPU smoke test of the T2 flag set had been run before arming it (the cause of the cause).
+- **Fix**: 08:29:45 killed the T2 supervisor (pid checked: `supervise_node.py --name t2`) and its trainer only. queue34 took its own
+  CRASH branch and exec'd the r7 resume at 08:30:10 (v14 flags, code/, X2_HF_CHUNK=400, normal supervisor) from r7/last.pt =
+  r7_v14_final3 (cmp identical, it 8600). First log line it 8610 at ~08:31, vx_ratio 0.964; GPU 42-60 %, 24 GB.
+- **Guard added**: `runs/crash_guard.sh` (`crash_loop <sup file> <start line>`: more than 3 `crash(..) at iter None` lines; `kill_run
+  <name>` kills only that run's supervisor and trainer). Sourced and wired into queue34 `test_run` (stop the test, verdict CRASH,
+  queue resumes r7) and queue33's r9 loop (fall back to r7). Backups runs/_q34.bak, runs/_q33.bak. Tested: fires on
+  queue34_t2.sup, quiet on queue34_t1.sup. **Rule: every new queue sources crash_guard.sh and checks crash_loop in its wait loop.**
+- **T2 is not to run again** until (a) amp_v5 gets a 'flat' group or the v14 flags are adapted to amp_v5's groups, and (b) the exact
+  T2 command passes a 2-iteration CPU smoke test (`CUDA_VISIBLE_DEVICES= ... --iters 2 --num_envs 64`). The T1 FALL verdict stands;
+  the T2 question (does fresh amp_v5 D alone cause the v15/v16 slide?) is still open.
+
+
+### 2026-11-13 13:28-14:25 UTC: amp_v5 from paper reference v4, the one planned restart (v17), run to 20,000 (fresh agent)
+- **amp_v5 rebuilt** (`code/scripts/build_amp_v5.py`, log `runs/amp_v5_build.log`, meta `code/data/amp_v5_meta.json`): paper ref **v4**
+  (`paper_ref_x2_v4.pkl`; categories from the v4 time ranges, checked: stairs up 8 clips 24.0 s, down 9 / 16.8, step onto block 14 / 9.3,
+  step off 17 / 9.4, all equal to the table) + the user's Pico takes; no BONES-SEED. v14 layout (r7 has no `--paper_terrain`): groups
+  ramp, stairs, beam, platform, flat. Seconds vs Table 11: ramp 261.3/261.3 (fwd 78.4, backward 0 - no backward window >= 1 s in v4 -
+  so turn 52.3, ramp traversal 130.7), stairs 295.8/295.8, beam (gap slot) 174.3/174.5 (Pico logs 59.9 + 2x2 13.7 + 4x4 13.7), platform
+  181.6/181.6, flat 136.0 (the discrete slot's size: fwd 68.0 / turn 47.6 / side 20.4; paper has no flat group, v14 needs one for
+  the open-floor robots and the walking starts). Old v2-reference amp_v5 + builder moved to `_trash/2026-11-13/amp_v5_v2ref/`.
+- **Discriminators warm, not fresh (my decision)**: full resume of r7/last.pt incl. D and its optimiser. Evidence: every run with fresh
+  amp_v5 D slid to a shuffle (v15 +150, v16 +350, T1 at +30 policy its); check (b) showed fresh D rate the shuffle above v14's walk; T2
+  (fresh D alone) never ran. Warm D keeps the reward the policy is in equilibrium with and adapts to the new data. Plus 50 iterations
+  with the policy frozen (`--warm_until_abs 11401`, critics + D train) so D moves to v4 + Pico and the 0.3 arm weight first.
+- **Code changes** (backups in `_trash/2026-11-13/`): train.py `--torch_seed` (seed **20261113** recorded in args.json, log "torch seed"),
+  `--warm_until_abs` (absolute, so a crash-resume does not add another warm-up), checkpoints now save / restore `ext_level` and
+  `ext_type` (coordinator 2026-11-13: ext levels reset to ~0 at every restart); env.py log field `gait.slow_made_good` (share of command
+  made good, all robots with a 0.10-0.35 m/s command) and `gait.slow_share`. The ext-level save is in the file but the running trainer
+  imported the old file: it takes effect at the next crash-resume of a newer save only; this restart itself reset ext levels (the v14
+  checkpoint never stored them, nothing to restore).
+- **Flags** `runs/r7_flags_v17.txt` = v14 flags with `--amp_file data/amp_v5.npz`, `--disc_part_w 1.0,0.3,0.0` instead of
+  `--disc_mask_arms`, `--torch_seed 20261113`. 8,192 robots (see open conflict below).
+- **Pre-flight** (`runs/v17_preflight.sh`, `runs/v17_checks/summary.txt`) PASS 13:36: amp_v5 loaded through `ssr.train.AMPData` for
+  every T.TYPES key + `_starts` (and sampled), mirror tests, CPU train smoke of the exact command resuming a copy of r7/last.pt (11,300:
+  2 frozen + 2 policy iterations, seed and warm-up lines present, slow_made_good logged), export dry-run PASS.
+- **Restart**: queue35 (tmux `ssr35`, `runs/queue35.log`) stopped r7 v14 at the 11,350 save (13:39:29, `eval/export/ckpts/r7_v14_final4.pt`)
+  and started v17 at once (supervisor output `runs/queue35_r7.sup`). Fixed end 20,000 (about 16 h at 6.4-6.8 s/it, ~06:30 UTC 11-14).
+- **First 100 iterations** (mean of log lines; base = 10 lines before): diverged 0.1 % -> 0.2 %; tilt 3.1 % -> 2.9 %; share of command
+  0.795 -> 0.77-0.78; double support 0.22 -> 0.24; steps/s 4.56 -> 4.40; r_s 0.33 -> 0.27-0.29; samples/s 29.0k -> 29.2k; slow commands
+  made good (new field) 0.98. CPU start probe (64 robots, deterministic) base 11,350 vs 11,450: started 100 % / 100 % at 0.15, 0.2, 0.35;
+  mean vx 0.198 / 0.188, 0.269 / 0.253, 0.364 / 0.376 (`eval/start/v17_base_11350.json`, `v17_p100.json`). No slide toward a shuffle.
+  Levels: ramp 15.0 -> 13.4, stairs 8.1 -> 11.2, platform 8.5 -> 11.4, beam 13.6 -> 13.1, flat 13.0; ext levels reset 5-6 -> 0.2-0.6.
+- **No pause in the setup (user rule 2026-11-13)**: queue35 only (1) fault fall-back on a crash loop (crash_guard.sh) -> resume r7 with
+  v14 flags, (2) copies last.pt and runs CPU-only work (nice 15, cores 16-23): start probe at +100, `export_eval.py` every 500 iterations
+  into `eval/export/r7_v17_<it>/` with a DONE marker (checkpoint copy `eval/export/ckpts/r7_v17_<it>.pt`). Nothing touches STOP, nothing
+  runs on the GPU. queue31 / queue34 are finished (only their tmux shells remain).
+- **Stairs decline (coordinator question)**: in the v14 layout route robots keep the route's type (no `--ext_home`) with their tile level
+  from whatever type they came from, and ext robots never update `level`; so `levels_by_type.stairs/platform` average real stairs robots
+  with route robots carrying stale levels. Evidence: right after this restart (all robots back on tiles) stairs 8.1 -> 11.2 and platform
+  8.5 -> 11.4 within 100 iterations while ramp fell 15.0 -> 13.4: the per-type means re-mix, they are not a clean capability measure.
+  The decline started with v13/v14 at 4,800 (9 ext types, ext_frac 0.4, inset stairs, stairs-type routes). Whether real stairs skill
+  fell is not established: needs a CPU probe per stairs level on the final checkpoints (next step). amp_v5 is not expected to fix it:
+  style is about 4 % of the policy gradient under joint normalisation; it is a curriculum / bookkeeping effect.
+
+### What went wrong this turn
+- My first build ran nothing: copying the builder by line range dropped the `main()` call (exit 0, no output); caught by the empty log,
+  fixed by appending the original tail.
+- queue35 prints a harmless `No such file` for the first `wc -l < queue35_r7.sup` (file not yet created); L0 = 1, the crash guard counts
+  from the start of the file, correct.
+- The +100 probe watcher on my side timed out (probe stdout carries Warp banner lines before the JSON); results read from the files.
+- Ext-map levels were reset by this restart; the v14 checkpoints never stored them. Fixed for later saves (see above).
+
+### 15:45 UTC 2026-11-13: v16/v17 exports failed the desktop hand-over check - fixed (FINDINGS E4)
+- What went wrong: r9_v16_p300 and r7_v17_011500/012000 failed on depth (0.206 vs 0.02). Two defects: (1) the record's flat
+  level-0 tile (v14 layout) sees the 1.3 m side-obstacle walls of flat level 1 within 3 m; the check replays on an open plane.
+  (2) training's march (38 x 0.10 m) reports no hit beyond 3.88 m; the adapter's exact cast saw floor at 3.9-4.4 m (all earlier
+  SSR scores had a few far corner pixels at 0.93-0.97 instead of 1.0). Residual: hits in the march's last 0.1 m flip on float32
+  rounding (replay exact 64,767/64,767; a 2e-6 origin shift flips 84/450), not matchable pixel by pixel.
+- Fix: export_eval.py zeroes the vision raster for the record and writes ray_march_iters/step_cap/tmin/ray_hit_range in the card
+  (backups in tracks/ssr/_trash/export_eval.py.before_*); eval/adapters/ssr.py: hits beyond ray_hit_range = no hit;
+  eval/tools/ssr_check.py: band pixels reported as depth_band, excluded from the depth max (FAIL if > 2% of image; check change
+  for the coordinator). 11,500 and 12,000 re-exported (old folders in tracks/ssr/_trash/export_pre_*_20261113): PASS (depth
+  3.2e-4 outside band, band share max 1.3%). v15 p100 still PASS. Training untouched. Scorer re-queued both at 15:40.
+
+### 2026-11-13 18:20-19:10 UTC: style collapse after the v4 switch diagnosed (fresh agent, CPU only, run untouched) - FINDINGS E7
+- Question (coordinator): r_s 0.33 -> 0.10, D(policy) -0.63 -> -0.88 since 11,350; user sees straight arms and waist tilt at 12,000.
+- Cause: the arm action noise. Arms were masked from the discriminators until 11,350 (`--disc_mask_arms`), so the 8 arm stds drifted
+  under the entropy bonus (13,500: 0.68 / 0.97 / 0.48 / 0.75 x action scale 0.258 / 0.258 / 0.485 / 0.485 = 0.17-0.36 rad white
+  noise per step; elbow std rose 0.52 -> 0.75 after the switch). v17's `--disc_part_w 1.0,0.3,0.0` let D see arms: arm grad share
+  0 -> 0.37-0.60 in all groups. Sampled-action arm qd spread 2.48 vs 0.36 in the reference.
+- Evidence (`runs/style_diag/style_diag*.py`, `out.json`, `out2.json`, `out3.json`; flat, 64 robots, 0.6 m/s; v17 13,500 policy + D):
+  sampled actions D -0.95, r 0.06, 47 % windows D < -1 (zero reward, zero gradient) = training; mean actions D +0.05, r 0.75;
+  legs-only noise -0.44 / 0.48; arm std 0.3 -0.71 / 0.26; arm std 0.3 + ankle roll 0.6 -0.67 / 0.30; reference arms swapped
+  into the sampled windows -0.95 -> +0.33. Style advantage spread 0.0073 -> 0.0037 (4.3 % -> 2.1 % of locomotion).
+- Posture: mean-action elbows near 0 rad (reference -0.69; default -0.6), arm swing 0.1-0.2x reference; reference arms into the
+  mean-action windows lift D 0.05 -> 0.56. amp_v5: no defect (qd = 50 Hz difference of q in all 352 clips, mirror exact, order and
+  default pose match); reference shoulder roll nearly constant (sd 0.013 rad), noted. Disc normaliser not the cause.
+- Decision: no restart (user rule; locomotion unaffected). At the next planned restart after 20,000: new train.py flag to reset
+  the arm log-stds to log(0.3) and cap them at 0.4 (ankle roll cap 0.6 optional), D kept warm. Not yet coded.
+
+### What went wrong this turn
+- My first hypothesis (frozen discriminator normaliser fit to masked arms) was wrong: the normaliser's arm spread is 2x the
+  reference's. The first probe used mean actions and showed D near 0, unlike training; the sampled-action probe resolved it.
+
+### 2026-11-13 19:20-19:40 UTC: E7 flag written, pre-flight PASS, v18 restart armed on GO (fresh agent, CPU only, r7 untouched)
+- train.py (backup `_trash/2026-11-13/train.py.before_armstd_*`): `--arm_std_reset V` sets actor log_std[13:21] = log V once per
+  run (marker `arm_std_reset_done` saved in checkpoints, so crash-resumes do not reset again; Adam exp_avg of those entries
+  zeroed), `--arm_std_cap C` clamps them after every policy step, `--ankle_roll_std_cap` (indices 5, 11). All default 0 = off.
+- Ankle-roll cap: decided OFF. Probe gain is small (r 0.26 -> 0.30, D -0.71 -> -0.67), the cause is the arms, ankle roll is the
+  balance joint on beams / stairs where locomotion is fine (share 0.79), paper has no cap. Revisit if r_s stays < 0.25 after v18.
+- Warm-up: none (D warm and on the same data; v17's `--warm_until_abs` was for the data switch).
+- Pre-flight PASS 19:35 (`runs/v18_checks/summary.txt`): loader OK all 5 groups; mirror OK; smoke resume of r7/last.pt copy
+  (14,500): arm std before [0.67, 0.91, 0.42, 1.03] x2 (elbow now 1.03, was 0.75 at 13,500 - still drifting up), after reset 0.3,
+  after 4 CPU policy updates 0.3, leg stds unchanged (max diff 0.0009), D warm (moved 0.011 in 6 updates); crash-style resume of its
+  own save: no second reset, cap line present; export dry-run PASS (onnx err 3.3e-6).
+- Armed: `runs/queue36.sh` in tmux `ssr36`, waiting for `runs/GO_v18` (see HOW TO RESUME).
+
+### 2026-11-13 23:25-23:55 UTC: v18 style plateau diagnosed (fresh agent, CPU only, run untouched) - FINDINGS E7b
+- Question (coordinator): v18 (started 20:11 from 14,850) r_s 0.18-0.20 for 150 its, then 0.15-0.16 (to 16,600), not the 0.26
+  the E7 probe predicted.
+- Stds (log `entropy_std`, and checkpoint 16,500): all 8 arm stds at the cap 0.4 (shoulder yaw 0.377-0.378) from ~15,000; the reset
+  0.3 lasted ~150 iterations (entropy bonus pushes them up; the cap binds). Ankle roll back to 1.90, ankle pitch 0.78, waist 0.49.
+- Log per group (16,600): arm grad share still 0.25-0.48 (stairs lowest), legs 0.26-0.47, pelvis 0.14-0.27; d_data fell 0.88 ->
+  0.75 at the reset and re-sharpened to 0.83 by 16,000.
+- Probe `runs/style_diag/style_diag4.py` -> `out4.json` (16,500 policy + D, flat, 64 robots, 0.6 m/s): sampled D -0.94 / r 0.07
+  (45 % windows D<-1); same windows scored by the 13,500 D: -0.76 / 0.22 (D re-sharpened); det 0.01 / 0.72; arm noise 0: 0.37;
+  arm std 0.2: 0.22; ankle roll 0.6: 0.09 (no gain); leg noise 0: 0.35. Swaps on sampled windows: arms -> +0.09, arm q only
+  -> -0.25, arm qd only -> -0.38, legs -> -0.33, pelvis -0.93 (no effect). Grad share on sampled windows: arm q 0.82, arm qd 0.04,
+  legs 0.10, pelvis 0.04.
+- Cause: arm POSE, not only noise. `style_diag5.py` -> `log5.txt`: elbow mean action 6.8 (x 0.485 = target 3.3 rad past the stop;
+  q_hi elbow = 0.0 rad), was 1.31 at 11,350; elbow q - default 0.58 in every mode (pinned at the stop, reference -0.09).
+  Shoulder roll q - default L -0.24 / R +0.21 vs reference +0.26 / -0.26 (0.5 rad the other way). Pressing the elbow into the
+  stop is how the policy removed elbow noise; now no sampled action leaves the stop, so PPO sees no reward difference for bending
+  it and the D's main gradient (arm q) cannot act. Plus the std at 0.4 (not 0.3) and the re-sharpened D.
+- Decision: no restart (user rule; locomotion unaffected). Next run (after 20,000): (1) action-bound loss on the arm action means
+  (penalise PD targets outside [q_lo, q_hi], so the elbow mean is pulled back to the stop edge where noise explores the bent side),
+  (2) arm std reset and cap 0.2 (paper Table 9 min std 0.2; probe 0.07 -> 0.22). Ankle-roll cap stays off (probe +0.02).
+  To be coded behind default-off flags and pre-flighted on CPU before 06:30 UTC; not yet coded.
+
+### 2026-11-14 23:40-03:05 UTC: E7b flags coded and tested on CPU; v19 armed to start at 20,000 (fresh agent, run untouched)
+- Paper (arXiv HTML read 2026-11-14): no action clipping, no PD-target clipping, no bound loss; only the DoF position-limit reward
+  (Table 6, -1.5, on measured q) and min policy std 0.2 (Table 9); action scales Table 14. Ours: action clamp +-8, mean 8 tanh(x/8),
+  PD target clamped to [q_lo, q_hi] in env.step. That clamp IS the "clip the action to the joint range": it is why a mean past a stop
+  is free (no reward change, no gradient), so a clip is not a fix; the fix form is a bound loss on the means (AMP/ASE practice; ours).
+- train.py (backups `_trash/2026-11-14/train.py.before_e7b*`), all default-off: `--arm_bound_coef/--arm_bound_margin/--arm_bound_ramp/
+  --arm_bound_from` (squared excess of the 8 arm action means outside the action interval mapping into [q_lo+m, q_hi-m]; log field
+  `arm_bound`), `--arm_bias_shift/--arm_shift_to/--arm_shift_lr` (one-time shift of arm means past a stop, at the end of an iteration,
+  with exact compensation of every consumer of the previous action and of q: actor/critic/foothold norm means, estimator/foothold/
+  encoder first-layer biases; checks: other joints 1e-6, est/foot/critic 0, encoder residual 0), and the std reset marker is now per
+  value (`arm_std_reset_val`; v18 saves count as 0.3, so `--arm_std_reset 0.2` resets once more, crash-resumes do not).
+- CPU trials (16 robots, 8-12 its from r7 saves 16,700-17,500; logs `runs/v19_checks_wip/coef_c*.log`, probes `runs/style_diag/
+  style_diag6.py` -> `log6_<tag>.txt`; flat 0.6 m/s, 64 robots). Control c0 (v18 flags): KL 0.02-0.04, probe vx 0.75 alive 1.00.
+  c1 bound coef 1.0 at once: KL 73 then ~1, elbow mean in bounds by 8 its, probe vx -0.08 alive 0.33 (walking broken).
+  c3 coef 0.05: PPO wins, bound 45 -> 58. c4 ramp 10 its: KL 7.6 then 0.6-0.9 per it. c5-c7 bias shift (value-only iteration, lr
+  1e-5): KL 50-1000, elbows flung to -2.3 or back past the stop, alive 0.39. c8/c10 exact action-input compensation, c11 + q
+  compensation: shift itself exact, but in the very next rollout the elbows return past the stop (bound 0 -> 50-56), then KL 2-16,
+  probe vx 1.04 alive 0.58. Reading: the policy has a learned closed-loop attractor to the stop (it is how it removed elbow noise);
+  any move off it destabilises the whole policy within a few iterations. Not fixable warm in the time left.
+- Style probe r7_v18_016500 (`out6_016500b.json`): sampled r 0.074 (elbows on the stop 63-66 % of frames), arm std 0.2 r 0.223,
+  means clamped to the bound edge r 0.189 (no local gain: corr(D, bend) -0.06), elbows held at the reference bend r 0.596 (alive 0.98,
+  vx 0.53). So the style ceiling is there, but reaching it from the pinned policy needs a run that never lets the mean escape.
+- DECISION (2026-11-14 03:00, mine): v19 = v18 flags with `--arm_std_reset 0.2 --arm_std_cap 0.2` only (`runs/r7_flags_v19.txt`;
+  the bound/shift version kept as `runs/r7_flags_v19_bound.txt`, the std-only copy `r7_flags_v19_stdonly.txt`). Reason: it is the
+  paper's min std, the probe gain is 0.07 -> 0.22, and it does not break walking; the bound loss / shift do (c1, c11). The bound loss
+  goes into the recipe for the next from-scratch run, from iteration 0 (untested from scratch).
+- User decision relayed by the coordinator 2026-11-14 ("SSR continues after 20,000", USER_RULES): continue from the 20,000 save to
+  30,000, start automatically only if the pre-flight passed; the SSR agent may create GO. Done: `runs/pf_then_go.sh` (tmux `ssr37pf`,
+  log `runs/pf_then_go.log`) runs `runs/v19_preflight.sh` -> `runs/v19_checks/summary.txt` (loader, mirror, smoke resume with the
+  v19 flags, reset 0.2 / cap / marker, KL < 0.5, crash-resume no second reset, flags-off old path, export dry-run, walking probe
+  alive >= 0.9 and vx >= 0.4) and writes `runs/GO_v19` (content 30000) only on PREFLIGHT_PASS.
+- `runs/queue37.sh` (tmux `ssr37`, log `runs/queue37.log`; header comment still names the bound flags - it reads the flags file, which
+  is std-only): phase 1 waits for the r7 v18 supervisor/trainer to end, keeps `eval/export/ckpts/r7_v18_final_<it>.pt` and exports
+  `eval/export/r7_v18_<it>/` (CPU, DONE marker); phase 2 waits for GO, refuses without PREFLIGHT_PASS, with r7 training, or with any
+  process on the GPU; starts `supervise_node.py --name r7 --iters 30000 --num_envs 8192 -- $(cat runs/r7_flags_v19.txt)` (output
+  `runs/queue37_r7.sup`); writes `runs/v19_STARTED` (start time, iteration) once 20 iterations advance, or `runs/v19_START_SLOW`
+  after 45 min without; +100: start probes `eval/start/v19_*.json` and style probe `runs/style_diag/log6_v19_p100.txt`; exports
+  `eval/export/r7_v19_<it>/` every 500; crash loop -> resume r7 with the v18 flags to 30,000 (`runs/queue37_r7_v18fb.sup`).
+
+### What went wrong this turn
+- Two shell-quoting mistakes (a nested heredoc and a CRLF-written script) cost two failed trial launches; one `pkill -f` matched my
+  own ssh shell. No effect on the run. Files written from Windows are now LF-converted on upload.
+- First version of the auto-GO chain would have started the bound-loss recipe before its walking damage was known; I stopped it
+  (01:06, no GO had been written) and added a walking probe as a pre-flight gate.
+
+### 2026-11-14 15:37-16:30 UTC: stair refusal diagnosed (E8), v20 armed and GO written (fresh agent)
+- v19 ran 06:00 UTC from 19,999 (queue37); at 25,120 levels ramp 14.7 / stairs 6.25 / beam 13.2 / platform 8.1 / flat 12.6.
+- Probe `runs/stairs_diag/stairs_diag3.py <ckpt> <out.json> [steps per levels modes]` (env PROBE_TYPE=platform, STAIRS_V20=1/2 sets the
+  v20 env flags): own tiles, per robot stall / attempt / fall / cause, curriculum outcome ours vs Rudin, reward per step at the foot vs on
+  the flight (ours and Table 6 with sigma_v 0.25). Results in FINDINGS E8; jsons d25000 (fixed 0.6 + training commands), p25000 (cause
+  split + no-wall), v20probe, plat25000. Each level row has ONE tile with a fixed sign: up-first 4, 16, 19; down-first 8, 12, 14, 17.
+- User asks handled: "Finds ways to encourage to walk" and "investigate why our run refuses ... custom reward changes". Per-term answer
+  (E8): no added term pays the stander; standing at the foot pays as much as climbing under our AND the paper's terms; what blocks is the
+  curriculum (DEV-P) and the side-obstacle termination (ADDED). Ranked: 1 curriculum promote-at-tile-end (paper: half tile), 2 lane-wall
+  termination on stairs/platform tiles (ours), 3 posture terms (paper) out-earn a slow climb - no paper change possible, 4 sigma_v 0.1
+  (DEV-P) neutral at the stair foot, 5 swing_h (ours) pays climbing more, not standing; creep/drift 0 at 0.6 m/s; edge stop only at down
+  edges; resample 8 s keeps <= 8% of refusals at slow commands (both rules).
+- Code (default-off; backups `_trash/2026-11-14/{env,train}.py.before_v20`; patch `runs/patch_v20.py`): `--cur_rudin`, `--cur_fair`
+  (not used), `--swing_prog` (not used), `--climb_types`, `--climb_side_noterm`, `--climb_creep`. Flags `runs/r7_flags_v20.txt` = v19 +
+  `--cur_rudin --climb_types stairs,platform --climb_side_noterm --climb_creep`.
+- Pre-flight `runs/v20_preflight.sh` PASS 16:25:39 (`runs/v20_checks/summary.txt`): loader, mirror, curriculum unit check (old [9,9,9,10],
+  Rudin [9,11,9,11] for stall / 4.5 m / 2 m / 7 m), train smoke resume 25,400 KL 0.55 first then 0.02-0.03, flags-off path, export
+  dry-run err 4.3e-6, walking probe vx 0.71 alive 1.00 (style r 0.12), stairs probe no side-obstacle endings. GO_v20 written by
+  `runs/pf_then_go20.sh` 16:25:39 (user approved the fix restart; USER_RULES "SSR stair refusal fix approved").
+
+### What went wrong this turn
+- First probe run classified 25-62% of endings as "other": my cause list lacked the side-obstacle / left-tile checks; re-run with them.
+- `--climb_creep` turned out weak in the probe (0.05 per step at the foot and on the flight alike); kept as the only progress pay, said so.
+
+### 2026-11-14 16:45-17:15 UTC: every paper deviation checked against the live run; v21 armed (fresh agent; FINDINGS E8b)
+- User: "Please fix. It's already two days of cloud training without good results so far." Table of all 26 DEV-P + 37 ADDED rows vs the
+  live trainer command line: `docs/findings/ssr_paper_vs_code_status_20261114.md`. 8 applied before, 5 user overrides, 7 fixed now (v21),
+  6 deferred (D1 = paper terrain set, owner me, ready by 2026-11-15 06:00 UTC for the from-scratch run; warm evidence v15/v16/T1).
+- Code: `--beam_hmax` (new, default 30; `runs/patch_v21.py`, backups `_trash/2026-11-14/{env,train}.py.before_v21`). Everything else in
+  v21 existed behind default-off flags since the v15/v16 merge. Flags `runs/r7_flags_v21.txt` (comment file `.md`), fall-back set
+  `runs/r7_flags_v21b.txt` (= v21 without omni_top / omni_slow 0 / no_vy_clamp / foot_base_frame).
+- Pre-flight `runs/v21_preflight.sh` (cores 4-15) -> `runs/v21_checks/summary.txt`; GO by `runs/pf_then_go21.sh` (tmux `ssr39pf`) on PASS.
+  Smoke A (exact flags, resumed 25,800): KL 0.039/0.022/0.018/0.018, to_paper 0.003 -> 0.013, sig_v 0.1005 -> 0.102. Unit checks: beam
+  heading max 29.98 -> 14.99 deg; omni_top: over-the-top robots (and only those) become omni on the flat tile at x = 4 m, back next episode.
+- Live v20 at 25,820: stairs level 8.98 (6.25 at 25,120), level_max_share 0.063, omni share 0.35, vx_ratio 0.76. v20 +100 stairs probe
+  (fixed 0.6 m/s, 24 robots): level 16 passed-riser 0.58 (base 25,000: 0.125), 17 0.29 (0.08), 19 0.21 (0.0), stall at 19 0.75 (1.0).
+- Pre-flight PASS 17:19:34 (GO_v21 written by pf_then_go21): smoke B (paper end state at once) KL 0.042/0.022/0.018/0.017, sig_v 0.25;
+  flags-off path clean; v21b smoke ok; export dry-run err 3.3e-6; walking probe vx base 0.628 / A 0.517 / B 0.584, alive 1.0 all, style r
+  0.13 / 0.14 / 0.17. Its short stairs probe (8 robots, 8 s) showed level 12 stall 8/8 on B (base 3/8 passed); re-checked with 24 robots,
+  20 s (`v21_checks/stairsL_{base,A,B}.json`): level 12 passed 1.00 / 1.00 / 1.00, level 19 0.375 / 0.167 / 0.333 -> the 8 s horizon was
+  too short for the down-first tile; no regression shown (A at 19 is within 24-robot noise; B equals base).
+- v20 +250 probe (25,800): level 16 passed 0.54, 17 0.375, 19 0.375 (stall 0.625). v20 stopped at 26,000 (17:20:45, kept
+  `eval/export/ckpts/r7_v20_final_26000.pt`, exported for the scorer); **v21 started 17:20:56 from 26,000**, iterations advance 17:23:56.
+  First lines: omni share 0.35 -> 0.054, vx_ratio 0.79-0.92, ep_len 11.4-14.9 (resume transient; gate floor 10.43), KL 0.010-0.014.
+  **Gate +150 PASS** 17:39:10 (vx_ratio 0.752 vs min 0.577, ep_len 14.07 vs min 10.43). At 26,170: to_paper 0.57, sig_v 0.185, omni 0.038,
+  stairs level 12.6 (per-type means re-mix at a restart, see 11-13 13:39). 7.2 s/it -> 30,000 at about 01:10 UTC 11-15.
+- Risk I accept: omni_top cuts open-floor omni robots from ~35 % to the graduates (a few %): less open-floor turn-in-place practice; route
+  stations still train it. Check: the scorer's flat turn tests on the r7_v21 500-exports; if turn-in-place drops, the next lever is
+  omni_turn for route-free robots (user rule) - mine.
+
+### 2026-11-14 21:37-23:10 UTC: the 30,000 decision (USER_RULES "SSR extension to 40,000 only if improving"; then "Keep SSR training")
+- Evidence, v21 27,500 (desktop scorer) vs v20 final 26,000: legs 38/40/43/44/0 vs 49/50/49/44/5; leg-5 refusals 50/50 vs 42 (a, now
+  REQUIRED, fails); successes 0 vs 5 (b fails); training courses 15 of 21 scored (ext_stairs_up pending) vs 18/22, stairs L10 11/20 vs 19,
+  stairs L15 0/20 vs 20/20 (all stalled before the first riser, final_x -2.85), stairs L19 0 vs 8, platform L15 0 vs 0 (c fails); CPU
+  stairs probe level 19 passed-riser 0.0 at 27,500 and 28,000 (`runs/stairs_diag/v21_d40_{027500,028000}.json`) vs 0.375 (d fails). The
+  v21 +250/+500/+1000 probes already showed it (L16 0.17 -> 0.08 -> 0.0). Verdict: v21 made stair refusal worse on every measure;
+  its one improvement is ramps (ramp L19 20/20 vs 15).
+- Rule alone -> stop. User override (2026-11-14 "Keep SSR training and find the cause"): continue to 40,000 on the v20 flags.
+  queue40 (`runs/queue40.sh`, tmux `ssr40`, log `runs/queue40.log`) armed 23:03, `runs/DECISION40` = `extend_v20`. When queue39 / r7 end
+  at 30,000: keep `eval/export/ckpts/r7_v21_final_<S>.pt`, export it (`eval/export/r7_v21_final_<S>/`, = export dry-run), pre-flight
+  (flags md5 = `runs/v20_flags.md5`, loader iter >= 29,990 and warm_until <= 29,990), resume r7 `--iters 40000 -- $(cat r7_flags_v20.txt)`
+  (as queue38 ran v20; sup `runs/queue40_r7_v20x.sup`; `runs/v20x_STARTED`), gates +150/+350/+500, probes `stairs_diag/v20x_p*.json`,
+  exports `eval/export/r7_v20x_<it>/`. Gate fail -> stop, keep, restore the 30,000 save, idle (`runs/SSR_IDLE`). Crash loop -> one restart.
+  All v20 flags exist in the trainer (checked); v20's sig_v ramp is absolute (from 600), so it is at 0.1 at once, as v20 ran.
+- Leg 5 on v21 29,000 scored by me on the desktop (8 processes, 50 trials; `eval/out/ssr/r7_v21_029000_d40/legs/leg5/`) for the record.
+### What went wrong
+- v21 (all paper items at once) regressed stair attempts: refusal 42 -> 50 of 50 on leg 5 and 20/20 -> 0/20 on stairs L15. Cause not
+  yet known (the per-term diagnosis is another SSR agent's job, FINDINGS); candidates are the items v21 changed: separate advantage
+  normalisation, sigma_v 0.1 -> 0.25 (paper), omni_top, beam_hmax, foot_base_frame, no_vy_clamp.
+
+### 2026-11-14 23:10-23:30 UTC (node clock): rollback armed, then held; backup added
+- Leg 5 on v21 29,000 (my desktop run, `eval/out/ssr/r7_v21_029000_d40/legs/leg5/`): 0/50 successes, 39 refusals, 11 falls (attempts).
+  First v21 checkpoint with refusals below v20's 42, but 0 successes; 27,500 was 50/50 refusals.
+- User "SSR rollback to 5,050": `runs/r10_preflight.sh` (CPU) and `runs/queue41.sh` (run r10 = resume of r7_v14_p250 at 5,050 through the
+  current trainer, v20 flags + `--warm_until_abs 5250`, `--iters 20050`) were written. Compatibility: every network and optimiser state of
+  the 5,050 save loads with shapes identical to v21 (enc/aux/actor/critics/foot/disc); missing, so fresh/defaults: ext_level/ext_type
+  (extended-map levels), arm_std_reset flags (reset to 0.2 applied once), warm_until; gate_start None (style ramp as v14 had it); its D
+  was trained on amp_v4 (disc_mask_arms) and re-trains on amp_v5 (smoke: r_s 0.84 -> 0.30 in 5 frozen iterations). Pre-flight so far:
+  loader, mirror, smoke A (frozen, KL 0) and B (KL 0.18 then 0.03-0.04), export dry-run err 3.1e-6 pass; probes still running
+  (`runs/r10_checks/summary.txt`). Walking probe base vx 0.53 alive 1.0; B vx 0.81 alive 0.92; the stairs probe on the 5,050 save
+  failed (rc 1: my pre-flight did not put args.json beside the checkpoint) - not chased, rollback cancelled (user 2026-11-15 "good fix it").
+- Coordinator (FINDINGS E8c): 5,050's 0 refusals came from 36/50 trials stalling at the ramps; refusal mechanism = separate advantage
+  normalisation (+ sigma_v 0.25). Rollback HELD: queue41 killed before it acted (logged in `runs/queue41.log`); r10 not started.
+- queue40 re-armed 23:29 with DECISION40 = extend_v20 and a backup step (user "Keep backup of 30000 checkpoints"): before any training,
+  the full r7 30,000 save + args + flags (v20, v21) + log + the final export go to `/mnt/filesystem-g4/tracks/ssr/backups/r7_v21_30000/`
+  (MD5SUMS inside, read-only, skipped if the folder exists; start refused if the copy does not match r7/last.pt).
+
+### 2026-11-15 00:02-00:11 UTC: early switch to v20x (user "We are wasting time. Start right now"; "good fix it")
+- Rollback to 5,050 cancelled (user). queue39 disarmed 00:02 (killed; logged). What went wrong: killing queue39 closed its tmux session and
+  the r7 supervisor with it; the trainer survived as an orphan, so `runs/stop_r7_now.sh` stopped it right after its next (atomic) save.
+  No iteration lost: stopped at **29,550** (00:05:48). queue40: kept `eval/export/ckpts/r7_v21_final_29550.pt`, export
+  `eval/export/r7_v21_final_29550/` DONE 00:06:59.
+- **Backup** `/mnt/filesystem-g4/tracks/ssr/backups/r7_v21_29550/` (read-only, 10 files, MD5SUMS inside; r7_last_29550.pt md5
+  3d60fda28998abf1f712b6313d5df5d8; args.json, flags v20/v21, r7 log, final export). Never delete or overwrite.
+- Pre-flight PASS 00:07:19 (flags md5 = v20, loader iter 29,550 warm_until 26,000, export ok). **v20x started 00:07:27 UTC** from 29,550
+  to 40,000 with `runs/r7_flags_v20.txt` verbatim (joint advantage normalisation, sigma_v 0.1, Rudin curriculum, climb_side_noterm,
+  climb_creep, extended map ext_frac 0.4 / 9 types / prop routes / stations; no stall penalty exists in the code). Iterations advance:
+  29,570 at 00:10:28, 6.6 s/it -> 40,000 at about 19:20 UTC 11-15.
+
+## HOW TO RESUME (current at 00:11 UTC 2026-11-15, node clock)
+- **r7 v20x RUNNING** (queue40, tmux `ssr40`, log `runs/queue40.log`, supervisor output `runs/queue40_r7_v20x.sup`, `runs/v20x_STARTED`)
+  from 29,550 to 40,000 (~19:20 UTC 11-15). Gates +150/+350/+500 (vx_ratio >= 0.75 x v21 base, ep_len >= 0.7 x) -> fail: stop, keep
+  `r7_v20x_failed_<it>.pt`, restore r7/last.pt to the 29,550 save, idle. Crash loop -> one restart, then idle. Stairs probes
+  `runs/stairs_diag/v20x_p{100,250,500,1000}.json` (compare v20 0.375 at L19, v21 0.0); exports `eval/export/r7_v20x_<it>/` every 500.
+- queue39, queue41 (rollback) not running. Leg 5 of v21: 27,500 refusals 50/50; 29,000 0 successes / 39 refusals / 11 falls.
+- Next check: scorer leg-5 refusals on the first r7_v20x exports (30,000 / 30,500) against v20 26,000 (42 refusals, 5 successes).
+
+## HOW TO RESUME (older, 23:30 UTC 2026-11-14, node clock)
+- **r7 v21 RUNNING** (queue39, tmux `ssr39`) to 30,000 (~01:05 UTC 11-15, 7.0 s/it). **queue40** (tmux `ssr40`) then switches to v20
+  flags to 40,000 automatically (DECISION40 = extend_v20). Check `runs/queue40.log` for "pre-flight PASS", "iterations advance",
+  gate lines; `runs/v20x_STARTED`; backup line (md5) in queue40.log. queue41 (rollback r10) HELD, not running; r10 pre-flight
+  results in `runs/r10_checks/` for the record. CPU probes `ssrd40` done (status `runs/stairs_diag/v21_d40.status`).
+- v20x to 40,000 at ~7 s/it = about 19.5 h, ends ~20:40 UTC 11-15.
+
+## HOW TO RESUME (older, 17:15 UTC 2026-11-14, node clock)
+- **r7 v20 RUNNING** (queue38, tmux `ssr38`) until queue39 stops it. **queue39** (tmux `ssr39`, log `runs/queue39.log`, prefix QUEUE39)
+  waits for `runs/GO_v21` (written by the pre-flight on PASS) AND `runs/stairs_diag/v20_p250.json` (v20's +250 probe, started 16:57;
+  2 h timeout), then stops v20 at the next save, keeps `eval/export/ckpts/r7_v20_final_<S>.pt` (+ CPU export `eval/export/r7_v20_final_<S>/`),
+  resumes r7 with `r7_flags_v21.txt --warm_until_abs <S>` to 30,000 (supervisor output `runs/queue39_r7_v21.sup`; `runs/v21_STARTED`).
+- **Gates (automatic)**: +150/+350/+500 mean gait.vx_ratio of the last 3 lines >= 0.75 x v20 base and ep_len >= 0.7 x base, else stop, keep
+  `r7_v21_failed_<it>.pt`, restore r7/last.pt to the v20 final, run v21b (same gates), then v20 flags. Crash loop -> v20 flags
+  (`runs/queue39_r7_v20fb.sup`). Gate lines in `runs/queue39.log`.
+- **Next checks**: `runs/queue39.log` for the stop / start / gate lines; stairs probes `runs/stairs_diag/v21_p{100,250,500,1000}.json`
+  against `v20_p100/p250.json`; `eval/start/v21_p100.json`; `runs/style_diag/log6_v21_p100.txt`; `level[1]` / levels_by_type.stairs,
+  omni_share, to_paper (reaches 1.0 at +300), sig_v in `runs/r7/log.jsonl`; exports `eval/export/r7_v21_<it>/` every 500 for the scorer.
+- **Open / owners**: D1 (paper terrain set + amp in paper layout + arm bound loss from it 0, for the from-scratch run after 30,000):
+  me, ready by 2026-11-15 06:00 UTC. If 17-20 cm stairs still stall >= 80 % after ~1,000 v21 iterations: stall cost on climb tiles.
+- v21 ends at 30,000 (~4,100 its at ~6.6 s/it = about 7.5 h, ~01:00 UTC 11-15); not extended.
+
+## HOW TO RESUME (older, 16:30 UTC 2026-11-14, node clock)
+- **r7 v20 RUNNING since 16:27:49 UTC from 25,550** (v19 final kept as `eval/export/ckpts/r7_v19_final_25550.pt`; iterations advance 25,570 at 16:30; GPU 94%) (queue38, tmux `ssr38`, log `runs/queue38.log`, supervisor output `runs/queue38_r7.sup`): GO 16:25:39; stops v19 at the next
+  save, keeps `eval/export/ckpts/r7_v19_final_<it>.pt`, resumes to 30,000 with `runs/r7_flags_v20.txt`; `runs/v20_STARTED` once 20
+  iterations advance (or `v20_START_SLOW`). Crash loop -> resume with v19 flags to 30,000 (`runs/queue38_r7_v19fb.sup`). queue37 exits
+  when v19's supervisor ends (expected, not a fault).
+- **Next checks**: +100/+250/+500 stairs probes `runs/stairs_diag/v20_p{100,250,500}.json` (levels 12,16,17,19 at 0.6 m/s; base =
+  p25000.json): attempt share (passed_riser) and stall share at 16-19, side-obstacle endings 0; stairs level in `runs/r7/log.jsonl`
+  `level[1]` (was 6.25) should rise; walking: `eval/start/v20_p100.json`, `runs/style_diag/log6_v20_p100.txt`, vx_ratio in the log.
+  Exports every 500 `eval/export/r7_v20_<it>/` for the scorer (leg 5).
+- **If after ~1,000 iterations 17-20 cm still stall >= 80%**: next lever is a stall cost on climb tiles (no progress >= 2 s under a
+  walking command), coded behind a new flag; the curriculum change alone needs time to bring robots to levels 15-19.
+- Older resume items (v19 / v18, written 03:05 UTC 11-14) follow; v19 ran 06:00-~16:30 from 19,999.
+
+## HOW TO RESUME (older, 03:05 UTC 2026-11-14, node clock)
+- **r7 v18 RUNNING** (tmux `ssr36`, since 20:11 UTC 11-13 from 14,850) to 20,000, ends ~06:10 UTC 11-14; exports
+  `eval/export/r7_v18_<it>/` every 500. Do not stop it.
+- **v19 ARMED, auto**: GO path `/mnt/filesystem-g4/tracks/ssr/runs/GO_v19` (written only by `runs/pf_then_go.sh` on
+  `runs/v19_checks/PREFLIGHT_PASS`; content = absolute target 30000; `runs/v19_params.env` V19_TARGET_ITERS=30000 is the default).
+  queue37 (tmux `ssr37`) starts v19 after the v18 run has ended. Flags `runs/r7_flags_v19.txt` = v18 + arm std reset/cap 0.2.
+- **Pre-flight PASS 03:09 UTC; `runs/GO_v19` written (30000) 03:09.** Smoke: reset 0.4 -> 0.2, KL 0.47 then 0.02, legs std diff 0.002,
+  crash-resume no second reset, flags-off old path, export dry-run err 2.6e-6, walking probe vx 0.54 alive 1.00 (style r 0.05; elbows
+  still on the stop, as expected). r7 at 18,410 at 03:00, 7.2 s/it -> 20,000 at ~06:12, v19 start expected ~06:15.
+- **Next checks** (were): pre-flight result (`runs/pf_then_go.log`, `runs/v19_checks/summary.txt`); ~06:10-06:20 `runs/queue37.log`
+  for "GO: starting v19" and `runs/v19_STARTED` (or `v19_START_SLOW`); +100 probes; style r_s in `runs/r7/log.jsonl` (v18 0.15-0.21).
+- **Open**: elbow pinned at the stop (E7b) is NOT fixed by v19 (only the noise part); the fix needs the arm bound loss from
+  iteration 0 of a run. CPU trial outputs in `runs/v19_checks_wip/` (copies of r7 saves; can be cleared by the coordinator later).
+- Older resume items (written 14:25-23:55 UTC 11-13; v17 and v18 runs below are history, helper line still valid):
+- **Running** (history): r7 v17 (amp_v5 from paper ref v4) since 13:39:29 from 11,350, to 20,000 (~06:30 UTC 11-14), tmux `ssr35` (queue35 ->
+  supervisor -> trainer). Flags `runs/r7_flags_v17.txt` + `--warm_until_abs 11401`, env X2_HF_CHUNK=400. Heartbeat
+  `/mnt/filesystem-g4/status/ssr.json`. User rule: no pauses, no stops, no GPU evals; only the crash-loop fall-back may act.
+- **Outputs for the desktop scorer**: `eval/export/r7_v17_<it>/` every 500 iterations (CPU, DONE marker), from 11,500 on;
+  export_eval.py patched 15:35 UTC (flat-vision record + ray_hit_range); 11,500/12,000 re-exported and PASS the check (FINDINGS E4).
+- **Next checks** (read-only, no restart): stairs level per stairs tile level by CPU probe on `r7_v17_*` checkpoints; ext levels
+  recovering (were 5-6 before the restart); slow_made_good and share in the log.
+- **Open (style, E7) - PREPARED AND ARMED, NOT STARTED (2026-11-13 ~19:40 UTC)**: v18 = v17 flags + `--arm_std_reset 0.3
+  --arm_std_cap 0.4` (`runs/r7_flags_v18.txt`), D warm by full resume, ankle-roll cap off. Pre-flight `runs/v18_preflight.sh` ->
+  `runs/v18_checks/summary.txt` (PREFLIGHT_PASS / _FAIL). Restart script `runs/queue36.sh` armed 19:34 UTC in tmux `ssr36`
+  (log `runs/queue36.log`; it only waits for GO, then refuses unless PREFLIGHT_PASS exists and r7 is training). **GO file: `/mnt/filesystem-g4/tracks/ssr/runs/GO_v18`** - created by the coordinator only on the user's yes;
+  queue36 then waits for the next r7 save, STOPs r7 v17 there, keeps it as `eval/export/ckpts/r7_v17_final_<it>.pt`, starts
+  `supervise_node.py --name r7 --iters 20000 --num_envs 8192 -- $(cat runs/r7_flags_v18.txt)` (output `runs/queue36_r7.sup`),
+  probes +100, exports every 500 as `eval/export/r7_v18_<it>/`; crash loop -> resume with v17 flags. GO after r7 ended: starts
+  nothing; the next run takes the same two flags. Probes in `runs/style_diag/`.
+- **Open**: 16,384 robots (USER_RULES 2026-11-13 "double ... at the next planned restart") conflicts with the brief's v14 flags and the
+  one-restart rule; kept 8,192 (untested memory with chest_rs + walls, a failure would need a second restart) - for the coordinator.
+  Paper items of "SSR back to the paper" still not on this line (v15/v16 fell back); `--ext_home` (clean per-type levels) not on.
+  code_pre/ and simcheck_v15/ still on the node.
+- **Helper**: ssh `~/bin/ssr_ssh.sh <timeout_s> '<cmd>'` (stdin not passed: upload as base64). CPU work from `code/`:
+  `env CUDA_VISIBLE_DEVICES= X2_PLANT=mc_20261024 X2_EXCL_PELVIS_HIPROLL=1 X2_HF_CHUNK=400 nice -n 10 taskset -c 16-23 ../env/venv/bin/python ...`.
+
+### 2026-11-14 23:05-23:45 UTC: why v21 refuses - per-term and per-group check (fresh agent, CPU only; FINDINGS E8c)
+- Probe `runs/refuse_diag/refuse_attempt.py <ckpt> v20|v21 <out> [per levels modes]` (cores 16-23, ~15 min); jsons `ra_v20.json` (v20 final
+  26,000), `ra_v21.json` (v21 27,500). Stairs levels 15-19, 0.6 m/s, natural + pushed attempts, flat 0.15/0.2/0.35/0.6.
+- Table (10-s value from the stair foot, r_l units, as PPO weighs groups; natural v20 behaviour, pushed v21 behaviour in brackets):
+  | config | refuse | climb | fall | attempt - refuse (nat 12.5 % falls) | break-even fall rate |
+  | v20 (joint, sigma 0.1) | 16.7 | 20.0 | 9.3 | +2.0 | 31 % (18 %) |
+  | v21 (separate, sigma 0.25) | 24.7 | 24.7 | 11.7 | -1.6 | 0.3 % (4.6 %) |
+  | v21 + `--adv_norm joint` | 18.6 | 21.4 | 10.1 | +1.4 | 25 % (14 %) |
+  | v21 + stall penalty w 1.0 / 3 s (fallback) | 18.4 | 24.2 | 11.7 | +4.2 | ~46 % |
+  Change v20 -> v21 = -3.6: style group (separate norm) -1.64, foothold group -1.31, sigma_v -0.65; foot base frame 0; others not in the stair reward.
+  Raw per alive s refuse vs climb: r_l 69 vs 98 (sigma 0.1), r_f 44 vs 30, r_s 16.4 vs 7.9. Group std (log): l 0.175, f 0.072, s 0.032.
+- Stall penalty (FALLBACK, not applied anywhere live): `runs/refuse_diag/patch_stallpen.py <code_dir>` adds `--stall_w/--stall_s/--stall_vmin`
+  (default off): -w per step once a moving command (|cmd| >= 0.3) has made < max(0.10 m, 0.25 |cmd| stall_s) progress for stall_s s; timer
+  reset on progress, command change, reset, stand / turn commands (stations hold stand: free). Tested on a patched COPY
+  (`runs/refuse_diag/code_stall`, `stall_test.json`, v21 27,500, w 1.0, 3 s): refusers -31.5 /s (71 % of steps), climbers -2.4 /s, falls 0,
+  flat walkers at 0.15/0.2/0.35/0.6 m/s 0; a penalised refuser still earns r_l +45.8 /s (> 0, so no pay for falling; w must stay < ~1.3).
+- 5,050 -> 7,110 refusals: 5,050 (r7_v14_p250) stalled at "ramps, front side" 36/50 (never reached the stairs); 7,110 = r8_v15_p100, the first
+  separate-normalisation run (28/50 at the stair foot). Not the extended map. Ext suspect not tested: fatal wall touch on ext stairs routes.
+- What went wrong: E8's check omitted the imagined-swing foothold part (stairs_diag3 calls env.step without the foot net); v21_d40 probes'
+  reward columns have lin_vel 0 (sig_v_to 0 in v21 args). Nothing restarted; queue40 / r7 untouched.
+
+## HOW TO RESUME (23:45 UTC 2026-11-14, node clock)
+- r7 v21 RUNNING to 30,000 (queue39), then queue40 (tmux `ssr40`) runs `extend_v20` (v20 flags = joint norm, sigma 0.1) to 40,000 - consistent
+  with E8c. Open user decision: keep extend_v20, or v21 flags with `--adv_norm joint` (paper sigma 0.25 kept; margin +1.4 vs +2.0).
+  Fallback only: stall penalty patch above. Next: leg-5 split on the first v20x exports; ext-stairs fatal wall check (owner SSR agent).

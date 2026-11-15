@@ -117,8 +117,10 @@ def _nocontact_walls():
 
 
 def build(app=None, plant_override: dict | None = None, friction: float = 1.0, render_size=(1280, 720),
-          wall_alpha: float = 1.0, cameras: list | None = None) -> X2:
-    """app: apparatus.Apparatus or None (flat plane). plant_override: any of kp, kd, effort, armature, default_q (31,)."""
+          wall_alpha: float = 1.0, cameras: list | None = None, dress=None) -> X2:
+    """app: apparatus.Apparatus or None (flat plane). plant_override: any of kp, kd, effort, armature, default_q (31,).
+    dress: renders only (eval/dress.py, 2026-11-14): a callable(spec) adding visual-only geoms (contype 0, group 0) before
+    compile; the physics geoms are unchanged. Its return value is kept as x.dress."""
     rd = robot_dir()
     spec = mujoco.MjSpec.from_file(str(rd / "mjcf" / "x2_ultra.xml"))
     for cand in (rd / "urdf" / "x2_ultra" / "meshes", rd / "urdf" / "meshes"):
@@ -229,6 +231,7 @@ def build(app=None, plant_override: dict | None = None, friction: float = 1.0, r
         q = np.zeros(4)
         mujoco.mju_mat2Quat(q, np.stack((xa, ya, np.cross(xa, ya)), 1).ravel())    # MuJoCo cameras look along -z
         cam.quat = q
+    dress_info = dress(spec) if dress is not None else None
     m = spec.compile()
     jid = [mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_JOINT, n) for n in names]
     x = X2(m, names, plant, np.array([m.jnt_qposadr[i] for i in jid]), np.array([m.jnt_dofadr[i] for i in jid]),
@@ -240,6 +243,7 @@ def build(app=None, plant_override: dict | None = None, friction: float = 1.0, r
     for b in range(1, m.nbody):
         x.body_group[b] = _group_of(m.body(b).name)
     x.foot_ids = tuple(m.body(n).id for n in FOOT_BODIES)
+    x.dress = dress_info.finish(m) if dress_info is not None and hasattr(dress_info, "finish") else dress_info
     return x
 
 

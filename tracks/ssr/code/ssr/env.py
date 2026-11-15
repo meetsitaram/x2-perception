@@ -16,6 +16,10 @@ import warp as wp
 from ssr import terrain as T
 from ssr import x2 as X
 
+import sys as _sys
+_sys.path.insert(0, "/mnt/filesystem-g4/tools")
+from simcheck.episode_end import FaultDetector, contact_depth_per_world  # simulator faults are truncations (TRACK_RULES)
+
 H = 5                     # proprioception history (paper-silent)
 N21 = 21
 PROP_DIM = 72
@@ -80,6 +84,11 @@ class SSREnv:
             self.mm = mjw.put_model(m, batch_sizes=batch)
             self.dd = mjw.put_data(m, d, nworld=num_envs, njmax=njmax, nconmax=nconmax)
         dd, mm = self.dd, self.mm
+        # simcheck (docs/TRACK_RULES.md "Simulator checks"): NaN, |qvel| > 60, a contact deeper than 5 cm or a body speed jump over
+        # 20 m/s is a simulator fault: the episode is truncated (bootstrapped, reward 0, no curriculum move), never terminated
+        _root = int(m.body_rootid[1])
+        self.robot_b = torch.tensor([b for b in range(1, m.nbody) if int(m.body_rootid[b]) == _root], device=self.dev)
+        self.fault_det = FaultDetector(num_envs, self.dev, qvel_max=60.0, control_dt=X.CONTROL_DT)
         t = wp.to_torch
         self.qpos, self.qvel, self.ctrl = t(dd.qpos), t(dd.qvel), t(dd.ctrl)
         self.xpos, self.xmat, self.tau = t(dd.xpos), t(dd.xmat), t(dd.actuator_force)
@@ -208,6 +217,25 @@ class SSREnv:
         self.creep_w, self.ext_hold_r = 0.0, 0.20   # v14: slow-command progress pay (0.10-0.35 m/s); route hold radius (eval disc 0.20)
         self.back_scale, self.drift_w = 1.0, 0.0   # v14 deviations (user rule 2026-11-12): backward motion pays less; drift under a stand / turn-in-place command costs
         self.omni_frac, self.omni_turn, self.omni_slow, self.resample_steps = 0.1, 0.0, 0.0, 0   # command mix (deviations, default = as before)
+        # v15 (paper items; defaults = v14 behaviour)
+        self.omni_top = False                   # A.2: omnidirectional commands only for robots that cleared the top level (then on the FREE area)
+        self.grad = torch.zeros(n, dtype=torch.bool, device=dev)   # cleared the top level at its last episode end
+        self.promote_half = False               # A.1 / [30]: level up when the robot walked more than half the tile (4 m)
+        self.cur_rudin = False                  # v20 stairs refusal (A.1 / [30] Rudin 2021): tile robots up when walked > TILE_X / 2, down when walked < 0.5 x mean |command| x EPISODE_S
+        self.cur_fair = 0.0                     # v20: with cur_rudin, tile episodes with mean |command| below this move no level (Hiking H8 FAIR analogue)
+        self.swing_prog = False                 # v20: swing_h paid x progress share (marking time earns nothing)
+        self.ep_vsum = torch.zeros(n, device=dev)   # v20: sum of |commanded speed| over the episode
+        self.climb_types = None                 # v20: bool per tile type (train --climb_types); None = off
+        self.climb_side_noterm = False          # v20: side-obstacle touch does not end the episode on climb-type tiles (graze cost stays); the paper has no side obstacles
+        self.climb_creep = False                # v20: progress pay (creep) for every moving command on climb-type tiles, not only 0.10-0.35 m/s
+        self.vy_clamp = True                    # v14: projected vy clamped +-0.4 for tile robots; paper: projection only
+        self.slope_back_ban = True              # v14: no backward commands on slopes when back_scale < 1; user 2026-11-13: less reward, no ban
+        self.q_noise = 0.05                     # initial joint noise U(-q, q) (not in the paper; v15: 0)
+        self.beam_hmax = 30.0                   # v21 (Table 4): heading range of the beam tiles, deg; beam stands in for the gap slot (paper 15); v14-v20: 30
+        self.foot_base_frame = False            # Eq. 1: foothold targets in the full base frame (v14: heading frame)
+        self.spawn_xrel = torch.zeros(n, device=dev)   # tile-frame x at the episode start (for the distance-walked promotion)
+        self.home_type = None                   # route robots: the tile type they return to (v15; set by train)
+        self.simcheck = False                   # v15 (TRACK_RULES simulator checks; train --simcheck): faults by simcheck's detector are truncations; v14: NaN / |qvel| > 60 terminate
         self._ext_setup()
         self.cnt = {}                           # raw counts for the log (termination causes, touchdown support)
         self.reset(torch.arange(n, device=dev))
@@ -359,7 +387,11 @@ class SSREnv:
     def _terrain_reset(self, ids):
         n = len(ids)
         r = self._u(n, lo=0.0, hi=1.0)
-        self.free[ids] = (r < self.omni_frac) & self.train
+        if self.omni_top:                                            # A.2: the robots that cleared the top level leave the terrain and walk omnidirectionally
+            self.free[ids] = self.grad[ids] & self.train
+            self.grad[ids] = False
+        else:
+            self.free[ids] = (r < self.omni_frac) & self.train
         typ = self.type[ids]
         lvl = self.level[ids]
         free = self.free[ids]
@@ -376,9 +408,9 @@ class SSREnv:
 
     def _command_reset(self, ids):
         n, typ = len(ids), self.type[ids]
-        vlo = torch.where(typ == T.SLOPE, -1.0 * torch.ones(n, device=self.dev), torch.zeros(n, device=self.dev)) * (1.0 if self.back_scale >= 1.0 else 0.0)   # v14: no backward travel commands on terrain
+        vlo = torch.where(typ == T.SLOPE, -1.0 * torch.ones(n, device=self.dev), torch.zeros(n, device=self.dev)) * (1.0 if (self.back_scale >= 1.0 or not self.slope_back_ban) else 0.0)   # v14: no backward travel commands on terrain; v15: allowed (Table 4), paid less (back_scale)
         vhi = torch.where(typ == T.SLOPE, torch.ones(n, device=self.dev), 1.2 * torch.ones(n, device=self.dev))
-        hmax = torch.tensor([80.0, 30.0, 30.0, 15.0, 30.0], device=self.dev)[typ] * math.pi / 180
+        hmax = (torch.tensor([80.0, 30.0, 15.0, 15.0, 30.0, 30.0], device=self.dev) if T.PAPER else torch.tensor([80.0, 30.0, float(self.beam_hmax), 15.0, 30.0], device=self.dev))[typ] * math.pi / 180   # paper Table 4: slope 80, stairs 30, beam = gap slot 15, platform 15, discrete 30; v14: beam 30, flat 30
         self.speed[ids] = vlo + (vhi - vlo) * self._u(n, lo=0.0, hi=1.0)
         if self.v_min > 0.0:                                         # early in training: no stand or slow commands
             sp_ = self.speed[ids]
@@ -404,6 +436,9 @@ class SSREnv:
         if n == 0:
             return
         if self.tiles:
+            if self.home_type is not None and self.ext_on:            # v15: a route robot goes back to its own tile type (v14: it kept the route's type, flat for most)
+                w_ = ids[self.ext[ids]]
+                self.type[w_] = self.home_type[w_]
             if self.train:
                 self.type[ids] = self.type[ids] if self.ep.sum() else torch.randint(0, 5, (n,), device=self.dev, generator=self.gen)
                 if not self.ep.sum():
@@ -422,6 +457,8 @@ class SSREnv:
             yaw = self.heading[ids]
             rev = (self.speed[ids] < 0) & ~self.free[ids]             # backward walks on slopes start at the far end
             x = torch.where(rev, 2 * self.origin[ids, 0] + T.TILE_X - x, x)
+            self.spawn_xrel[ids] = x - self.origin[ids, 0]
+            self.ep_vsum[ids] = 0.0
             if self.ext_on:
                 self.ext[ids] = False
                 if self.train and self.ext_frac > 0 and not self.flat_only and self.obst_target is None and self.ep.sum() > 0:
@@ -432,7 +469,9 @@ class SSREnv:
                         ex_x, ex_y, ex_yaw = self._ext_pick(eid)
                         self.speed[eid] = 0.0
                         self.heading[eid] = ex_yaw
-                        self.type[eid] = torch.where(self.ext_stairs[self.ext_type[eid]], torch.full_like(self.type[eid], T.STAIRS), torch.where(self.ext_beam[self.ext_type[eid]], torch.full_like(self.type[eid], T.BEAM), torch.where(self.ext_slope[self.ext_type[eid]], torch.full_like(self.type[eid], T.SLOPE), torch.where(self.ext_plat[self.ext_type[eid]], torch.full_like(self.type[eid], T.PLATFORM), torch.full_like(self.type[eid], T.FLAT)))))
+                        if self.home_type is not None:
+                            self.home_type[eid] = self.type[eid]
+                        self.type[eid] = torch.where(self.ext_stairs[self.ext_type[eid]], torch.full_like(self.type[eid], T.STAIRS), torch.where(self.ext_beam[self.ext_type[eid]], torch.full_like(self.type[eid], T.BEAM), torch.where(self.ext_slope[self.ext_type[eid]], torch.full_like(self.type[eid], T.SLOPE), torch.where(self.ext_plat[self.ext_type[eid]], torch.full_like(self.type[eid], T.PLATFORM), self.type[eid] if self.home_type is not None else torch.full_like(self.type[eid], T.FLAT)))))   # v15: flat routes keep the home type's discriminator (each set has flat walking)
                         x = torch.where(ex, torch.zeros_like(x), x); y = torch.where(ex, torch.zeros_like(y), y); yaw = torch.where(ex, torch.zeros_like(yaw), yaw)
                         x[ex], y[ex], yaw[ex] = ex_x, ex_y, ex_yaw
         else:
@@ -445,7 +484,7 @@ class SSREnv:
         self.qpos[ids, 3] = torch.cos(yaw / 2)
         self.qpos[ids, 4], self.qpos[ids, 5] = 0.0, 0.0
         self.qpos[ids, 6] = torch.sin(yaw / 2)
-        noise = self._u(n, 31) * 0.05 if self.train else 0.0
+        noise = self._u(n, 31) * self.q_noise if self.train else 0.0
         q = (self.q0_all + noise)
         self.qpos[ids, 7:] = q
         self.qvel[ids] = 0.0
@@ -615,7 +654,7 @@ class SSREnv:
         wz = (err * 1.0).clamp(-1.2, 1.2)
         c, sn = torch.cos(s["yaw"]), torch.sin(s["yaw"])
         vx, vy = c * self.speed, -sn * self.speed
-        walk = torch.stack((vx.clamp(-1.0, 1.2), vy.clamp(-0.4, 0.4), wz), -1)
+        walk = torch.stack((vx.clamp(-1.0, 1.2), vy.clamp(-0.4, 0.4), wz), -1) if self.vy_clamp else torch.stack((vx, vy, wz), -1)   # v15: projection only (A.2)
         self.cmd = torch.where(self.free[:, None], self.cmd, walk)
         if self.ext_on:
             self._ext_cmd()
@@ -631,9 +670,14 @@ class SSREnv:
         s = self.s
         st = self._stencil[None, None].to(mu.dtype) * sigma[:, :, None, None]         # (N, 2, 9, 2)
         p = mu[:, :, None] + st
-        cy, sy = torch.cos(s["yaw"])[:, None, None], torch.sin(s["yaw"])[:, None, None]
-        hx = s["p"][:, 0, None, None] + cy * p[..., 0] - sy * p[..., 1]
-        hy = s["p"][:, 1, None, None] + sy * p[..., 0] + cy * p[..., 1]
+        if self.foot_base_frame:                                     # v15 (Eq. 1): mu is the base-frame xy of the landing point
+            R_ = s["R"][:, None, None]
+            hx = s["p"][:, 0, None, None] + R_[..., 0, 0] * p[..., 0] + R_[..., 0, 1] * p[..., 1]
+            hy = s["p"][:, 1, None, None] + R_[..., 1, 0] * p[..., 0] + R_[..., 1, 1] * p[..., 1]
+        else:
+            cy, sy = torch.cos(s["yaw"])[:, None, None], torch.sin(s["yaw"])[:, None, None]
+            hx = s["p"][:, 0, None, None] + cy * p[..., 0] - sy * p[..., 1]
+            hy = s["p"][:, 1, None, None] + sy * p[..., 0] + cy * p[..., 1]
         fyaw = self.fyaw[:, :, None, None]
         sg = self._hf[None, None, None]
         c, sn = torch.cos(fyaw), torch.sin(fyaw)
@@ -660,17 +704,23 @@ class SSREnv:
                 self.qvel[ids, :2] += self._u(len(ids), 2) * 0.4
                 self.push[ids] = PUSH_STEPS
         self._physics()
-        bad = ~(torch.isfinite(self.qpos).all(-1) & torch.isfinite(self.qvel).all(-1)) | (self.qvel.abs().amax(-1) > 60.0)   # joint limits are 12-15 rad/s
+        if self.simcheck:
+            bad, self.fault_why = self.fault_det.update(self.qpos, self.qvel, wp.to_torch(self.dd.xpos)[:, self.robot_b],
+                                                        contact_depth_per_world(self.dd, self.N))   # was: NaN or |qvel| > 60 only
+        else:                                                        # v14: NaN or |qvel| > 60 (joint limits are 12-15 rad/s), terminated
+            bad = ~(torch.isfinite(self.qpos).all(-1) & torch.isfinite(self.qvel).all(-1)) | (self.qvel.abs().amax(-1) > 60.0)
         self.bad = bad
         if bool(bad.any()):                                          # a diverged world: neutral numbers until its reset
             self.log["nan"] = self.log.get("nan", 0) + int(bad.sum())
             self.qpos[bad] = torch.cat((self.origin[bad], torch.ones(int(bad.sum()), 1, device=self.dev), torch.tensor([1.0, 0, 0, 0], device=self.dev).expand(int(bad.sum()), -1), self.q0_all.expand(int(bad.sum()), -1)), -1)
             self.qvel[bad] = 0.0
+            self.fault_det.reset(bad.nonzero().squeeze(-1))
         self.refresh()
         self._contacts()
         self._wall_timer()
         self.F[bad] = 0.0
         self.ep += 1
+        self.ep_vsum += self.speed.abs()            # v20 stairs refusal: mean command for the curriculum
         if self.resample_steps > 0 and self.train:                 # deviation (2026-11-12): new command within the episode (from whatever the robot is doing, often a stand)
             rs = ((self.ep % self.resample_steps) == 0).nonzero().squeeze(-1)
             if len(rs):
@@ -700,6 +750,9 @@ class SSREnv:
                            ("foot_force_max_n", self.F[..., 2].abs().amax(-1))):
                 g_[k_] = g_.get(k_, 0.0) + float((torch.nan_to_num(v_) * wk).sum() / nw)
             g_["n"] = g_.get("n", 0) + 1
+            _sc = self.cmd[:, :2]; _scn = _sc.norm(dim=-1); _sm = ((_scn >= 0.10) & (_scn <= 0.35)).float()   # log only (2026-11-13): slow commands, all robots
+            g_["slow_made_good"] = g_.get("slow_made_good", 0.0) + float((((s["v_b"][:, :2] * _sc).sum(-1) / _scn.clamp(min=1e-3) ** 2).clamp(-1.0, 2.0) * _sm).sum() / _sm.sum().clamp(min=1.0))
+            g_["slow_share"] = g_.get("slow_share", 0.0) + float(_sm.mean())
         touchdown = contact & ~self.contact_prev & (self.air > 0.0)
         mtd = touchdown & (self.cmd[:, :2].norm(dim=-1) > EPS_CMD)[:, None]      # air time of each touchdown under a moving command
         self.cnt["air_n"] = self.cnt.get("air_n", 0) + mtd.sum()
@@ -715,12 +768,13 @@ class SSREnv:
         self.contact_prev = contact.clone()
         term, timeout, success = self._done(s)
         done = term | timeout
-        out = dict(r_l=rew[0], r_f=rew[1], term=term, timeout=timeout, done=done, contact=contact, touchdown=touchdown,
+        out = dict(r_l=rew[0], r_f=rew[1], term=term, timeout=timeout, done=done, sim_fault=self.bad, contact=contact, touchdown=touchdown,
                    sole=pw_contact, base_xy=s["p"][:, :2].clone(), yaw=s["yaw"].clone(), type=self.type.clone(), free=self.free.clone())
         ids = done.nonzero().squeeze(-1)
-        self.curriculum(ids, success)
+        self.curriculum(ids[~self.bad[ids]] if self.simcheck else ids, success)    # simcheck: a simulator fault moves no level
         if len(ids) and self.train:
             self.reset(ids)
+            self.fault_det.reset(ids)
             self.refresh()
         self.vf[ids] = 0.0
         if self.ext_on:
@@ -940,6 +994,12 @@ class SSREnv:
                 self.es_armed[hit] = False
                 self.cnt["es_start"] = self.cnt.get("es_start", 0) + int(hit.sum())
 
+    def _climb_moving(self, cn):
+        """v20 stairs refusal: tile robots on a climb type under a moving command (creep pays progress there at any speed)."""
+        if not self.climb_creep or self.climb_types is None:
+            return torch.zeros_like(cn, dtype=torch.bool)
+        return self.climb_types[self.type.clamp(max=len(self.climb_types) - 1)] & ~self.free & ~self.ext & (cn > EPS_CMD)
+
     def _rel_scale(self, c, c_ref, c_min):
         """Relative-error kernel (deviation, --rel_kernel): width x (max(|c|, c_min) / c_ref)^2, capped at 1, so small commands are tracked as tightly in relative terms."""
         if not self.rel_kernel:
@@ -995,14 +1055,14 @@ class SSREnv:
             wall_body=-2.0 * (self.wall_f[:, 2] > 1.0).float() * (1.0 + self.wall_f[:, 2] / 100.0).clamp(max=5.0),
             wall_arm=-0.5 * ((self.wall_f[:, 1] > 40.0) | (self.arm_t > 0.5)).float(),
             side_graze=-self.side_soft * (1.0 - (self.ext & (self.ext_phys > 0)).float()) * (self._touches_obstacle(0.06, log=False).float() if (self.side_soft > 0 and self.obst is not None) else torch.zeros(self.N, device=self.dev)),   # deviation (2026-11-12)
-            swing_h=self.swing_h_w * self._swing_height(contact) * (~still).float(),   # deviation (2026-11-12): pays foot height (capped) x foot speed in swing
+            swing_h=self.swing_h_w * self._swing_height(contact) * (~still).float() * (self.prog if self.swing_prog else 1.0),   # v20: x progress share when --swing_prog;   # deviation (2026-11-12): pays foot height (capped) x foot speed in swing
             feet_air=self.feet_air_w * ((self.air.clamp(max=T_AIR) - self.feet_air_min).clamp(min=0.0) * first.float()).sum(-1) * (~still).float(),
         )
         if self.back_scale < 1.0:                                    # v14 (user 2026-11-12): "give less reward to go backward than forward or in-place turns"
             terms["lin_vel"] = terms["lin_vel"] * torch.where(v[:, 0] < -0.05, torch.full_like(v[:, 0], self.back_scale), torch.ones_like(v[:, 0]))
         if self.creep_w > 0.0:                                       # v14: commands of 0.10-0.35 m/s pay for the share made good (standing earns 0.8 of lin_vel there)
             _c = cmd[:, :2]; _cn = _c.norm(dim=-1)
-            terms["creep"] = self.creep_w * ((v[:, :2] * _c).sum(-1) / _cn.clamp(min=1e-3) ** 2).clamp(0.0, 1.0) * ((_cn >= 0.10) & (_cn <= 0.35)).float()
+            terms["creep"] = self.creep_w * ((v[:, :2] * _c).sum(-1) / _cn.clamp(min=1e-3) ** 2).clamp(0.0, 1.0) * (((_cn >= 0.10) & (_cn <= 0.35)) | self._climb_moving(_cn)).float()   # v20: any moving command on climb tiles with --climb_creep
         if self.drift_w > 0.0:                                       # v14: planar drift under a stand or turn-in-place command
             terms["drift"] = -self.drift_w * v[:, :2].norm(dim=-1) * (cmd[:, :2].norm(dim=-1) <= EPS_CMD).float()
         self.v_ema += 0.04 * (v[:, :2] - self.v_ema)
@@ -1048,7 +1108,9 @@ class SSREnv:
         hit = self.term_force > 80.0
         pts = self.xpos[:, self.clear_ids]
         scrape = (pts[..., 2] - self.hmap(pts[..., 0], pts[..., 1]) < self.clear_m).any(-1)
-        term = tilt | low | hit | scrape | self.bad
+        term = tilt | low | hit | scrape                         # simcheck: self.bad (simulator fault) is a truncation, see the return
+        if not self.simcheck:
+            term = term | self.bad                               # v14: a fault terminates
         if self.train and self.tiles and self.stuck_term:      # told to walk but not getting anywhere: standing still must not pay
             ck = (self.ep % 100 == 0) & (self.ep > 0) & ~self.free & (self.speed.abs() >= 0.3)
             stuck = ck & ((base[:, :2] - self.stall_pos).norm(dim=-1) < 0.3 * self.speed.abs() * 2.0)
@@ -1065,7 +1127,10 @@ class SSREnv:
                 causes["wall_hit"] = wall_hit
                 so = torch.where(self.ext, self.obst[bi, bj] | wall_hit, so)
             causes["side_obstacle"] = so
-            term = term | causes["side_obstacle"]
+            so_t = causes["side_obstacle"]
+            if self.climb_side_noterm and self.climb_types is not None:   # v20 stairs refusal: an attempt that brushes a lane wall is not fatal on climb tiles
+                so_t = so_t & ~(self.climb_types[self.type.clamp(max=len(self.climb_types) - 1)] & ~self.free & ~self.ext)
+            term = term | so_t
         if self.tiles:
             xrel = base[:, 0] - self.origin[:, 0]
             yrel = base[:, 1] - self.origin[:, 1]
@@ -1094,11 +1159,15 @@ class SSREnv:
                     self.cnt[f"ext_{nm}_fail"] = self.cnt.get(f"ext_{nm}_fail", 0) + int(((term | (over & ~ext_succ)) & mt).sum())
             causes.update(left_tile_side=out_y & ~self.free, left_tile_back=back & ~self.free, stuck=term & ~term if not self.stuck_term else stuck,
                           reached_end=success, omni_left_tile=free_out, time_limit=over & ~success & ~free_out)
-            causes["any"] = term | success | free_out | over
+            causes["any"] = term | success | free_out | over | self.bad
             for k_, v_ in causes.items():
                 self.cnt["done_" + k_] = self.cnt.get("done_" + k_, 0) + v_.sum()
-            return term, success | free_out | over, success
-        return term, torch.zeros_like(term), torch.zeros_like(term)
+            if not self.simcheck:
+                return term, success | free_out | over, success
+            return term & ~self.bad, success | free_out | over | self.bad, success & ~self.bad
+        if not self.simcheck:
+            return term, torch.zeros_like(term), torch.zeros_like(term)
+        return term & ~self.bad, self.bad.clone(), torch.zeros_like(term)
 
     def curriculum(self, ids, success):
         if len(ids) == 0 or not self.train or not self.tiles or self.flat_only:
@@ -1121,9 +1190,21 @@ class SSREnv:
         ep_s = self.ep[wid].float() * X.CONTROL_DT
         need = (self.speed[wid].abs() * ep_s * 0.5).clamp(min=0.5)
         up = success[wid]
+        if self.promote_half:                                        # A.1 / [30]: up when the robot walked more than half the terrain length
+            up = up | ((xrel - self.spawn_xrel[wid]).abs() > T.TILE_X / 2)
         down = ~up & (travel < need) & (ep_s > 3.0)
+        if self.cur_rudin:                                           # v20 stairs refusal: the paper's rule (A.1 / [30])
+            vbar = self.ep_vsum[wid] / self.ep[wid].float().clamp(min=1.0)
+            walked = torch.where(self.speed[wid] >= 0, xrel - self.spawn_xrel[wid], self.spawn_xrel[wid] - xrel)
+            up = success[wid] | (walked > T.TILE_X / 2)
+            down = ~up & (walked < vbar * EPISODE_S * 0.5)
+            if self.cur_fair > 0:
+                fair = vbar >= self.cur_fair
+                up, down = up & fair, down & fair
         lvl = self.level[wid] + up.long() - down.long()
         over = lvl >= T.NLEVEL
+        if self.omni_top:
+            self.grad[wid[over]] = True
         lvl = torch.where(over, torch.randint(0, T.NLEVEL, lvl.shape, device=self.dev, generator=self.gen), lvl).clamp(min=0)
         self.level[wid] = lvl
         self.log["level"] = self.level[~self.free].float().mean().item() if bool((~self.free).any()) else 0.0

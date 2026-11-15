@@ -1,0 +1,5 @@
+launcher: same as v5b except AIR_TD_CAP=ref and motion v3 (slow cmds: FWD_SHARE 0.25 SLOW_VX 0.1 VX_MIN 0.45)
+refcap term: f_ref 1.4/1.65/1.9/2.0 at 0.3/0.4/0.5/0.7 m/s; caps 0.664/0.476/0.450 s; tests pass
+motion v3: 18982 frames, waist at limit 0 (v2: 2901), 2975 frames changed (all in 0-2974), root positions as v2
+code tree: 32 source files = installed copies, no extra files
+PRECHECK PASS

@@ -30,6 +30,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import harness as Hn  # noqa: E402
 import x2 as X  # noqa: E402
 from apparatus import Apparatus  # noqa: E402
+import ladder as L  # noqa: E402  (chunk helpers: chunk_seeds, merge_chunks, run_chunk)
 
 PRESTAND = 1.0           # s of stand command at the spawn pose before the first waypoint
 SPAWN_R = 0.20           # m: uniform in the station's arrival disc
@@ -112,7 +113,12 @@ def main():
     ap.add_argument("--seed0", type=int, default=Hn.SEED0)
     ap.add_argument("--wall-limit", type=float, default=0)
     ap.add_argument("--label", default="")
+    ap.add_argument("--chunk", type=int, default=None, help="run only chunk k (0-based) of the seeds of ONE leg into legK/chunks/c<k>.json; "
+                    "the same command without --chunk merges the chunks into summary.json (automatic scorer, 2026-11-14)")
+    ap.add_argument("--chunk-size", type=int, default=5)
     a = ap.parse_args()
+    if a.chunk is not None and (not a.legs or len(a.legs) != 1):
+        sys.exit("--chunk needs exactly one leg (--legs K)")
     import memcap
     memcap.guard(cap_gb=6, need_free_gb=12, low_priority=True)
     out = pathlib.Path(a.out)
@@ -134,7 +140,25 @@ def main():
         base = list(c.spawn)
         part = d / "partial.json"
         results = json.load(open(part)) if part.exists() else []
+        results = L.merge_chunks(d, results)            # chunk files of a chunked run (automatic scorer, 2026-11-14)
         have = {r["seed"] for r in results}
+
+        def one(seed):
+            sp, tries = draw_spawn(c, leg, base, seed)
+            if sp is None:
+                print("leg %d seed %d: no clean spawn in 200 draws" % (leg["k"], seed), flush=True)
+                return None
+            c.spawn = sp
+            tr = Hn.Trial(x, c, adapter, x.model.body_mass.copy(), x.model.body_inertia.copy())
+            r = tr.run(seed, proto if leg["start"] is not None else Hn.NOMINAL, limit, record=True, prestand=(PRESTAND if leg["start"] is not None else 0.0))
+            r["leg"], r["spawn"], r["spawn_redraws"] = leg["k"], [round(v, 3) for v in sp], tries
+            tr.save_traj(d / "traj" / ("%d.npz" % seed))
+            print("leg %d seed %d: %s, %d/%d, %.1f s" % (leg["k"], seed, r["reason"], r["waypoints"], r["of"], r["sim_time"]), flush=True)
+            return r
+        if a.chunk is not None:
+            L.T0, L.WALL = t0, (a.wall_limit or 1e12)
+            L.run_chunk(d, a.chunk, a.chunk_size, a.trials, a.seed0, have, one)
+            return
         for i in range(a.trials):
             seed = a.seed0 + i
             if seed in have:
@@ -142,18 +166,11 @@ def main():
             if a.wall_limit and time.time() - t0 > a.wall_limit:
                 print("wall limit in leg %d after %d trials; run again" % (leg["k"], len(results)), flush=True)
                 sys.exit(3)
-            sp, tries = draw_spawn(c, leg, base, seed)
-            if sp is None:
-                print("leg %d seed %d: no clean spawn in 200 draws" % (leg["k"], seed), flush=True)
+            r = one(seed)
+            if r is None:
                 continue
-            c.spawn = sp
-            tr = Hn.Trial(x, c, adapter, x.model.body_mass.copy(), x.model.body_inertia.copy())
-            r = tr.run(seed, proto if leg["start"] is not None else Hn.NOMINAL, limit, record=True, prestand=(PRESTAND if leg["start"] is not None else 0.0))
-            r["leg"], r["spawn"], r["spawn_redraws"] = leg["k"], [round(v, 3) for v in sp], tries
-            tr.save_traj(d / "traj" / ("%d.npz" % seed))
             results.append(r)
             json.dump(results, open(str(part) + ".tmp", "w")); os.replace(str(part) + ".tmp", part)
-            print("leg %d seed %d: %s, %d/%d, %.1f s" % (leg["k"], seed, r["reason"], r["waypoints"], r["of"], r["sim_time"]), flush=True)
         results.sort(key=lambda r: r["seed"])
         meta = dict(label=a.label, leg=leg["k"], leg_name=leg["name"], apparatus=a.apparatus, route="%s leg %d" % (app.route.get("name"), leg["k"]),
                     simulator="MuJoCo %s (CPU)%s" % (__import__("mujoco").__version__, X.model_note()), policy_trained_on=getattr(adapter, "trained_model", None),
@@ -168,22 +185,28 @@ def main():
         Hn.write_logs(d, results, c.waypoints)
         if part.exists():
             os.remove(part)
+        if (d / "chunks").exists():
+            __import__("shutil").rmtree(d / "chunks", ignore_errors=True)
     # the table
-    rows, prod = [], 1.0
+    rows, prod, prod_s = [], 1.0, 1.0
     for leg in legs_of(app):
         f = out / ("leg%d" % leg["k"]) / "summary.json"
         if not f.exists():
             continue
         s = json.load(open(f))
-        n, k = s["trials"], s["strict_successes"] if s.get("strict_successes") is not None else s["successes"]
+        # final-station stop rule (user 2026-11-13): successes = headline (strict 0.2 m + stopped short); strict beside it
+        n, k, ks = s["trials"], Hn.main_count(s), Hn.strict_count(s)
         prod *= k / max(n, 1)
-        rows.append(dict(leg=leg["k"], name=leg["name"], trials=n, successes=k, ci95=s.get("strict_ci95") or s["ci95"], outcomes=s["outcomes"], failures_by_section=s["failures_by_section"]))
-    json.dump(dict(rows=rows, product=round(prod, 4)), open(out / "legs.json", "w"), indent=1)
-    lines = ["STATION LEGS (user 2026-11-12) | %s | %s" % (a.label, adapter.checkpoint)]
+        prod_s *= ks / max(n, 1)
+        rows.append(dict(leg=leg["k"], name=leg["name"], trials=n, successes=k, strict=ks, stopped_short=s.get("stopped_short"),
+                         ci95=s.get("headline_ci95") or s.get("strict_ci95") or s["ci95"], outcomes=s["outcomes"], failures_by_section=s["failures_by_section"]))
+    json.dump(dict(rows=rows, product=round(prod, 4), product_strict=round(prod_s, 4)), open(out / "legs.json", "w"), indent=1)
+    lines = ["STATION LEGS (user 2026-11-12) | %s | %s | headline = strict 0.2 m + stopped short (within 0.4 m, user 2026-11-13)" % (a.label, adapter.checkpoint)]
     for r in rows:
-        lines.append("leg %d  %-40s %2d / %d  (%.0f-%.0f %%)  %s" % (r["leg"], r["name"], r["successes"], r["trials"], 100 * r["ci95"][0], 100 * r["ci95"][1],
+        lines.append("leg %d  %-40s %2d / %d  (%.0f-%.0f %%)  strict %2d, stopped short %s  %s" % (r["leg"], r["name"], r["successes"], r["trials"], 100 * r["ci95"][0], 100 * r["ci95"][1],
+                                                                    r["strict"], "-" if r["stopped_short"] is None else r["stopped_short"],
                                                                     ", ".join("%s %d" % kv for kv in sorted(r["outcomes"].items(), key=lambda kv: -kv[1]))))
-    lines.append("product of the leg rates: %.3f" % prod)
+    lines.append("product of the leg rates: %.3f (strict 0.2 m: %.3f)" % (prod, prod_s))
     open(out / "legs.txt", "w").write("\n".join(lines) + "\n")
     print("\n".join(lines))
 

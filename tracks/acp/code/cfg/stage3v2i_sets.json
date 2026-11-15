@@ -1,0 +1,182 @@
+{
+ "dir": "/mnt/filesystem-g4/tracks/acp/data/clips",
+ "hmap": "hmap_ext_v2h_40mm.npz",
+ "note": "stage 3 v2i (2026-11-14, ACP agent): as stage3v2h with goal tiles v2c (spawn check: spawns moved off walls / substituted, state/acp.md 17m). | stage 3 v2h (2026-11-13, ACP agent, tools/mk_stage3v2h.py): stage 2h reference sets (unchanged) + goal tiles v2b ({'file': '/mnt/filesystem-g4/tracks/acp/data/goals/goal_tiles_v2.json'}) + one raster hmap_ext_v2h_40mm.npz (extended map v2 + the 2h ramp raster with its mirror). | stage 2h (2026-11-13, ACP agent, tools/mk_stage2h.py): as 2g plus corrected Pico sets (2x2 v1_1 replaces the old 2x2 set, old slot at weight 0 for the indices; tp_stairs_all_v1_1, 44 takes), mirrored sets (2x2, stairs, 4x4, ramp with its mirrored map 6 m beside the original in one raster tp_ramp_hmap_x30_2h_40mm.npz), a stairs turn/approach subset (weight 0.01), stairs x10 minus 114308/114330. Weights: stairs 0.08 -> 0.03 x10 + 0.03 all + 0.02 mir + 0.01 turn, 4x4 0.12 -> 0.08 + 0.04 mir, ramp 0.05 -> 0.035 + 0.015 mir, 2x2 0.03 -> 0.02 + 0.01 mir; flat takes the remainder. stage 2g (2026-11-12 14:50, ACP agent): as 2f plus turn_place_v1 (weight 0.03; flat 0.15 -> 0.12) and 1.0 s stands prepended (*_hs.pkl) to the stairs, gs2, ramp, 4x4, chains and gst clips that start in double support. Reason: the eval's traces at 6,000 (no turn-around step for a target behind; no step down from a stand at the ramps' trough). stand at a drop (2026-11-12 10:00): set stand_edge_v1 (tools/stand_edge.py), 78 idle stands on a 1.1 m slab with the edge 0.25-0.45 m ahead of the pelvis, 26 also with a side edge 0.30-0.40 m, weight 0.05 (flat 0.20 -> 0.15). stand at the end (2026-11-12 09:00): sets *_hold.pkl = the same clips with a 1.5 s stand (last frame held) appended where the last frame is in double support (tools/hold_clips.py), so stage 2 trains stop-and-hold at the goal. stage 2f (2026-11-12, ACP agent): as 2e plus (1) exclude_clips: 5 chains clips that fail every time at 4,500 and carry retarget joint jumps of 0.36-0.39 rad per frame (clip_quality 'jump'), and 2 4x4 clips with soles 9-10 cm inside the log (clip_quality 'sole_penetration'); the clean 4x4 clips that fail are the step-over itself and stay; (2) 4x4 weight 0.07 -> 0.12, ramp 0.10 -> 0.05 (ramp 99.1 %, 4x4 89.8 % at 4,500; both 4x4s are mandatory on the apparatus); (3) arm fix rebuilt with 2 cm hull clearance (ARM_CLEAR=0.02) so the real meshes clear. Previous note: stage 2e (2026-11-12, ACP agent): as 2d (arm fix) plus a style filter for the apparatus task: flat and blocks keep plain walk, turn, back, idle and stop/start clips and drop injured, bump-into-obstacle, crouch and jump clips; gst_v1 drops jog-up clips. Reason: those styles hold 21 of 25 flat and 18 of 29 blocks failures at 2,250 (jump 14/14, crouch 7/13), jog-ups all 36 gst failures (falls); injured and bump clips track fine but teach the planner limp and stumble footholds on open ground. Previous note: stage 2 (2026-11-12): as stage 1 without gs2dn_v1 (all 38 clips have the legs solved on the flipped branch), without the one flipped Pico clip, and without chain clips that contain a single step higher than 0.30 m; the 5 % share of the descents went to the terrain-park stairs; stage2b (2026-11-12): ramps and terrain-park stairs with ground_stance (clips whose stance soles sit more than 1.5 cm inside the terrain are lifted by their median stance gap); stage2c (2026-11-12): stair descents back as gs2dn_v2 (re-fitted on the desktop with the feet facing down the stairs, data_build/gen_stairfit_dn.py; 57 clips, |hip yaw| <= 0.74 rad), 5 % share taken back from the terrain-park stairs; plus low-riser flights gs2lo_v1 (risers 10-15 cm, treads 25-32 cm, 39 climbs + 43 descents, data_build/gen_stairfit_low.py; the eval ladder failed 10 cm risers and no fitted flight had a riser under 14 cm) at 0.05, taken from the fitted climbs gst_v1 (0.10 -> 0.07) and terrain-park stairs (0.10 -> 0.08); stage2d (2026-11-12): stage2c + arm clearance fix (armfix_stage2d_sets.pt from tools/arm_clear.py: shoulder roll outward, elbow bend if the roll is capped, so each arm clears thigh and torso by >= 1 cm with the training collision geometry; smoothed, <= 0.10 rad per frame)",
+ "sets": [
+  {
+   "pkl": "x2_loco_flat_train_hold.pkl",
+   "props": "",
+   "weight": 0.11,
+   "exclude_name": [
+    "injur",
+    "bump",
+    "crouch",
+    "jump"
+   ]
+  },
+  {
+   "pkl": "x2_loco_blocks_train_hold.pkl",
+   "props": "x2_loco_blocks_props.json",
+   "weight": 0.2,
+   "exclude_name": [
+    "injur",
+    "bump",
+    "crouch",
+    "jump"
+   ]
+  },
+  {
+   "pkl": "x2_chains_far_hs.pkl",
+   "props": "x2_chains_far_props.json",
+   "weight": 0.15,
+   "exclude_step_over": 0.3,
+   "exclude_clips": [
+    "s2/chain_026_box_stairs#0",
+    "s2/chain_049_box_stairs#0",
+    "s2/chain_045_box_stairs#0",
+    "s2/chain_001_box_stairs#1",
+    "s2/chain_077_box_stairs#1"
+   ]
+  },
+  {
+   "pkl": "tp_stairs_x10_sh2_hs.pkl",
+   "props": "tp_stairs_x10_sh2_props.json",
+   "weight": 0.03,
+   "ground_stance": true,
+   "exclude_clips": [
+    "s3/tp_stairs_114308",
+    "s3/tp_stairs_114308_sh-127",
+    "s3/tp_stairs_114308_sh-102",
+    "s3/tp_stairs_114308_sh-76",
+    "s3/tp_stairs_114308_sh-51",
+    "s3/tp_stairs_114308_sh-25",
+    "s3/tp_stairs_114308_sh+25",
+    "s3/tp_stairs_114308_sh+51",
+    "s3/tp_stairs_114308_sh+76",
+    "s3/tp_stairs_114308_sh+102",
+    "s3/tp_stairs_114308_sh+127",
+    "s3/tp_stairs_114330",
+    "s3/tp_stairs_114330_sh-127",
+    "s3/tp_stairs_114330_sh-102",
+    "s3/tp_stairs_114330_sh-76",
+    "s3/tp_stairs_114330_sh-51",
+    "s3/tp_stairs_114330_sh-25",
+    "s3/tp_stairs_114330_sh+25",
+    "s3/tp_stairs_114330_sh+51",
+    "s3/tp_stairs_114330_sh+76",
+    "s3/tp_stairs_114330_sh+102",
+    "s3/tp_stairs_114330_sh+127"
+   ]
+  },
+  {
+   "pkl": "gst_v1_hs.pkl",
+   "props": "gst_v1_props.json",
+   "weight": 0.07,
+   "exclude_name": [
+    "jog"
+   ]
+  },
+  {
+   "pkl": "gs2dn_v2_hs.pkl",
+   "props": "gs2dn_v2_props.json",
+   "weight": 0.05,
+   "exclude_leg_flip": true
+  },
+  {
+   "pkl": "gs2lo_v1_hs.pkl",
+   "props": "gs2lo_v1_props.json",
+   "weight": 0.05,
+   "exclude_leg_flip": true
+  },
+  {
+   "pkl": "tp_ramp_sh2_hs.pkl",
+   "props": "",
+   "weight": 0.035,
+   "shift": [
+    30.0,
+    0.0
+   ],
+   "ground_stance": true
+  },
+  {
+   "pkl": "tp_t4x4u_y20_hs.pkl",
+   "props": "tp_t4x4u_y20_props.json",
+   "weight": 0.08,
+   "ground_stance": true,
+   "exclude_clips": [
+    "s8/tp_t4x4_105103_2",
+    "s8/tp_t4x4_104900_0"
+   ]
+  },
+  {
+   "pkl": "pico_2026-10-29_2x2_train_hold.pkl",
+   "props": "pico_2026-10-29_2x2_props.json",
+   "weight": 0.0,
+   "exclude_leg_flip": true
+  },
+  {
+   "pkl": "stand_edge_v1.pkl",
+   "props": "stand_edge_v1_props.json",
+   "weight": 0.05
+  },
+  {
+   "pkl": "turn_place_v1.pkl",
+   "props": "",
+   "weight": 0.03
+  },
+  {
+   "pkl": "pico_2026-10-29_2x2_train_v1_1_hold.pkl",
+   "props": "pico_2026-10-29_2x2_props.json",
+   "weight": 0.02,
+   "exclude_leg_flip": true
+  },
+  {
+   "pkl": "pico_2026-10-29_2x2_train_v1_1_mir_hold.pkl",
+   "props": "pico_2026-10-29_2x2_train_v1_1_mir_props.json",
+   "weight": 0.01,
+   "exclude_leg_flip": true
+  },
+  {
+   "pkl": "tp_stairs_all_v1_1_hs.pkl",
+   "props": "tp_stairs_all_v1_1_props.json",
+   "weight": 0.03,
+   "ground_stance": true
+  },
+  {
+   "pkl": "tp_stairs_all_v1_1_mir_hs.pkl",
+   "props": "tp_stairs_all_v1_1_mir_props.json",
+   "weight": 0.02,
+   "ground_stance": true
+  },
+  {
+   "pkl": "tp_t4x4u_y20_mir_hs.pkl",
+   "props": "tp_t4x4u_y20_mir_props.json",
+   "weight": 0.04,
+   "ground_stance": true,
+   "exclude_clips": [
+    "s16/tp_t4x4_105103_2_mir",
+    "s16/tp_t4x4_104900_0_mir"
+   ]
+  },
+  {
+   "pkl": "tp_ramp_base_x30_mir_hs.pkl",
+   "props": "",
+   "weight": 0.015,
+   "ground_stance": true,
+   "shift": [
+    0.0,
+    6.0
+   ]
+  },
+  {
+   "pkl": "tp_stairs_turn_v1_1_hs.pkl",
+   "props": "tp_stairs_all_v1_1_props.json",
+   "weight": 0.01,
+   "ground_stance": true
+  }
+ ],
+ "armfix": "armfix_stage2h_sets.pt",
+ "goal_tiles": {
+  "file": "/mnt/filesystem-g4/tracks/acp/data/goals/goal_tiles_v2c.json"
+ }
+}

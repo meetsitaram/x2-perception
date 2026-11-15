@@ -18,7 +18,7 @@ Command (HIKING_CMD, default "card"): the card's rule for waypoints, which is th
 current waypoint as its target: vx = clip(2 x forward distance to the waypoint, 0, vmax) with vmax 0.7 m/s (training
 0.6-0.8), vy = 0, yaw rate = clip(2 x bearing error, -1, 1); inside a station's disc the harness's command (stand, turn
 to the station heading). Training zeroes the command within 0.4 m of its target; the eval's arrival disc is 0.20 m,
-so this rule keeps going to the disc. HIKING_CMD=standard: the harness's standard command.
+so this rule keeps going to the disc (HIKING_STOP_R, 0.20 m; final-station stop rule 2026-11-13). HIKING_CMD=standard: the harness's standard command.
 """
 from __future__ import annotations
 
@@ -53,6 +53,8 @@ def _quat_mat(q):
                      [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
 
 
+RING_VMIN = float(os.environ.get("HIKING_RING_VMIN", "0.5"))   # m/s: least forward command between 0.20 m and 0.4 m of a station
+RING_T = float(os.environ.get("HIKING_RING_T", "6.0"))         # s in that ring without reaching the disc before a stand
 BRAKE_D = float(os.environ.get("HIKING_BRAKE_D", "0.35"))    # m before a station's 0.20 m disc where "brake" zeroes the forward command
 
 
@@ -94,10 +96,14 @@ class HikingHandover(Adapter):
         self.cmd_mode = os.environ.get("HIKING_CMD", "card")
         self.trained_model = c.get("trained_model", "Isaac Lab, training URDF convex hulls, self-collision on (pelvis - hip_roll hull contact presumably ACTIVE)")
         self.vmax = float(os.environ.get("HIKING_VMAX", "0.7"))
-        self.stop_r = float(c.get("command", {}).get("target_stop_radius_m", 0.4))
+        self.card_stop_r = float(c.get("command", {}).get("target_stop_radius_m", 0.4))   # training's stop radius (documentation)
+        # Final-station stop (user, 2026-11-13, docs/EVAL.md): command toward a station until inside the eval's 0.20 m disc,
+        # not the card's 0.4 m (which left 109 of 180 extended-map failures standing 0.20-0.45 m short). HIKING_STOP_R=0.4
+        # gives the rule used before 2026-11-13 16:43 UTC.
+        self.stop_r = float(os.environ.get("HIKING_STOP_R", "0.20"))
         self.self_view = os.environ.get("HIKING_SELF_DEPTH", "1") != "0"
         self.checkpoint = "Hiking %s model_%s | command %s" % (c.get("run"), c.get("iteration"),
-                                                              {"card": "card rule as the card states it (training generator to the waypoint, stand within %.2f m of a station), vmax %.2f" % (self.stop_r, self.vmax),
+                                                              {"card": "card rule (training generator to the waypoint; stand within %.2f m of a station or with it behind within 0.4 m; card 0.4 m), vmax %.2f" % (self.stop_r, self.vmax),
                                                                "card_v1": "card rule, implementation before 2026-11-12 10:15 (no stop radius), vmax %.2f" % self.vmax, "floor": "at least 0.45 m/s to the disc, zero in a station (eval variant), vmax %.2f" % self.vmax,
                                                                "brake": "BRAKE EARLY (eval variant): card rule, zero forward from %.2f m before a station's disc, a stand for a target behind within 0.5 m, vmax %.2f" % (BRAKE_D, self.vmax)}.get(self.cmd_mode, "harness standard"))
         self.observes = "proprioception history 8 steps (incl. the velocity command) + 8 chest depth frames 36 x 32 (terrain, walls, own body)"
@@ -205,7 +211,8 @@ class HikingHandover(Adapter):
         """HIKING_CMD=card, the STANDARD Hiking command from 2026-11-12 10:15 (coordinator, after the Hiking track pointed at its
         card): the card's training generator with the waypoint as its target. vx = clip(2 * forward distance, 0, vmax), vy = 0,
         yaw rate = clip(2 * bearing error, -1, 1) (a target behind gives vx 0 and a turn on the spot, then a walk); at a station,
-        within the card's target_stop_radius_m (0.4 m) of it: a stand (vx = vy = 0), with yaw only toward the station heading when
+        within HIKING_STOP_R (0.20 m since 2026-11-13; the card's target_stop_radius_m 0.4 m before) of it, or with it behind
+        the robot within 0.4 m: a stand (vx = vy = 0), with yaw only toward the station heading when
         it has one (the turn tests need it; the card itself commands all zeros there). Non-station waypoints: no stop (the card's
         "for_waypoints" rule). The implementation used before 10:15 is HIKING_CMD=card_v1 (no 0.4 m stop; inside the disc the
         harness's yaw correction; outside it, pure-yaw corrections at up to 1 rad/s that made the robot circle)."""
@@ -215,14 +222,28 @@ class HikingHandover(Adapter):
         yaw = math.atan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] ** 2 + q[3] ** 2))
         vec = cmd.target_xy - p[:2]
         dist = float(np.linalg.norm(vec))
-        if cmd.station and dist < self.stop_r:
+        xb = math.cos(yaw) * vec[0] + math.sin(yaw) * vec[1]
+        # stand when inside the stop radius, or when an overshot station (target behind) is still within the card's 0.4 m:
+        # no pure-yaw turn on the spot there (it made the robot circle in card_v1); the eval counts a stable stand within
+        # 0.4 m of the final station as "stopped short"
+        ring = cmd.station and self.stop_r <= dist < max(self.card_stop_r, self.stop_r)
+        if cmd.index != getattr(self, "_ring_wp", None):          # time in the ring, per waypoint
+            self._ring_wp, self.ring_t = cmd.index, 0.0
+        if ring:
+            self.ring_t += self.control_dt
+        # in the ring between 0.20 m and the card's 0.4 m: forward at least RING_VMIN (the policy marks time in place under about
+        # 0.4 m/s); after RING_T s in the ring without reaching the disc, a stand (the eval scores it "stopped short")
+        give_up = ring and self.ring_t > RING_T
+        if cmd.station and (dist < self.stop_r or give_up or (xb <= 0.0 and dist < max(self.card_stop_r, self.stop_r))):
             if cmd.target_heading is None:
                 return np.zeros(3)
             e = (cmd.target_heading - yaw + math.pi) % (2 * math.pi) - math.pi
             return np.array([0.0, 0.0, min(max(2.0 * e, -1.0), 1.0)])
-        xb = math.cos(yaw) * vec[0] + math.sin(yaw) * vec[1]
         err = (math.atan2(vec[1], vec[0]) - yaw + math.pi) % (2 * math.pi) - math.pi
-        return np.array([min(max(2.0 * xb, 0.0), self.vmax), 0.0, min(max(2.0 * err, -1.0), 1.0)])
+        vx = min(max(2.0 * xb, 0.0), self.vmax)
+        if ring and xb > 0.0:
+            vx = max(vx, min(RING_VMIN, self.vmax) * max(0.0, math.cos(err)))
+        return np.array([vx, 0.0, min(max(2.0 * err, -1.0), 1.0)])
 
     def _brake(self, view: View, cmd: Command):
         """HIKING_CMD=brake (coordinator 2026-11-12 10:01): the card rule, except at a station: zero forward command once the
