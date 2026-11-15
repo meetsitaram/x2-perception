@@ -121,7 +121,7 @@ Each model folder has the training code, the recipe and the ledger, and its READ
 |---|---|
 | `models/acp/`, `models/hiking/`, `models/ssr/` | per model: `README.md` (model card), `RECIPE.md`, `LEDGER.md` and the training code; `models/LAST_SYNC.txt` is the time of the last code sync |
 | `eval/` | the common MuJoCo eval: `harness.py` (full route), `legs.py`, `ladder.py` (training-terrain courses), `adapters/`, `render.py`, `autoscore/` (automatic scorer), `metrics/` (training curves) |
-| `docs/` | `EVAL.md` (eval definition), `DATA.md`, `FINDINGS.md` (defects found and fixed), `findings/` (paper-vs-code audits, surveys), `camera/` (training camera reference), `TODO_depth_to_heightmap.md`, `site/` (static review page), `media/` |
+| `docs/` | `EVAL.md` (eval definition), `DATA.md`, `FINDINGS.md` (defects found and fixed), `findings/` (paper-vs-code audits, surveys), `camera/` (training camera reference), `hardware/chest_camera_mount/` (3D-printable RealSense chest brackets for Hiking and SSR), `TODO_depth_to_heightmap.md`, `site/` (static review page), `media/` |
 | `tools/simcheck/` | simulator fault checks run before every training launch |
 | `agentic/` | the agent team that built this: instructions, rules, state, dashboard, node scripts |
 | `.claude/agents/` | the agent definitions (Claude Code reads them here) |

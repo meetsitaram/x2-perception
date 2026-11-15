@@ -82,6 +82,7 @@
   "shell_lateral_radius_mm": 151.0,
   "render_base_pitch_deg": -7.4,
   "render_camera_height_m": 1.09,
+  "render_toe_tip_ahead_of_lens_m": 0.104,
   "render_axis_pitch_world_deg": 54.2
  },
  "ssr": {
@@ -167,6 +168,7 @@
   "shell_lateral_radius_mm": Infinity,
   "render_base_pitch_deg": -7.4,
   "render_camera_height_m": 0.992,
+  "render_toe_tip_ahead_of_lens_m": 0.091,
   "render_axis_pitch_world_deg": 52.1
  }
 }

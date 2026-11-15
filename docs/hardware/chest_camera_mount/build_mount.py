@@ -1,3 +1,4 @@
+import os
 """Chest depth-camera mount for the AgiBot X2 Ultra (Hiking and SSR policies). Builds the 3D-printable brackets, checks them,
 and draws the pictures in this folder.
 
@@ -381,6 +382,12 @@ def render(name, stl_path, info, R, p, mjcf, mesh_dir):
     P, Rt = d.xpos[tb], d.xmat[tb].reshape(3, 3)
     o = P + Rt @ (p / 1000); Rc = Rt @ R
     info["render_camera_height_m"] = round(float(o[2]), 3)
+    toe = -1.0
+    for gi in range(m.ngeom):
+        if m.geom_bodyid[gi] == m.body("left_ankle_roll_link").id and m.geom_type[gi] == mujoco.mjtGeom.mjGEOM_MESH:
+            mi = m.geom_dataid[gi]; vv = m.mesh_vert[m.mesh_vertadr[mi]:m.mesh_vertadr[mi] + m.mesh_vertnum[mi]]
+            toe = max(toe, float(np.max(d.geom_xpos[gi][0] + vv @ d.geom_xmat[gi].reshape(3, 3).T[:, 0])))
+    info["render_toe_tip_ahead_of_lens_m"] = round(toe - float(o[0]), 3)
     info["render_axis_pitch_world_deg"] = round(float(np.degrees(np.arcsin(-Rc[2, 0]))), 1)
     rays = []
     for sy in (1, -1):
@@ -440,9 +447,9 @@ def render(name, stl_path, info, R, p, mjcf, mesh_dir):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mesh", default=r"C:/Users/PC/projects/ssr-x2/assets/robot/urdf/x2_ultra/meshes/torso_plus_link.STL")
-    ap.add_argument("--mjcf", default=r"C:/Users/PC/projects/ssr-x2/assets/robot/mjcf/x2_ultra.xml")
-    ap.add_argument("--meshdir", default=r"C:/Users/PC/projects/ssr-x2/assets/robot/urdf/x2_ultra/meshes")
+    ap.add_argument("--mesh", default=os.path.join(os.environ.get("X2_ASSETS", "assets/robot"), r"urdf/x2_ultra/meshes/torso_plus_link.STL"))
+    ap.add_argument("--mjcf", default=os.path.join(os.environ.get("X2_ASSETS", "assets/robot"), r"mjcf/x2_ultra.xml"))
+    ap.add_argument("--meshdir", default=os.path.join(os.environ.get("X2_ASSETS", "assets/robot"), r"urdf/x2_ultra/meshes"))
     ap.add_argument("--no-render", action="store_true")
     args = ap.parse_args()
     ys, zs, X = shell_heightmap(args.mesh)
