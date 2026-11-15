@@ -57,9 +57,20 @@ Model checkpoints: see "Models" below.
 
 ## Models
 
-Released checkpoints and their model cards: to be linked here once uploaded to Hugging Face (pending the user's account login
-and licence check: the training data includes BONES-SEED-derived clips and, for Hiking and SSR, a style reference derived from
-the Hiking in the Wild release (CC BY-NC 4.0)).
+Policy exports with model cards on Hugging Face (simulation-trained; not yet tested on the real robot):
+
+| Track | Hugging Face | Checkpoint | Licence |
+|---|---|---|---|
+| ACP (planner + tracker) | [tinkerbuggy/x2-acp-contact-planner-tracker](https://huggingface.co/tinkerbuggy/x2-acp-contact-planner-tracker) | `pair_s3_v2_023000` (99% route) | Apache 2.0 |
+| Hiking in the Wild (X2) | [tinkerbuggy/x2-hiking-in-the-wild](https://huggingface.co/tinkerbuggy/x2-hiking-in-the-wild) | iteration 25,500 | CC BY-NC 4.0 |
+| SSR | [tinkerbuggy/x2-ssr](https://huggingface.co/tinkerbuggy/x2-ssr) | `r7_v20x_032000` (final) | CC BY-NC 4.0 |
+
+Each repo holds the ONNX / numpy weights, `adapter_card.json` (input and output specification) and `obs_check.npz` (recorded
+inputs and outputs). The evaluation adapters in `eval/adapters/` show how to run them in MuJoCo.
+
+**Data credits.** Motion references include **BONES-SEED by Bones Studio** (retargeted to the X2) and the author's own Pico
+captures. Hiking and SSR also use the *Hiking in the Wild* (InstinctLab) release, licensed CC BY-NC 4.0, so those two models
+are non-commercial. Methods: Adaptive Contact Planning (arXiv 2610.31608), Hiking in the Wild (arXiv 2601.07718), SSR (arXiv 2605.30770).
 
 ## The team
 

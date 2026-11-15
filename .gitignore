@@ -7,3 +7,4 @@ renders/
 dashboard/snapshot/
 eval/metrics/cache/
 eval/metrics/out/
+release/
