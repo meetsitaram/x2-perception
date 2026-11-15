@@ -106,8 +106,8 @@
   "camera_min_clearance_to_shell_mm": 15.9,
   "bracket_vertices_in_fov": 0,
   "bracket_min_gap_to_shell_mm": 1.1,
-  "bracket_min_gap_off_bond_area_mm": 2.52,
-  "bracket_min_gap_below_seam_mm": 10.49,
+  "bracket_min_gap_off_bond_area_mm": 2.51,
+  "bracket_min_gap_below_seam_mm": 10.69,
   "pad_y_mm": [
    -60.0,
    45.0
@@ -131,8 +131,8 @@
   ],
   "rails_y_mm": [],
   "dropped_fragments_cm3": [],
-  "volume_cm3": 140.8,
-  "mass_g_petg": 179.0,
+  "volume_cm3": 141.6,
+  "mass_g_petg": 180.0,
   "bounds_mm": [
    [
     71.4,
@@ -235,14 +235,14 @@
     "left IR imager": 9.25,
     "right IR imager": 4.01,
     "IR projector (anywhere between the imagers)": 1.0,
-    "RGB (at +15 mm; at -15 mm it is inside the imager cones)": 10.97
+    "RGB (at +15 mm; at -15 mm it is inside the imager cones)": 10.98
    },
    "fov_margin_deg_tpu": {
     "depth frustum (87 x 58) + 4 deg training margin": 7.94,
     "left IR imager": 3.41,
     "right IR imager": 3.47,
     "IR projector (anywhere between the imagers)": 1.0,
-    "RGB (at +15 mm; at -15 mm it is inside the imager cones)": 4.72
+    "RGB (at +15 mm; at -15 mm it is inside the imager cones)": 4.73
    },
    "cone_cut_extra_deg": 1.0,
    "camera_top_to_roof_mm": 2.87,
@@ -263,7 +263,7 @@
    "tpu_print_overhang_cm2": 3.3
   },
   "print_side_down": "-y",
-  "print_overhang_cm2": 27.1,
+  "print_overhang_cm2": 23.6,
   "bracket_min_dist_to_panel_mm": 4.27,
   "camera_min_dist_to_panel_mm": 18.37,
   "bracket_min_dist_to_rest_of_torso_mm": 0.97,
@@ -424,7 +424,7 @@
   ],
   "camera_min_clearance_to_shell_mm": 1.9,
   "bracket_vertices_in_fov": 0,
-  "bracket_min_gap_to_shell_mm": 1.17,
+  "bracket_min_gap_to_shell_mm": 1.16,
   "bracket_min_gap_off_bond_area_mm": 2.5,
   "bracket_min_gap_below_seam_mm": 2.5,
   "pad_y_mm": [
@@ -561,16 +561,16 @@
    "fov_margin_deg_bracket": {
     "depth frustum (87 x 58) + 4 deg training margin": 14.22,
     "left IR imager": 9.25,
-    "right IR imager": 4.0,
+    "right IR imager": 4.01,
     "IR projector (anywhere between the imagers)": 1.0,
-    "RGB (at +15 mm; at -15 mm it is inside the imager cones)": 10.99
+    "RGB (at +15 mm; at -15 mm it is inside the imager cones)": 11.0
    },
    "fov_margin_deg_tpu": {
     "depth frustum (87 x 58) + 4 deg training margin": 7.94,
     "left IR imager": 3.41,
     "right IR imager": 3.47,
     "IR projector (anywhere between the imagers)": 1.0,
-    "RGB (at +15 mm; at -15 mm it is inside the imager cones)": 4.73
+    "RGB (at +15 mm; at -15 mm it is inside the imager cones)": 4.72
    },
    "cone_cut_extra_deg": 1.0,
    "camera_top_to_roof_mm": 2.86,

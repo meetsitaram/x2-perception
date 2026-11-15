@@ -64,7 +64,7 @@ M3_HOLE, M3_HEAD = 3.4, 6.5
 # sensor window on the chest (measured on the mesh): capsule |y| <= 20, z 139 .. 225 mm; the pad bridges it with a pocket
 WIN_HALF_W, WIN_Z = 20.0, (139.0, 225.0)
 WIN_MARGIN, WIN_BRIDGE = 1.5, 108.5   # pocket = window + 1.5 mm; bridge level x = 108.5 mm (window rim is 106.5 .. 108.1)
-NOTCH = 3.0
+NOTCH = 0.0         # centreline V-notches on the pad edges (mm); 0 = none
 
 # ---------------------------------------------------------------- fall-protection cage (2026-11-15, user: "add some protect on
 # top of the camera ... the robot will fall to the ground"). A box frame around the camera, open at the front: roof over the
@@ -455,9 +455,15 @@ def build(name, cfg, ys, zs, X, seam_hi):
     cage = dict(c_lo=c_lo, c_hi=c_hi, pk_lo=pk_lo, pk_hi=pk_hi)
     # alignment notches on the robot centreline (left imager / sensor window centreline), lower and upper pad edges
     pz = (float(pad_lower_edge(ys, seam_hi, np.array([0.0]))[0]), PAD_TOP)
-    for zc, sgn in ((pz[0], 1), (pz[1], -1)):
+    # The cutter spans only the pad's own thickness at that point (it used to run x 60-200 mm and left triangular dents in
+    # the cage and webs wherever it passed through them).
+    # Off by default since 2026-11-15 (user: "random weird patches on the model"); align with the dry-fit step instead.
+    iy = int(np.argmin(np.abs(pys)))
+    for zc, sgn in (((pz[0], 1), (pz[1], -1)) if NOTCH > 0 else ()):
+        iz = int(np.argmin(np.abs(pzs - zc)))
+        x0, x1 = shell[iz, iy] - 1.0, shell[iz, iy] + (TAPE + PAD_T) * f[iz, iy] + 0.6
         tri = np.array([[-NOTCH, zc - sgn], [NOTCH, zc - sgn], [0.0, zc + sgn * NOTCH]])
-        pts = [[x, yy, zz] for x in (60.0, 200.0) for yy, zz in tri]
+        pts = [[x, yy, zz] for x in (x0, x1) for yy, zz in tri]
         part = part - mf.Manifold.hull_points(pts)
     part = part.as_original()
     tm = to_trimesh(part)

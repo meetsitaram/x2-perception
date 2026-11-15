@@ -111,8 +111,8 @@ No other groove was found in the bond area (z 230-292).
 - **Cable:** each cheek of the cage has a 16 x 12 mm window (rounded corners) centred on the camera's end face for the USB-C
   plug, because which end has the port is not confirmed. Plug overmoulds larger than about 15 x 11 mm will not pass; file the
   window larger if needed.
-- **Alignment marks:** a V-notch on the robot centreline at the pad's upper and lower edges. The pad's lower edge runs
-  parallel to the seam, 4 mm above it.
+- **Alignment:** no notches (removed 2026-11-15; they printed as odd dents). The pad's lower edge runs parallel to the seam,
+  4 mm above it; the camera opening is centred 17.5 mm right of the robot centreline (the left imager sits on it).
 
 ### Files
 
@@ -226,7 +226,7 @@ webs and gussets are grown by a 2 mm ball, which rounds their edges and makes th
 2.5 mm rounds on their outer long edges. The pad's outer perimeter has a 1 mm round. Small features get 1 mm: the rim's inner
 edge (1.5 mm), the ear (1.5 mm), the USB windows (1 mm chamfer), the M3 holes at the seat face (1 mm chamfer) and the tether
 hole (0.6 mm chamfer). Unchanged: the taped face (the shell offset by the 1.1 mm tape), the camera seat faces, the M3 holes and
-the screw-head channels. The channel entrances in the web and the V-notches are still sharp. With rounding, the bracket is
+the screw-head channels. The channel entrances in the web are still sharp. With rounding, the bracket is
 140.8 / 141.8 cm3 (H / S); without it, 129.1 / 130.5 cm3. The 2 mm growth of the webs outweighs what the rounds remove. All
 STLs are watertight single bodies.
 
@@ -247,7 +247,7 @@ STLs are watertight single bodies.
 
 1. Screw the camera into the bracket first (two M3 x 6). Take the screws to snug only; the camera's inserts are shallow.
 2. Dry-fit. Put the pad on the upper chest so that its curved lower edge runs parallel to the panel seam, about 4 mm above
-   it, with no part of the pad below the seam. Line up both V-notches with the sensor window's vertical centreline. For S, the
+   it, with no part of the pad below the seam. Centre it side to side: the left imager (the lens nearest the robot's left) sits on the sensor window's vertical centreline; mark the centreline on the masking tape first. For S, the
    rails must not touch the lower panel or the window. The camera must be level side to side and its glass must face forward
    and down. Outline the pad with masking tape.
 3. Clean the chest area and the pad underside with isopropyl alcohol (3M recommends a 50:50 mix with water) and let them dry.
