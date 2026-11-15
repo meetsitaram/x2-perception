@@ -28,6 +28,28 @@ not the training simulator.
 | **SSR: apparatus stairs (leg 5)** | **SSR: extended map, C-shaped stairs** |
 | ![SSR stairs](docs/media/ssr_apparatus_stairs.gif) | ![SSR C stairs](docs/media/ssr_map_stairs_C.gif) |
 
+
+### Training setup and compute
+
+Each track trained on its own Nebius node with **one NVIDIA RTX PRO 6000 Blackwell (96 GB)**; evaluation ran on a desktop CPU
+(MuJoCo, chunked and parallel). All three started on 2026-11-11 about 20:00 UTC.
+
+| | ACP | Hiking in the Wild (X2) | SSR |
+|---|---|---|---|
+| Simulator | MuJoCo Warp | Isaac Lab (PhysX), InstinctLab | MuJoCo Warp |
+| Parallel robots | 36,000 | 8,192 | 8,192 |
+| Steps per robot per iteration | 24 | 24 | 24 |
+| Samples per iteration | 864,000 | 196,608 | 196,608 |
+| PPO | 5 epochs, 8 minibatches, lr 1e-4 (KL-adaptive) | WasabiPPO + AMP discriminator, 5 epochs, 4 minibatches, lr 1e-3 (KL-adaptive, target 0.01) | 5 epochs, 4 minibatches, lr 5e-4 x 4 optimisers (KL-adaptive) |
+| Throughput | about 7.4 s/iteration (stage 1), 11.5-14 s (stages 2-3); 60-117k env-steps/s | about 9.6-9.8 s/iteration | about 6.5-6.8 s/iteration, about 30k samples/s |
+| Policy input (terrain) | height scans (planner 17x11, tracker 9x7) | chest depth camera, 8-frame history | chest depth camera + GRU |
+| Iterations reached | about 26,600 (stage 1 -> 2 -> 3; best at 23,000) | 27,000 (best at 24,500) | 32,750 (stopped) |
+| Wall-clock time | about 91.5 h (to 2026-11-15 15:32 UTC, paused) | about 91.5 h (paused 15:30 UTC) | about 82 h (stopped 06:01 UTC) |
+
+Total: about **265 GPU-hours** on three RTX PRO 6000 GPUs, including restarts, rollbacks and abandoned segments. Every
+segment, its settings and why it changed are in `docs/runs/ledger_<track>.md`; the single-run recipes are in
+`docs/runs/recipe_<track>.md`.
+
 Review page (status, training curves, paper-vs-code audits, renders): open `docs/site/index.html` (self-contained; the training
 curves are in `docs/site/training_plots.html`).
 
