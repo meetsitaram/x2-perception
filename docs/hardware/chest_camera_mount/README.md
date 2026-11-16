@@ -22,24 +22,20 @@ very edge of what Hiking saw. Do not plan on that.)
 The SSR paper mounts its camera at the waist. Our SSR port was trained with this chest camera (`--camera chest_rs`), so use the
 chest mount for our SSR checkpoints, not the paper's waist mount.
 
-## Simple version: pocket holder (no cage, no supports) - 2026-11-16
+## Simple version: back-only block (no cage, no supports) - 2026-11-16
 
-For a printer that struggles with supports, and because the D435 can only be held by its **back** (its top, bottom and end
-faces vent the camera; user, 2026-11-16): `pocket_mount_hiking_print.stl`, built by `pocket_mount.py` (numbers in
-`pocket_mount_summary.json`, section `pocket_mount.png`, renders `simple_mount_view.png` from `render_simple_view.py`).
+The D435 may only be held by its **back**: its top, bottom and end faces vent the camera and stay open (user, 2026-11-16).
+`simple_mount_hiking_print.stl`, built by `simple_mount.py` (numbers in `simple_mount_summary.json`, section
+`simple_mount.png`, renders and camera view `simple_mount_view.png` from `render_simple_view.py`).
 
-- One straight block, 70 mm long, 70 cm3 (about 86 g in PLA). It wraps the camera's back face, the rear 18 mm of its top
-  face (lip) and the rear 15 mm of its bottom face, and fills down to the chest. Open at the front (lenses) and at both
-  ends (the camera's ends stick out 10 mm each side, vents free).
-- The camera slides in from the front (0.3 mm clearance top and bottom) onto VHB tape on its back face (1.1 mm gap);
-  the tape holds it, the pocket aligns it.
-- Chest face follows the chest from 257 to 290 mm up on torso_link, at least 6 mm above the panel seam (fixed shell only).
-  The block is centred 17.5 mm to the robot's right of the centreline (the left imager sits on the centreline).
-- Print upside down, the flat top face on the bed (the STL is already oriented): 69 x 70 mm footprint, 33 mm tall, no face
-  steeper than 28 deg from vertical facing down, 36 cm2 flat on the bed, no island starts: no supports. PLA or PETG, 4
-  walls, 30 % infill. (First version, 2026-11-16 morning: the bed face was 0.2 mm off flat, so Bambu Studio flagged a
-  "floating cantilever"; fixed.)
-- `simple_mount.py` (a block taped to the camera's underside) is superseded: the underside vents must stay free.
+- One straight block, 70 mm long, 44 cm3 (about 55 g in PLA). Its seat face is taped (VHB, 1.1 mm) to the camera's back
+  face, 25 x 70 mm (17.5 cm2); the block stays entirely behind the camera's back plane, so the top, bottom, ends and lenses
+  are all free. Line the camera's back face up with the seat (top and bottom edges flush), camera centred on the block.
+- Chest face follows the chest from 268 to 290 mm up on torso_link (16 cm2 of tape), 19 mm above the panel seam (fixed
+  shell only). The block is centred 17.5 mm to the robot's right of the centreline (the left imager sits on the centreline).
+- Print upside down, the flat top face on the bed (the STL is already oriented): 56 x 70 mm, 21 mm tall, 32 cm2 on the bed,
+  no face pointing down steeper than 28 deg from vertical, no island starts: no supports. PLA or PETG, 4 walls, 30 % infill.
+- Superseded the same day: `pocket_mount.py` (covered the top and bottom vents) and the first block taped to the underside.
 - Camera pose: the same as training, checked against the 24,500 export (`run_params/env.yaml` scene.camera.offset,
   `adapter_card.json` depth) and the port's config (`X2_TORSO_CAMERA_POS = (0.131, 0.0, 0.259)`,
   `X2_TORSO_CAMERA_PITCH_DOWN = 61.6 deg` in `models/hiking/x2_port/files_instinctlab/.../x2_parkour_target_amp_cfg.py`): on
@@ -50,6 +46,7 @@ faces vent the camera; user, 2026-11-16): `pocket_mount_hiking_print.stl`, built
   -105/+50 mm height, +-4 deg pitch, +-2 deg roll/yaw; aim for a few mm and 1-2 deg, and check a flat-floor depth frame
   against `expected_depth_hiking.png` or `simple_mount_view.png`. Standing, the lens is 1.09 m up, the axis 54 deg below
   horizontal, and straight ahead the image covers the floor from 0.13 to 2.3 m in front of the lens.
+
 ## The trained camera pose
 
 The pose is the camera's depth origin (the centre of the left infrared imager, 4.2 mm behind the front glass) in the

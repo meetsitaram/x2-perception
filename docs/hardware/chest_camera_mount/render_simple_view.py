@@ -23,7 +23,7 @@ spec = mujoco.MjSpec.from_file(os.path.join(ASSETS, "mjcf", "x2_ultra.xml"))
 spec.meshdir = os.path.join(ASSETS, "urdf", "x2_ultra", "meshes")
 spec.visual.global_.offwidth = 1280; spec.visual.global_.offheight = 1280
 tb = spec.body("torso_link")
-spec.add_mesh(name="mount", file=os.path.join(HERE, os.environ.get("MOUNT_STL", "pocket_mount_hiking_robot_frame.stl")), scale=[0.001] * 3)
+spec.add_mesh(name="mount", file=os.path.join(HERE, os.environ.get("MOUNT_STL", "simple_mount_hiking_robot_frame.stl")), scale=[0.001] * 3)
 tb.add_geom(type=mujoco.mjtGeom.mjGEOM_MESH, meshname="mount", rgba=[0.95, 0.55, 0.15, 1], contype=0, conaffinity=0, group=2)
 # D435 body: 90 x 25 x 25 mm, case centre 8.3 mm behind the depth origin along the axis, 17.5 mm to the robot's right
 cc = O + (4.2 - 12.5) / 1000 * a - ey * 0.0175

@@ -1,10 +1,11 @@
-"""Simplest chest mount for the Hiking camera pose: one solid block, no cage, no screws, no cut-outs, prints without supports.
+"""Back-only chest mount (current simple version, 2026-11-16; the camera's top, bottom and end faces vent and stay open).
+Simplest chest mount for the Hiking camera pose: one solid block, no cage, no screws, no cut-outs, prints without supports.
 
 - Seat face: flat, taped (VHB, 1.1 mm) to the D435's BACK face only (user, 2026-11-16: the top, bottom and ends vent the
   camera's fans and must stay open). The camera hangs below/in front of the block, held by its back.
 - Chest face: follows the chest shell (offset by the tape), only on the fixed upper shell, far above the panel seam.
 - The block is a straight prism along y (the camera's length) except that its chest face follows the chest; printed
-  standing on one end, every face is a wall (the chest face leans at most ~20 deg): no supports.
+  upside down on its flat top face, no face points down steeper than 28 deg from vertical: no supports.
 Camera pose = Hiking training pose: depth origin (131, 0, 259) mm on torso_link, 61.6 deg down (as build_mount.py).
 
     python simple_mount.py      # writes simple_mount_hiking_print.stl, simple_mount_hiking_robot_frame.stl, simple_mount.png
@@ -77,8 +78,8 @@ chest_area = float(tm.area_faces[back].sum()) / 100.0
 cam_area = LENGTH * CAM[1] / 100.0
 # nothing ahead of the glass plane (outside the depth view)
 tglass = float(np.max((tm.vertices - O) @ a))
-# print orientation: stand on the y = y0 end face (its outward normal -y -> -z); every face is then a wall
-Rp = trimesh.geometry.align_vectors([0.0, -1.0, 0.0], [0.0, 0.0, -1.0])
+# print orientation: upside down, the flat top face on the bed (32 cm2 on the bed, no face steeper than 28 deg)
+Rp = trimesh.transformations.rotation_matrix(math.pi, [1, 0, 0])
 pr = tm.copy(); pr.apply_transform(Rp); pr.apply_translation(-pr.bounds[0])
 # overhang: faces pointing down by more than 45 deg (excluding the bed face)
 nz = pr.face_normals[:, 2]; cz = pr.triangles_center[:, 2]
@@ -112,10 +113,11 @@ A.plot([O[0], O[0] + 60 * a[0]], [O[2], O[2] + 60 * a[2]], "r--", lw=1, label="o
 A.set_aspect("equal"); A.set_xlim(70, 170); A.set_ylim(220, 300); A.grid(alpha=0.3); A.legend(loc="lower right", fontsize=8)
 A.set_title("side section at the camera centre (y = %.1f mm)" % CASE_Y); A.set_xlabel("x forward (mm)"); A.set_ylabel("z up (mm)")
 B = ax[1]
-sp = pr.section(plane_origin=[0, 0, 0.5], plane_normal=[0, 0, 1])
+sp = pr.section(plane_origin=[0, pr.extents[1] / 2, 0], plane_normal=[0, 1, 0])
 for e in sp.discrete:
-    B.fill(e[:, 0], e[:, 1], color="#e8913a", alpha=0.85)
+    B.fill(e[:, 0], e[:, 2], color="#e8913a", alpha=0.85)
+B.axhline(0, color='b', lw=3)
 B.set_aspect("equal"); B.grid(alpha=0.3)
-B.set_title("print: stands on its end, %.0f x %.0f mm footprint, %.0f mm tall, no supports" % (pr.extents[0], pr.extents[1], pr.extents[2]))
+B.set_title("print: flat top face on the bed (blue), %.0f x %.0f mm, %.0f mm tall, no supports" % (pr.extents[0], pr.extents[1], pr.extents[2]))
 fig.suptitle("Simple Hiking chest mount: one block taped to the camera BACK and to the chest; volume %.1f cm3" % info["volume_cm3"])
 fig.tight_layout(); fig.savefig(os.path.join(HERE, "simple_mount.png"), dpi=110)
