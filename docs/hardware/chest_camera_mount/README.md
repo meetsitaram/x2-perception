@@ -28,7 +28,7 @@ For a printer that struggles with supports, and because the D435 can only be hel
 faces vent the camera; user, 2026-11-16): `pocket_mount_hiking_print.stl`, built by `pocket_mount.py` (numbers in
 `pocket_mount_summary.json`, section `pocket_mount.png`, renders `simple_mount_view.png` from `render_simple_view.py`).
 
-- One straight block, 70 mm long, 69 cm3 (about 86 g in PLA). It wraps the camera's back face, the rear 18 mm of its top
+- One straight block, 70 mm long, 70 cm3 (about 86 g in PLA). It wraps the camera's back face, the rear 18 mm of its top
   face (lip) and the rear 15 mm of its bottom face, and fills down to the chest. Open at the front (lenses) and at both
   ends (the camera's ends stick out 10 mm each side, vents free).
 - The camera slides in from the front (0.3 mm clearance top and bottom) onto VHB tape on its back face (1.1 mm gap);
@@ -36,7 +36,9 @@ faces vent the camera; user, 2026-11-16): `pocket_mount_hiking_print.stl`, built
 - Chest face follows the chest from 257 to 290 mm up on torso_link, at least 6 mm above the panel seam (fixed shell only).
   The block is centred 17.5 mm to the robot's right of the centreline (the left imager sits on the centreline).
 - Print upside down, the flat top face on the bed (the STL is already oriented): 69 x 70 mm footprint, 33 mm tall, no face
-  steeper than 28 deg from vertical facing down, so no supports. PLA or PETG, 4 walls, 30 % infill.
+  steeper than 28 deg from vertical facing down, 36 cm2 flat on the bed, no island starts: no supports. PLA or PETG, 4
+  walls, 30 % infill. (First version, 2026-11-16 morning: the bed face was 0.2 mm off flat, so Bambu Studio flagged a
+  "floating cantilever"; fixed.)
 - `simple_mount.py` (a block taped to the camera's underside) is superseded: the underside vents must stay free.
 - Camera pose: the same as training, checked against the 24,500 export (`run_params/env.yaml` scene.camera.offset,
   `adapter_card.json` depth) and the port's config (`X2_TORSO_CAMERA_POS = (0.131, 0.0, 0.259)`,

@@ -39,6 +39,7 @@ hb, hh = CAM_D / 2, CAM_H / 2
 back_out = -hb - TAPE - WALL                          # outer back of the back wall
 lip_out = hh + FIT + WALL
 pts = [cam(back_out, lip_out), cam(-hb + LIP, lip_out), cam(-hb + LIP, hh + FIT),            # lip
+       (cam(back_out, lip_out)[0], Z_TOP),                                                   # top face exactly flat (bed face)
        cam(back_out, -hh - FIT), cam(-hb + BOTTOM, -hh - FIT),                                 # back wall bottom, bottom tip
        (X_BACK, Z_TOP), (X_BACK, Z_LOW)]
 outer = mf.CrossSection.hull_points([tuple(map(float, p)) for p in pts])
@@ -76,11 +77,13 @@ pr.apply_translation(-pr.bounds[0])
 nz = pr.face_normals[:, 2]; cz = pr.triangles_center[:, 2]
 down = (nz < -1e-3) & (cz > 0.3)
 worst = float(np.degrees(np.arcsin(np.clip(-nz[down], 0, 1))).max()) if down.any() else 0.0   # 0 = vertical wall, 90 = ceiling
+bed_area = float(pr.area_faces[(nz < -0.999) & (cz < 0.05)].sum()) / 100.0
+foot = float(pr.convex_hull.area_faces[(pr.convex_hull.face_normals[:, 2] < -0.999)].sum()) / 100.0
 over45 = float(pr.area_faces[(nz < -math.cos(math.radians(45))) & (cz > 0.3)].sum()) / 100.0
 back_area = LENGTH * CAM_H / 100.0
 info = dict(volume_cm3=round(tm.volume / 1000, 1), mass_g_pla_100pct=round(tm.volume / 1000 * 1.24),
             watertight=bool(tm.is_watertight), print_size_mm=np.round(pr.extents, 1).tolist(),
-            worst_downward_face_deg_from_vertical=round(worst, 1), overhang_over_45deg_cm2=round(over45, 2),
+            worst_downward_face_deg_from_vertical=round(worst, 1), bed_contact_cm2=round(bed_area, 1), overhang_over_45deg_cm2=round(over45, 2),
             chest_contact_z_mm=[round(float(contact[:, 2].min()), 1), round(float(contact[:, 2].max()), 1)],
             chest_contact_min_above_seam_mm=round(margin, 1), camera_back_tape_area_cm2=round(back_area, 1),
             lip_covers_top_face_mm=LIP, bottom_covers_bottom_face_mm=BOTTOM, fit_clearance_mm=FIT, tape_gap_back_mm=TAPE,
