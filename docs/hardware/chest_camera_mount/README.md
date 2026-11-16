@@ -38,6 +38,16 @@ faces vent the camera; user, 2026-11-16): `pocket_mount_hiking_print.stl`, built
 - Print upside down, the flat top face on the bed (the STL is already oriented): 69 x 70 mm footprint, 33 mm tall, no face
   steeper than 28 deg from vertical facing down, so no supports. PLA or PETG, 4 walls, 30 % infill.
 - `simple_mount.py` (a block taped to the camera's underside) is superseded: the underside vents must stay free.
+- Camera pose: the same as training, checked against the 24,500 export (`run_params/env.yaml` scene.camera.offset,
+  `adapter_card.json` depth) and the port's config (`X2_TORSO_CAMERA_POS = (0.131, 0.0, 0.259)`,
+  `X2_TORSO_CAMERA_PITCH_DOWN = 61.6 deg` in `models/hiking/x2_port/files_instinctlab/.../x2_parkour_target_amp_cfg.py`): on
+  torso_link, no roll or yaw. The training robot (`models/hiking/x2_port/robot/x2_ultra_pelvis_root.urdf`) has the same
+  waist chain (0.0671 + 0.0880 m) and chest mesh (`torso_plus_link.STL`) as the MuJoCo model used here, so the camera sits
+  at the same spot on the chest. The training camera follows the full torso pose (InstinctLab forces
+  attach_yaw_only = False for cameras), as a rigid mount does. Training randomised the mount by +-20 mm forward,
+  -105/+50 mm height, +-4 deg pitch, +-2 deg roll/yaw; aim for a few mm and 1-2 deg, and check a flat-floor depth frame
+  against `expected_depth_hiking.png` or `simple_mount_view.png`. Standing, the lens is 1.09 m up, the axis 54 deg below
+  horizontal, and straight ahead the image covers the floor from 0.13 to 2.3 m in front of the lens.
 ## The trained camera pose
 
 The pose is the camera's depth origin (the centre of the left infrared imager, 4.2 mm behind the front glass) in the
