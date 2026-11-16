@@ -34,7 +34,12 @@ For a printer that struggles with supports: `simple_mount_hiking_print.stl` (bui
   right of the centreline (the left imager then sits on the centreline).
 - **Print** lying on the camera face (the STL is already oriented): 31 x 70 mm on the bed, 22 mm tall, steepest wall 38 deg,
   no supports. PLA or PETG, 4 walls, 30 % infill, a 5 mm brim helps.
-- Same camera pose as training (Hiking: depth origin (131, 0, 259) mm, 61.6 deg down). No fall protection: use a
+- Same camera pose as training, checked against the 24,500 export (`run_params/env.yaml` scene.camera.offset and
+  `adapter_card.json` depth): torso_link, depth origin (0.131, 0, 0.259) m, quat wxyz (0.859, 0, 0.512, 0) = 61.6 deg down,
+  no roll or yaw. The training camera follows the full torso pose (InstinctLab's GroupedRayCasterCamera forces
+  attach_yaw_only = False and uses body pose x offset), so a rigid chest mount matches it. Training randomised the pose
+  by +-20 mm forward, -105/+50 mm height, +-4 deg pitch, +-2 deg roll and yaw; aim well inside that (a few mm, 1-2 deg)
+  and check with a flat-floor depth frame against `expected_depth_hiking.png`. No fall protection: use a
   tether, and keep a hand near the camera for the first tests.
 
 ## The trained camera pose
