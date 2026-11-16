@@ -22,6 +22,21 @@ very edge of what Hiking saw. Do not plan on that.)
 The SSR paper mounts its camera at the waist. Our SSR port was trained with this chest camera (`--camera chest_rs`), so use the
 chest mount for our SSR checkpoints, not the paper's waist mount.
 
+## Simple version (no cage, no supports) - 2026-11-16
+
+For a printer that struggles with supports: `simple_mount_hiking_print.stl` (built by `simple_mount.py`; numbers in
+`simple_mount_summary.json`, picture `simple_mount.png`). One solid four-sided block, 70 mm long, 18 cm3 (about 22 g):
+
+- **Camera face** (flat, 15 x 70 mm): tape the rear 15 mm of the D435's underside to it (3M VHB, 1.1 mm). The camera's
+  back-bottom edge sits flush with the block's upper front edge; the lens hangs forward of the block and looks down.
+- **Chest face** (follows the chest, about 20 x 70 mm, 13.6 cm2 of tape): from about 256 to 275 mm up on torso_link, at
+  least 5 mm above the panel seam, so it is only on the fixed upper shell. The block is centred 17.5 mm to the robot's
+  right of the centreline (the left imager then sits on the centreline).
+- **Print** lying on the camera face (the STL is already oriented): 31 x 70 mm on the bed, 22 mm tall, steepest wall 38 deg,
+  no supports. PLA or PETG, 4 walls, 30 % infill, a 5 mm brim helps.
+- Same camera pose as training (Hiking: depth origin (131, 0, 259) mm, 61.6 deg down). No fall protection: use a
+  tether, and keep a hand near the camera for the first tests.
+
 ## The trained camera pose
 
 The pose is the camera's depth origin (the centre of the left infrared imager, 4.2 mm behind the front glass) in the
