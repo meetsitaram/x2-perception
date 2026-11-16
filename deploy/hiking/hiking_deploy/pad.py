@@ -1,0 +1,253 @@
+"""Pad -> Hiking deploy node over UDP JSON (50 Hz, 127.0.0.1:5690). Runs on the host in sim and on PC2 on the robot.
+The node answers each pad with its state line, which the pad prints.
+
+    python3 pad.py [--source gamepad|terminal|script] [--script FILE] [--port 5690]
+
+gamepad, SONIC's layout (gwbc-x2 docs/x2/gamepad_cheatsheet.md; Xbox names, DualSense works via SDL):
+  stand: hold L1+L2+R1+R2 ~3 s (rumble), then Y. Drive: hold L2 (deadman); left stick up = forward (0..vmax, forward only),
+  left stick sideways = turn (yaw rate +-1.0); no sidestep (user, 2026-11-15: "side walk is not that good yet"); release L2 =
+  stop (the policy keeps it standing). Right stick: the sim viewer's camera (orbits the robot, still following it).
+  L1 / R1 while driving: vmax -/+ 0.1 m/s (0.1..0.8, starts at 0.5). E-stop: hold A+X and pump both triggers 3 times
+  (damps; latched); clear: release, wait 5 s or more, repeat the gesture, then stand again.
+  Sim only: View / Back held 1 s = reset the robot to the spawn (then stand again).
+terminal (keys typed into this terminal; deadman always on, sim only): Enter = stand / walk, Up / Down = speed +-0.1 m/s,
+  Left / Right = turn +-0.25 rad/s, , / . = sideways +-0.1 m/s, Space = stop, b = damp, e = e-stop on / off, r = reset (sim), q = quit.
+script: lines "t_seconds key=value ..." (keys vx vy wz deadman y b estop); values hold until changed; y / b fire once.
+Commands are rate-limited (0.5 m/s^2, 2 rad/s^2) and dead-zoned (0.15) as in the plan.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import select
+import socket
+import sys
+import time
+
+DEADZONE, VY_MAX, WZ_MAX = 0.15, 0.3, 1.0
+PRESETS = (0.3, 0.5, 0.8)                         # [-1] = top speed
+ACC_V, ACC_W = 0.5, 2.0
+HZ = 50.0
+
+
+def dz(v):
+    return 0.0 if abs(v) < DEADZONE else (v - DEADZONE * (1 if v > 0 else -1)) / (1 - DEADZONE)
+
+
+def limit(cur, tgt, rate, dt):
+    return cur + max(-rate * dt, min(rate * dt, tgt - cur))
+
+
+class Script:
+    def __init__(self, path):
+        self.rows = []
+        for ln in open(path):
+            ln = ln.split("#")[0].split()
+            if ln:
+                self.rows.append((float(ln[0]), dict((kv.split("=") + ["1"])[:2] for kv in ln[1:])))
+        self.i, self.t0 = 0, time.monotonic()
+        self.cur = dict(vx=0.0, vy=0.0, wz=0.0, deadman=False, estop=False)
+
+    def poll(self, fire):
+        t = time.monotonic() - self.t0
+        while self.i < len(self.rows) and self.rows[self.i][0] <= t:
+            for k, v in self.rows[self.i][1].items():
+                if k in ("y", "b", "reset"):
+                    fire.add(k)
+                elif k in ("deadman", "estop"):
+                    self.cur[k] = v in ("1", "true", "on")
+                else:
+                    self.cur[k] = float(v)
+            self.i += 1
+        return self.cur
+
+    def done(self):
+        return self.i >= len(self.rows) and time.monotonic() - self.t0 > self.rows[-1][0] + 1.0
+
+
+class Terminal:
+    """Raw keys from this terminal (cbreak, no echo)."""
+
+    def __init__(self):
+        import termios
+        import tty
+        self.fd = sys.stdin.fileno()
+        self.old = termios.tcgetattr(self.fd)
+        tty.setcbreak(self.fd)
+        self.cur = dict(vx=0.0, vy=0.0, wz=0.0, deadman=True, estop=False)
+        self.quit = False
+
+    def restore(self):
+        import termios
+        termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
+
+    def poll(self, fire):
+        c = self.cur
+        while select.select([self.fd], [], [], 0)[0]:
+            ch = os.read(self.fd, 64).decode(errors="ignore")
+            for seq in ("\x1b[A", "\x1b[B", "\x1b[C", "\x1b[D", "\x1bOA", "\x1bOB", "\x1bOC", "\x1bOD"):
+                while seq in ch:
+                    ch = ch.replace(seq, "", 1)
+                    k = seq[-1]
+                    if k == "A": c["vx"] = round(min(c["vx"] + 0.1, PRESETS[-1]), 2)
+                    elif k == "B": c["vx"] = round(max(c["vx"] - 0.1, 0.0), 2)
+                    elif k == "D": c["wz"] = round(min(c["wz"] + 0.25, WZ_MAX), 2)
+                    elif k == "C": c["wz"] = round(max(c["wz"] - 0.25, -WZ_MAX), 2)
+            for k in ch:
+                if k in "\r\n": fire.add("y")
+                elif k == "b": fire.add("b")
+                elif k == ",": c["vy"] = round(min(c["vy"] + 0.1, VY_MAX), 2)
+                elif k == ".": c["vy"] = round(max(c["vy"] - 0.1, -VY_MAX), 2)
+                elif k == " ": c.update(vx=0.0, vy=0.0, wz=0.0)
+                elif k == "e": c["estop"] = not c["estop"]
+                elif k == "r": fire.add("reset")
+                elif k == "q": self.quit = True
+        return c
+
+
+class Gamepad:
+    """SONIC's X2 pad layout (gwbc-x2 docs/x2/gamepad_cheatsheet.md), without its clips and dances."""
+    IGNITE_S, ARMED_S = 3.0, 5.0
+
+    def __init__(self):
+        os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+        import pygame
+        from pygame._sdl2 import controller
+        self.pg = pygame
+        pygame.init()
+        controller.init()
+        if controller.get_count() == 0:
+            sys.exit("no gamepad found (plug one in, or use --source terminal)")
+        self.c = controller.Controller(0)
+        print("gamepad:", self.c.name, flush=True)
+        self.prev, self.estop, self.estop_t = {}, False, -1e9
+        self.vmax, self.hold_t, self.armed_until, self.pumps, self.chord = 0.5, None, 0.0, 0, False
+        self.back_t, self.back_fired = None, False
+
+    def rumble(self, lo, hi, ms):
+        try:
+            self.c.rumble(lo, hi, ms)
+        except Exception:
+            pass
+
+    def poll(self, fire):
+        pg, c, now = self.pg, self.c, time.monotonic()
+        pg.event.pump()
+        btn = {k: c.get_button(getattr(pg, "CONTROLLER_BUTTON_" + k))
+               for k in ("A", "B", "X", "Y", "BACK", "LEFTSHOULDER", "RIGHTSHOULDER")}
+        ax = lambda n: c.get_axis(getattr(pg, "CONTROLLER_AXIS_" + n)) / 32767.0  # noqa: E731
+        edge = lambda k: btn[k] and not self.prev.get(k)  # noqa: E731
+        l2, r2 = ax("TRIGGERLEFT") > 0.5, ax("TRIGGERRIGHT") > 0.5
+        # ignition: L1+L2+R1+R2 held 3 s arms (rumble), then Y within 5 s = stand
+        if btn["LEFTSHOULDER"] and btn["RIGHTSHOULDER"] and l2 and r2:
+            self.hold_t = self.hold_t or now
+            if now - self.hold_t >= self.IGNITE_S and self.armed_until < now:
+                self.armed_until = now + self.ARMED_S
+                self.rumble(0.6, 0.6, 400)
+                print("ignition armed: press Y", flush=True)
+        else:
+            self.hold_t = None
+        if edge("Y") and now < self.armed_until:
+            fire.add("y")
+            self.armed_until = 0.0
+        # reset (sim only): View / Back held 1 s
+        if btn["BACK"]:
+            self.back_t = self.back_t or now
+            if now - self.back_t >= 1.0 and not self.back_fired:
+                fire.add("reset")
+                self.back_fired = True
+                self.rumble(0.3, 0.3, 200)
+        else:
+            self.back_t, self.back_fired = None, False
+        # e-stop: A+X chord, then pump both triggers (3 pumps); clear = the same gesture 5 s or more later
+        if btn["A"] and btn["X"]:
+            if not self.chord:
+                self.chord, self.pumps = True, 0
+            if l2 and r2 and not self.prev.get("both"):
+                self.pumps += 1
+                if self.pumps == 3:
+                    if not self.estop:
+                        self.estop, self.estop_t = True, now
+                        self.rumble(1.0, 1.0, 600)
+                        print("E-STOP", flush=True)
+                    elif now - self.estop_t >= 5.0:
+                        self.estop = False
+                        print("E-STOP CLEARED", flush=True)
+        else:
+            self.chord = False
+        # speed nudges while driving (L1 / R1 alone, deadman held)
+        drive = l2 and not r2 and not (btn["A"] and btn["X"])
+        if drive and edge("LEFTSHOULDER") and not btn["RIGHTSHOULDER"]:
+            self.vmax = round(max(self.vmax - 0.1, 0.1), 2)
+        if drive and edge("RIGHTSHOULDER") and not btn["LEFTSHOULDER"]:
+            self.vmax = round(min(self.vmax + 0.1, PRESETS[-1]), 2)
+        btn["both"] = l2 and r2
+        self.prev = btn
+        names = dict(A="A", B="B", X="X", Y="Y", BACK="View", LEFTSHOULDER="L1", RIGHTSHOULDER="R1")
+        # raw inputs for the viewer's pad HUD (screen axes: x right, y up)
+        self.hud = dict(lx=round(ax("LEFTX"), 2), ly=round(-ax("LEFTY"), 2), rx=round(ax("RIGHTX"), 2), ry=round(-ax("RIGHTY"), 2),
+                        l2=round(ax("TRIGGERLEFT"), 2), r2=round(ax("TRIGGERRIGHT"), 2),
+                        held=[names[k] for k in names if btn[k]], vmax=self.vmax, estop=self.estop,
+                        ign="armed" if now < self.armed_until else ("%.1f" % (now - self.hold_t) if self.hold_t else ""))
+        return dict(vx=max(0.0, -dz(ax("LEFTY"))) * self.vmax, vy=0.0,           # sidestep off (user, 2026-11-15)
+                    wz=-dz(ax("LEFTX")) * WZ_MAX, deadman=drive and not (btn["LEFTSHOULDER"] and btn["RIGHTSHOULDER"]),
+                    estop=self.estop)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--source", choices=("gamepad", "terminal", "script"), default="gamepad")
+    ap.add_argument("--script")
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--port", type=int, default=5690)
+    a = ap.parse_args()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setblocking(False)
+    src = Script(a.script) if a.source == "script" else Terminal() if a.source == "terminal" else Gamepad()
+    tty = a.source == "terminal"
+    if tty:
+        print(" ".join(__doc__.split("terminal (")[1].split("script:")[0].split()))
+    ev, out, node_state = {"y": 0, "b": 0, "reset": 0}, dict(vx=0.0, vy=0.0, wz=0.0), "no answer from the deploy node yet"
+    t_next, n = time.monotonic(), 0
+    try:
+        while True:
+            fire = set()
+            cur = src.poll(fire)
+            if (a.source == "script" and src.done()) or getattr(src, "quit", False):
+                break
+            tgt = dict(vx=cur["vx"], vy=cur["vy"], wz=cur["wz"])
+            if not cur["deadman"] or cur["estop"]:
+                tgt = dict(vx=0.0, vy=0.0, wz=0.0)
+            dt = 1.0 / HZ
+            out = dict(vx=limit(out["vx"], tgt["vx"], ACC_V, dt), vy=limit(out["vy"], tgt["vy"], ACC_V, dt),
+                       wz=limit(out["wz"], tgt["wz"], ACC_W, dt))
+            for k in fire:
+                ev[k] += 1
+            sock.sendto(json.dumps(dict(out, deadman=bool(cur["deadman"]), estop=bool(cur["estop"]), ev=ev, seq=n,
+                                        hud=getattr(src, "hud", "%s target vx %.1f vy %+.1f wz %+.2f" % (a.source, tgt["vx"], tgt["vy"], tgt["wz"])))).encode(),
+                        (a.host, a.port))
+            try:
+                while True:
+                    node_state = sock.recv(4096).decode()
+            except (BlockingIOError, ConnectionRefusedError):
+                pass
+            line = "%s | target vx %.1f vy %+.1f wz %+.2f%s" % (node_state.replace("|", "  "), tgt["vx"], tgt["vy"], tgt["wz"],
+                                                               " E-STOP" if cur["estop"] else "")
+            if tty:
+                if n % 5 == 0 or fire:
+                    sys.stdout.write("\r\x1b[K" + line[:200])
+                    sys.stdout.flush()
+            elif fire or n % 50 == 0:
+                print("%s %s" % ("".join(sorted(fire)) or "-", line), flush=True)
+            n += 1
+            t_next += dt
+            time.sleep(max(0.0, t_next - time.monotonic()))
+    finally:
+        if tty:
+            src.restore()
+            print()
+
+
+if __name__ == "__main__":
+    main()
