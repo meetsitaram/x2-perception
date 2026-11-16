@@ -16,6 +16,16 @@ import trimesh
 from build_mount import heightfield_solid, to_trimesh, interp_shell, TAPE, HERE
 import manifold3d as mf
 
+
+def stl_clean(m):
+    """What the STL will hold: float32 vertices, welded, no duplicate faces, the main body only (flat crumbs dropped)."""
+    for _ in range(3):
+        m = trimesh.Trimesh(np.asarray(m.vertices, np.float32).astype(np.float64), m.faces, process=True)
+        m.update_faces(m.unique_faces()); m.remove_unreferenced_vertices()      # keep zero-area faces: they close the surface
+        parts = [c for c in m.split(only_watertight=False) if abs(c.volume) > 1.0]
+        m = max(parts, key=lambda c: abs(c.volume)); m.fix_normals()
+    return m
+
 PITCH = 61.6                         # deg below horizontal (optical axis)
 O = np.array([131.0, 0.0, 259.0])    # depth origin (left imager), torso_link, mm
 GLASS = 4.2                          # depth origin is this far behind the front glass
@@ -64,9 +74,20 @@ shell = interp_shell(ys, zs, X, GY, GZ)
 assert np.all(shell > 40), "shell heightmap does not cover the block"
 robot = heightfield_solid(gy, gz, np.full_like(shell, 0.0), shell + TAPE)    # chest + tape layer
 block = prism - robot
+# Round the corners of every print layer (user, 2026-11-16: "smooth the corners - it will help ease the print
+# challenges"). The print layers are horizontal planes of the robot frame (the flat top face goes on the bed), so an
+# opening (erode, then dilate) with a flat horizontal disk of radius CORNER_R rounds the outline corners in each layer
+# and leaves vertical edges, the bed face and the taped faces unchanged.
+CORNER_R = float(os.environ.get("CORNER_R", "6.0"))
+if CORNER_R > 0:
+    disk = mf.Manifold.cylinder(0.02, CORNER_R, CORNER_R, 48, True)          # height 0.02 mm, axis = robot z
+    block = block.minkowski_difference(disk).minkowski_sum(disk)
+    block = max(block.decompose(), key=lambda q: q.volume())   # drop zero-volume crumbs left by the rounding
 tm = to_trimesh(block)
 parts = tm.split(only_watertight=False)
 tm = max(parts, key=lambda c: c.volume)
+tm = trimesh.Trimesh(tm.vertices, tm.faces, process=True)
+tm = max(tm.split(only_watertight=True), key=lambda c: c.volume)   # the main body only (drop flat zero-volume crumbs)
 
 # checks
 contact = tm.vertices[np.abs(tm.vertices[:, 0] - (interp_shell(ys, zs, X, tm.vertices[:, 1], tm.vertices[:, 2]) + TAPE)) < 0.3]
@@ -84,15 +105,15 @@ pr = tm.copy(); pr.apply_transform(Rp); pr.apply_translation(-pr.bounds[0])
 # overhang: faces pointing down by more than 45 deg (excluding the bed face)
 nz = pr.face_normals[:, 2]; cz = pr.triangles_center[:, 2]
 overhang = float(pr.area_faces[(nz < -math.cos(math.radians(45))) & (cz > 0.3)].sum()) / 100.0
-info = dict(volume_cm3=round(tm.volume / 1000, 1), mass_g_pla_100pct=round(tm.volume / 1000 * 1.24, 0),
+info = dict(corner_radius_mm=CORNER_R, volume_cm3=round(tm.volume / 1000, 1), mass_g_pla_100pct=round(tm.volume / 1000 * 1.24, 0),
             watertight=bool(tm.is_watertight), bounds_robot_mm=np.round(tm.bounds, 1).tolist(),
             print_size_mm=np.round(pr.extents, 1).tolist(), overhang_cm2=round(overhang, 2),
             chest_tape_area_cm2=round(chest_area, 1), camera_tape_area_cm2=round(cam_area, 1),
             chest_contact_z_mm=[round(float(contact[:, 2].min()), 1), round(float(contact[:, 2].max()), 1)],
             contact_min_above_seam_mm=round(margin, 1), max_ahead_of_depth_origin_along_axis_mm=round(tglass, 1),
             camera_seat_upper_edge_mm=np.round(S2, 1).tolist(), camera_seat_lower_edge_mm=np.round(S1, 1).tolist())
-tm.export(os.path.join(HERE, "simple_mount_hiking_robot_frame.stl"))
-pr.export(os.path.join(HERE, "simple_mount_hiking_print.stl"))
+tm = stl_clean(tm); tm.export(os.path.join(HERE, "simple_mount_hiking_robot_frame.stl"))
+pr = stl_clean(pr); pr.export(os.path.join(HERE, "simple_mount_hiking_print.stl"))
 json.dump(info, open(os.path.join(HERE, "simple_mount_summary.json"), "w"), indent=1)
 print(json.dumps(info, indent=1))
 

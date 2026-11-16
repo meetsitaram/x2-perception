@@ -1,12 +1,13 @@
 {
- "volume_cm3": 44.4,
- "mass_g_pla_100pct": 55.0,
+ "corner_radius_mm": 6.0,
+ "volume_cm3": 42.9,
+ "mass_g_pla_100pct": 53.0,
  "watertight": true,
  "bounds_robot_mm": [
   [
-   76.0,
+   78.6,
    -52.5,
-   268.4
+   270.7
   ],
   [
    131.6,
@@ -15,18 +16,18 @@
   ]
  ],
  "print_size_mm": [
-  55.6,
+  53.0,
   70.0,
-  21.1
+  18.8
  ],
  "overhang_cm2": 0.0,
- "chest_tape_area_cm2": 16.3,
+ "chest_tape_area_cm2": 14.7,
  "camera_tape_area_cm2": 17.5,
  "chest_contact_z_mm": [
-  268.4,
+  270.7,
   289.5
  ],
- "contact_min_above_seam_mm": 18.9,
+ "contact_min_above_seam_mm": 20.8,
  "max_ahead_of_depth_origin_along_axis_mm": -21.9,
  "camera_seat_upper_edge_mm": [
   131.6,

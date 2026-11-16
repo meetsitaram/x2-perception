@@ -28,13 +28,14 @@ The D435 may only be held by its **back**: its top, bottom and end faces vent th
 `simple_mount_hiking_print.stl`, built by `simple_mount.py` (numbers in `simple_mount_summary.json`, section
 `simple_mount.png`, renders and camera view `simple_mount_view.png` from `render_simple_view.py`).
 
-- One straight block, 70 mm long, 44 cm3 (about 55 g in PLA). Its seat face is taped (VHB, 1.1 mm) to the camera's back
+- One straight block, 70 mm long, 43 cm3 (about 53 g in PLA). Its seat face is taped (VHB, 1.1 mm) to the camera's back
   face, 25 x 70 mm (17.5 cm2); the block stays entirely behind the camera's back plane, so the top, bottom, ends and lenses
   are all free. Line the camera's back face up with the seat (top and bottom edges flush), camera centred on the block.
 - Chest face follows the chest from 268 to 290 mm up on torso_link (16 cm2 of tape), 19 mm above the panel seam (fixed
   shell only). The block is centred 17.5 mm to the robot's right of the centreline (the left imager sits on the centreline).
 - Print upside down, the flat top face on the bed (the STL is already oriented): 56 x 70 mm, 21 mm tall, 32 cm2 on the bed,
-  no face pointing down steeper than 28 deg from vertical, no island starts: no supports. PLA or PETG, 4 walls, 30 % infill.
+  no face pointing down steeper than 28 deg from vertical, no island starts: no supports. Every layer's corners are
+  rounded to 6 mm (`CORNER_R`; `simple_mount_layers.png`) to help adhesion. PLA or PETG, 4 walls, 30 % infill.
 - Superseded the same day: `pocket_mount.py` (covered the top and bottom vents) and the first block taped to the underside.
 - Camera pose: the same as training, checked against the 24,500 export (`run_params/env.yaml` scene.camera.offset,
   `adapter_card.json` depth) and the port's config (`X2_TORSO_CAMERA_POS = (0.131, 0.0, 0.259)`,
