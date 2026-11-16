@@ -1,0 +1,35 @@
+{
+ "volume_cm3": 69.0,
+ "mass_g_pla_100pct": 86,
+ "watertight": true,
+ "print_size_mm": [
+  68.8,
+  70.0,
+  33.3
+ ],
+ "worst_downward_face_deg_from_vertical": 28.4,
+ "overhang_over_45deg_cm2": 0.0,
+ "chest_contact_z_mm": [
+  256.7,
+  290.0
+ ],
+ "chest_contact_min_above_seam_mm": 6.2,
+ "camera_back_tape_area_cm2": 17.5,
+ "lip_covers_top_face_mm": 18.0,
+ "bottom_covers_bottom_face_mm": 15.0,
+ "fit_clearance_mm": 0.3,
+ "tape_gap_back_mm": 1.1,
+ "most_forward_point_vs_depth_origin_mm": -2.8,
+ "bounds_robot_mm": [
+  [
+   75.7,
+   -52.5,
+   256.7
+  ],
+  [
+   144.4,
+   17.5,
+   290.0
+  ]
+ ]
+}
