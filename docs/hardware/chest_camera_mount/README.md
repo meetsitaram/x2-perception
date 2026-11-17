@@ -22,6 +22,32 @@ very edge of what Hiking saw. Do not plan on that.)
 The SSR paper mounts its camera at the waist. Our SSR port was trained with this chest camera (`--camera chest_rs`), so use the
 chest mount for our SSR checkpoints, not the paper's waist mount.
 
+## Simple version: back-only block (no cage, no supports) - 2026-11-16
+
+The D435 may only be held by its **back**: its top, bottom and end faces vent the camera and stay open (user, 2026-11-16).
+`simple_mount_hiking_print.stl`, built by `simple_mount.py` (numbers in `simple_mount_summary.json`, section
+`simple_mount.png`, renders and camera view `simple_mount_view.png` from `render_simple_view.py`).
+
+- One straight block, 70 mm long, 43 cm3 (about 53 g in PLA). Its seat face is taped (VHB, 1.1 mm) to the camera's back
+  face, 25 x 70 mm (17.5 cm2); the block stays entirely behind the camera's back plane, so the top, bottom, ends and lenses
+  are all free. Line the camera's back face up with the seat (top and bottom edges flush), camera centred on the block.
+- Chest face follows the chest from 268 to 290 mm up on torso_link (16 cm2 of tape), 19 mm above the panel seam (fixed
+  shell only). The block is centred 17.5 mm to the robot's right of the centreline (the left imager sits on the centreline).
+- Print upside down, the flat top face on the bed (the STL is already oriented): 56 x 70 mm, 21 mm tall, 32 cm2 on the bed,
+  no face pointing down steeper than 28 deg from vertical, no island starts: no supports. Every layer's corners are
+  rounded to 6 mm (`CORNER_R`; `simple_mount_layers.png`) to help adhesion. PLA or PETG, 4 walls, 30 % infill.
+- Superseded the same day: `pocket_mount.py` (covered the top and bottom vents) and the first block taped to the underside.
+- Camera pose: the same as training, checked against the 24,500 export (`run_params/env.yaml` scene.camera.offset,
+  `adapter_card.json` depth) and the port's config (`X2_TORSO_CAMERA_POS = (0.131, 0.0, 0.259)`,
+  `X2_TORSO_CAMERA_PITCH_DOWN = 61.6 deg` in `models/hiking/x2_port/files_instinctlab/.../x2_parkour_target_amp_cfg.py`): on
+  torso_link, no roll or yaw. The training robot (`models/hiking/x2_port/robot/x2_ultra_pelvis_root.urdf`) has the same
+  waist chain (0.0671 + 0.0880 m) and chest mesh (`torso_plus_link.STL`) as the MuJoCo model used here, so the camera sits
+  at the same spot on the chest. The training camera follows the full torso pose (InstinctLab forces
+  attach_yaw_only = False for cameras), as a rigid mount does. Training randomised the mount by +-20 mm forward,
+  -105/+50 mm height, +-4 deg pitch, +-2 deg roll/yaw; aim for a few mm and 1-2 deg, and check a flat-floor depth frame
+  against `expected_depth_hiking.png` or `simple_mount_view.png`. Standing, the lens is 1.09 m up, the axis 54 deg below
+  horizontal, and straight ahead the image covers the floor from 0.13 to 2.3 m in front of the lens.
+
 ## The trained camera pose
 
 The pose is the camera's depth origin (the centre of the left infrared imager, 4.2 mm behind the front glass) in the
