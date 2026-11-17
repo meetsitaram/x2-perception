@@ -7,7 +7,7 @@ simulator. On the real X2 the only usable terrain sensor is an added RealSense D
 the robot's proprioception**, under the unchanged ACP. Plan, history and every result: `docs/TODO_depth_to_heightmap.md`;
 findings: `docs/FINDINGS.md` D-depth1, B-app1, B-acp1.
 
-## Result (2026-11-17, our apparatus, seeds 2000-2049)
+## Result (our apparatus, seeds 2000-2049)
 
 | | clean sim depth | D435-like noise in the loop |
 | --- | --- | --- |
