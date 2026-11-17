@@ -5,7 +5,7 @@ overlay of eval/overlays.py, with ACP's chest camera: the bracket pose at the tr
 
 --extra: the run's ACPD_EXTRA file for that episode: ACP's overlay (eval/overlays.py ACPOverlay) drawn from the maps ACP was
 given, i.e. the student's estimate in a student run: planner tiles, tracker dots, planned landing rings, stance squares.
-Textures: the apparatus is dressed from terrain-park's CAD export (APPARATUS_SCENE, default terrain-park/apparatus/ours/sim).
+Apparatus: drawn from the eval's physics, or dressed from APPARATUS_SCENE only when that is the eval's own source scene.
 """
 import os
 import math
@@ -14,7 +14,10 @@ import sys
 
 import numpy as np
 
-os.environ.setdefault("APPARATUS_SCENE", os.path.expanduser("~/Projects/terrain-park/apparatus/ours/sim/apparatus.xml"))
+# No apparatus dressing by default: one map per render (user, 2026-11-17: "don't have both overlapped together"). terrain-park's
+# CAD export is a stale CAD revision (docs/FINDINGS.md B-app1) and drew a second pair of 4x4s over the eval's; without
+# APPARATUS_SCENE the apparatus is drawn from the eval's own physics. APPARATUS_SCENE may name a scene that IS the eval's
+# geometry (loco-manip-apparatus sim/scene_x2_env_mobility.xml, the source of its raster and walls).
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "eval"))
 import overlays  # noqa: E402

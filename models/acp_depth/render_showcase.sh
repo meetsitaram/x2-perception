@@ -4,8 +4,11 @@
 #   - ACP's own overlay drawn from the maps ACP was GIVEN (the student's estimate in a student run, never the simulator's):
 #     planner 17 x 11 tiles (green level / orange high / blue low), tracker 9 x 7 black dots, planned landing rings, stance squares
 #   - the chest depth camera inset bottom right (ACP's chest camera pose, distance scale)
-#   - our apparatus with its real textures (terrain-park's CAD export, absolute asset paths), chase camera raised (-48 deg) so
-#     its walls do not hide the robot; the held-out ladder courses with the standard chase camera
+#   - our apparatus as ONE map (user, 2026-11-17: "don't have both overlapped together"): the eval's physics drawn, or with
+#     APPARATUS_DRESS=<loco-manip-apparatus sim/scene_x2_env_mobility.xml> its real textures (that scene is the eval's own
+#     source, same frame); never terrain-park's CAD export (a stale CAD revision: a second pair of 4x4s, docs/FINDINGS.md
+#     B-app1); chase camera raised (-48 deg) so its walls do not hide the robot; the held-out ladder courses with the
+#     standard chase camera
 #   - five clips: our apparatus route (seed 2007), its door + both 4x4s with a fixed camera on the far side facing the robot
 #     (until it reaches button 2 behind the back 4x4), stairs up, stairs down, a 4x4 log (eval ladder, held out of training)
 #
@@ -22,7 +25,6 @@ mkdir -p "$V"
 PY=$HOME/Projects/gwbc-x2/.venv/bin/python
 export PA_ROBOT_DIR=$HOME/Projects/gwbc-x2/gear_sonic/data/assets/robot_description
 ACP=$(cd ../../../release/ckpt/acp 2>/dev/null && pwd || echo "$HOME/projects/x2-perception/release/ckpt/acp")
-TP=$HOME/Projects/terrain-park/apparatus/ours
 ENV="EVAL_REGRESSION=0 ACPD_MODE=student ACPD_STUDENT=$STUDENT ACP_HANDOVER_DIR=$ACP ACP_GOAL_R=0.2 ACP_LOOKAHEAD=0.3 X2_EXCLUDE_PAIRS=hip
      PA_ROBOT_DIR=$HOME/Projects/gwbc-x2/gear_sonic/data/assets/robot_description $EXTRA_ENV"
 # 1. the four episodes, recording the maps ACP was given (ACPD_EXTRA)
@@ -33,12 +35,9 @@ for t in acp_stairs_up_L2 acp_stairs_down_L2 acp_log_L2; do
     --trials 1 --out $V/ladder > $V/$t.log 2>&1 ) &
 done
 wait
-# 2. the apparatus dressing with absolute asset paths (terrain-park's apparatus.xml uses paths relative to its own folder)
-sed -e "s|file=\"\.\./cad/|file=\"$TP/cad/|g" -e "s|file=\"meshes/|file=\"$TP/sim/meshes/|g" $TP/sim/apparatus.xml > $V/apparatus_abs.xml
-#    ... and lowered onto the eval's physics deck (the CAD's z = 0 is the venue floor, ~0.108 m below the deck top)
-( ulimit -v 6000000; $PY models/acp_depth/align_apparatus.py $V/apparatus_abs.xml $V/apparatus_aligned.xml ) >> $V/render.log 2>&1
-# 3. renders (imageio from ~/.cache/x2-render-pydeps, without its numpy: the eval venv's numpy stays)
-R() { ( ulimit -v 12000000; PYTHONPATH=$HOME/.cache/x2-render-pydeps RENDER_MINIMAL=1 MUJOCO_GL=glfw APPARATUS_SCENE=$PWD/$V/apparatus_aligned.xml \
+# 2. renders (imageio from ~/.cache/x2-render-pydeps, without its numpy: the eval venv's numpy stays); one apparatus map
+DRESS=(); [[ -n "${APPARATUS_DRESS:-}" ]] && DRESS=(APPARATUS_SCENE="$(readlink -f "$APPARATUS_DRESS")")
+R() { ( ulimit -v 12000000; env PYTHONPATH=$HOME/.cache/x2-render-pydeps RENDER_MINIMAL=1 MUJOCO_GL=glfw "${DRESS[@]}" \
         "$@" ) >> $V/render.log 2>&1; }
 R env RENDER_CHASE_ELEV=-48 RENDER_CHASE_DIST=3.6 $PY models/acp_depth/render_vis.py $V/app 2007 $V/apparatus.mp4 \
   "ACP on depth only ($LABEL): height maps + footholds from the depth student | our apparatus" --extra $V/extra_app/ep0001.npz &

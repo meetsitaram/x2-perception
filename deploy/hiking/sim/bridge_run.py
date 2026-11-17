@@ -7,12 +7,13 @@
    stands the robot up in its --init-pose where it fell (user: "reset only where it falls, or at least some flat terrain near
    that place"): same heading, on the nearest flat patch within 2.5 m (0.5 m square, floor within 1 cm, nothing taller),
    at rest, physics frozen until the next deploy command, as at start. The deploy node sends it after it has stopped
-   commanding (pad: View / Back held 1 s).
+   commanding (pad: View / Back held 1 s). BRIDGE_SPAWN="x,y,yaw_deg" (env): the same reset once at start, at that place.
 
     python3 bridge_run.py /path/to/gwbc-x2/gear_sonic_deploy/scripts/x2_mujoco_ros_bridge.py [bridge args...]
 """
 import importlib.util
 import math
+import os
 import socket
 import sys
 import threading
@@ -32,6 +33,9 @@ def _xbody_local(m, d, objtype, objid, res, flg_local):
 
 mujoco.mj_objectVelocity = _xbody_local
 _reset_requested = threading.Event()
+_spawn = [tuple(float(v) for v in os.environ["BRIDGE_SPAWN"].split(","))] if os.environ.get("BRIDGE_SPAWN") else []
+if _spawn:
+    _reset_requested.set()
 
 
 def _listen():
@@ -117,6 +121,9 @@ def _patch(cls):
             x0, y0 = float(self.mj_data.qpos[0]), float(self.mj_data.qpos[1])
             w, qx, qy, qz = self.mj_data.qpos[3:7]
             yaw = math.atan2(2 * (w * qz + qx * qy), 1 - 2 * (qy * qy + qz * qz))
+            if _spawn:
+                x0, y0, yaw = _spawn[0][0], _spawn[0][1], math.radians(_spawn[0][2])
+                _spawn.clear()
             mujoco.mj_resetData(self.mj_model, self.mj_data)
             pose = str(getattr(self.args, "init_pose", "default")).replace("-", "_")
             if pose == "default":

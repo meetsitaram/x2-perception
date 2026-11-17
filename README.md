@@ -28,6 +28,22 @@ MuJoCo, not the training simulator.
 
 The Hiking staircase clip is from checkpoint 26,500.
 
+### ACP on a depth camera (2026-11-17)
+
+ACP's two height scans can come from the chest RealSense instead of the simulator: a small **fine-map depth student**
+([`models/acp_depth/`](models/acp_depth/)) projects the chest depth through the camera pose (IMU attitude + leg kinematics,
+no terrain information) into a 2.5 cm map around the robot, under the unchanged ACP. With D435-like noise in the loop it
+completes our apparatus route **46/50**, the same as ACP with perfect scans. On the terrain park 61 of 63 episodes succeed
+(4x4s, blocks up to 25 cm, ramps, steep wedges, straight / L / U stairs, homes, hallways with 4x4s).
+
+[![ACP on depth only: terrain park and the apparatus](docs/media/acp_depth_park.gif)](docs/media/acp_depth_park.mp4)
+
+Each robot is its own eval episode replayed in one scene. Drawn per robot: the height map ACP was given by the student (tiles:
+green level, yellow 4x4 height, orange a stair step, red a block, blue below), its tracker scan (dots), planned landings
+(rings, left blue / right orange); top right the chest depth of the robot in focus; red = a stumble. Full film (96 s, with
+the whole apparatus route): [`docs/media/acp_depth_park.mp4`](docs/media/acp_depth_park.mp4). Made with
+`models/acp_depth/park_sims.py` + `render_park.py`. Deployment to the real X2 is in progress ([`deploy/acp/PLAN.md`](deploy/acp/PLAN.md)).
+
 Review page (status, training curves, paper-vs-code audits, renders): open [`docs/site/index.html`](docs/site/index.html)
 (self-contained; the training curves are in `docs/site/training_plots.html`).
 

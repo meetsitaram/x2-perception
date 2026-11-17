@@ -163,6 +163,24 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
   apparatus physics (deploy/hiking/sim/make_scene.py). The eval itself is unchanged.
 - **Open (user):** which one is the apparatus as built? If the CAD, every track's apparatus score is measured on stale walls
   and beams: regenerate the raster, walls and route from the CAD, re-score.
+- **Resolved 2026-11-17 (user asked how one apparatus gave two models):** the eval is the current CAD; terrain-park's
+  `apparatus/ours/sim/apparatus.xml` is a stale export. Both come from the same parametric CAD (`cad/params.py` + `model.py`,
+  identical in meetsitaram/loco-manip-apparatus and terrain-park). The eval's front 4x4, (2.985, 0.257)-(3.098, 1.041) m, is
+  exactly the current params, (117.5, 10)-(122, 41) in (commit 4d0a92d, 2026-10-07 07:11). terrain-park's export has the 4x4s at
+  centre (116.75, 26.0) in, 32.65 in long, yaw 78.5 deg: exactly the params of 7fba58a, (113.5, 10)-(120, 42) in, replaced 71
+  minutes later. Neither generated file is in loco-manip-apparatus's git (both were built locally on the Windows PC); the
+  stale export was copied into terrain-park on 2026-11-15. model.py changed until 2026-10-28, which likely explains the other
+  wall mismatches. The 0.108 m is no discrepancy: the export's z = 0 is the venue floor, the eval's the deck top (deck 4.25 in).
+  Consequences: the apparatus scores stand; the sim park (deploy/hiking/sim, A2 routes) and the render dressing used the
+  stale model. To do: regenerate terrain-park's export from the current CAD (needs trimesh; terrain-park is public, push on
+  the user's go), rebuild the park scene, rerun A2. Final check on the built apparatus: front 4x4 centre 119.75 in from the
+  deck's start end (stale export: 116.75 in).
+- **Acted 2026-11-17 (user: "It's ok to have either map, just don't have both overlapped together"):** the sim park had both
+  stacked (eval raster with its 4x4s under the stale CAD, whose deck sat 0.108 m higher and whose ramp / stair skins are
+  visual-only); the renders drew the CAD dressing beside the eval's own 4x4s. Now one map: make_scene.py APPARATUS_MODEL=eval
+  (default; CAD only with APPARATUS_MODEL=cad, replacing the eval walls), park rebuilt (old one kept as
+  scenes/park_cad_stale); render_showcase.sh / render_vis.py draw the eval's physics unless APPARATUS_DRESS names the eval's
+  own source scene (loco-manip-apparatus sim/scene_x2_env_mobility.xml, on the Windows PC). A2 routes rerun on the one-map park.
 
 ### B-acp1. ACP eval adapter: on a hold at a waypoint without a station heading the robot spins in place (2026-11-16) - acted (acp_depth only), open (shared adapter)
 - **Found:** `eval/adapters/acp.py` faces the bearing of the waypoint while holding; once the robot stands on it the bearing

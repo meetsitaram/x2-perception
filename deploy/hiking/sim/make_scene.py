@@ -57,13 +57,25 @@ PARKS = {
              (2 * TILE, ["tp:%s:8%s" % (t, ":U" if t == "stairs" else "") for t in TP_TYPES]),
              (-TILE, ["hik_slope_up_L2", "hik_stairs_up_L2", "hik_platform_up_L2", "hik_gap_L2", "hik_boxes_L2", "hik_rough_L2",
                       "hik_stairs_down_L2", "apparatus:eval"])],
+    # the render showcase (models/acp_depth/render_park.py): one level-4 tile per feature, the stairs, and our apparatus
+    "showcase": [(0.0, ["tp:single_beams:4", "tp:beam_fields:4", "tp:blocks:4", "tp:wedges:4:long_ramp", "tp:wedges:4:pinwheel"]),
+                 (TILE, ["tp:stairs:4:straight", "tp:stairs:4:L", "tp:stairs:4:U", "apparatus:eval"]),
+                 (-TILE, ["tp:homes:4", "tp:homes:6"]),
+                 (-2 * TILE, ["tp:blocks:9", "tp:wedges:8:pinwheel", "tp:log_corridors:4", "tp:log_corridors:6", "tp:log_corridors:8"])],
     # the first park (2026-11-15 morning): Hiking's paper types and three extended_v1 tiles
     "hiking_park": [(0.0, ["hik_slope_up_L2", "hik_stairs_up_L2", "hik_platform_up_L2", "hik_gap_L2"]),
                     (TILE, ["hik_boxes_L2", "hik_small_boxes_L2", "hik_rough_L2", "hik_stairs_down_L2"]),
                     (-TILE, ["ext_log_single", "ext_wedges", "ext_stairs_up", "apparatus:eval"])],
 }
 APPARATUS_OPEN = {"start_gate": math.pi / 2, "side_gate": math.pi / 2, "door_leaf": math.pi / 2}   # hinge -> drawn angle
-APPARATUS = []                                    # world shifts of pasted apparatus tiles (their CAD model is drawn there)
+APPARATUS = []                                    # world shifts of pasted apparatus tiles
+# One apparatus model per scene, never both stacked (user, 2026-11-17: "It's ok to have either map, just don't have both
+# overlapped together"). eval (default): the eval's raster + wall boxes, which are the current CAD (docs/FINDINGS.md B-app1).
+# cad: a CAD export as physics and drawing, the eval's walls left out. terrain-park's export of 2026-11-15 is a stale CAD
+# revision (4x4s 3 in off): use one regenerated from the current CAD (PA_APPARATUS_DIR; 2026-11-17: 98 % of the deck within
+# 1 cm of the eval raster, models/acp_depth/runs/park_app).
+APPARATUS_MODEL = os.environ.get("APPARATUS_MODEL", "eval")
+assert APPARATUS_MODEL in ("eval", "cad"), APPARATUS_MODEL
 VIS, MESHES = [], []                              # visual-only boxes; meshes (collide or not), world frame, from tp tiles
 
 
@@ -333,7 +345,8 @@ def add_apparatus_model(spec, shift, k):
     for b in a.bodies:
         if hasattr(b, "gravcomp"):
             b.gravcomp = 0
-    frame = spec.worldbody.add_frame(pos=[shift[0], shift[1], shift[2] + 0.003])
+    # the export's z = 0 is the venue floor, the raster's the deck top (deck 4.25 in): lower it by the deck, 3 mm proud
+    frame = spec.worldbody.add_frame(pos=[shift[0], shift[1], shift[2] - 4.25 * 0.0254 + 0.003])
     spec.attach(a, prefix="app%d_" % k, frame=frame)
 
 
@@ -391,11 +404,11 @@ def build(scene, out: pathlib.Path):
                 k += 1
         info["hfield_chunks"] = k
         for i, b in enumerate(boxes):
-            if APPARATUS and "mat" not in b and in_apparatus(info, *b["center"][:2]):
+            if APPARATUS_MODEL == "cad" and APPARATUS and "mat" not in b and in_apparatus(info, *b["center"][:2]):
                 continue                    # the apparatus CAD model is the physics there (add_apparatus_model)
             w = spec.worldbody.add_geom(name="wall_%d" % i, type=mujoco.mjtGeom.mjGEOM_BOX, size=list(b["half"]),
                                         pos=list(b["center"]), quat=list(b["quat"]),
-                                        material=b.get("mat") or ("hidden" if APPARATUS and surface_at(info, scene, *b["center"][:2]) == "concrete"
+                                        material=b.get("mat") or ("hidden" if APPARATUS_MODEL == "cad" and APPARATUS and surface_at(info, scene, *b["center"][:2]) == "concrete"
                                                                   and in_apparatus(info, *b["center"][:2]) else "cedar"))
             w.group = X.GROUP_WALL
     spec.visual.headlight.ambient = [0.35, 0.35, 0.35]      # lighting as the eval renders (eval/x2.py): a sun with shadows
@@ -427,9 +440,11 @@ def build(scene, out: pathlib.Path):
             else:
                 g.contype, g.conaffinity, g.group = 0, 0, 0
         info["tp_visual_boxes"], info["tp_meshes"] = len(VIS), len(MESHES)
-        for k, sh in enumerate(APPARATUS):   # our apparatus as built: terrain-park's CAD export, drawn only (static, no collision)
-            add_apparatus_model(spec, sh, k)
-        info["apparatus_models"] = len(APPARATUS)
+        if APPARATUS_MODEL == "cad":         # terrain-park's CAD export in place of the eval's walls (see APPARATUS_MODEL)
+            for k, sh in enumerate(APPARATUS):
+                add_apparatus_model(spec, sh, k)
+        info["apparatus_model"] = APPARATUS_MODEL
+        info["apparatus_models"] = len(APPARATUS) if APPARATUS_MODEL == "cad" else 0
         for t in info.get("tiles", []):  # props baked into the height field (wedges): a visual copy of the raised cells only
             if "cells" not in t:
                 continue

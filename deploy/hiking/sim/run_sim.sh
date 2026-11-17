@@ -3,12 +3,15 @@
 # camera) and our deploy node, one container, host network, ROS_DOMAIN_ID 73 on loopback (cannot reach a real X2).
 # The pad runs on the host and sends UDP to the deploy node.
 #
-#   deploy/hiking/sim/run_sim.sh [--scene park|flat|<course>] [--depth sim|flat] [--no-viewer] [--pad gamepad|keyboard|none|script:FILE   (keyboard = keys in the launching terminal)]
+#   deploy/hiking/sim/run_sim.sh [--policy hiking|acp] [--scene park|flat|<course>] [--depth sim|flat] [--no-viewer] [--pad gamepad|keyboard|none|script:FILE   (keyboard = keys in the launching terminal)]
 #   deploy/hiking/sim/run_sim.sh --stop
 #
 # Logs: deploy/hiking/logs/<time>/{bridge,depth,deploy,pad}.log. Paths: GWBC (~/Projects/gwbc-x2), TERRAIN_PARK
 # (~/Projects/terrain-park), MODEL (deploy/hiking/models/x2-hiking-in-the-wild), PYDEPS (~/.cache/x2-hiking-pydeps:
 # onnxruntime for the image's python 3.10). Pad: SONIC's layout (hiking_deploy/pad.py).
+# --policy acp: ACP + the fine depth student instead (deploy/acp/PLAN.md): ACP_DIR (the hand-over folder), ACP_STUDENT
+# (student.pt), its 80 x 45 sim camera (deploy/acp/sim/acp_depth_pub.py); CAM_PITCH / CAM_ROLL: the simulated camera's offset;
+# ACP_NODE_ARGS: extra acp_deploy.node arguments. BRIDGE_SPAWN="x,y,yaw_deg": start there (bridge_run.py).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEP="$(cd "$HERE/.." && pwd)"
@@ -19,7 +22,9 @@ MODEL="$(readlink -f "${MODEL:-$DEP/models/x2-hiking-in-the-wild}")"
 PYDEPS="${PYDEPS:-$HOME/.cache/x2-hiking-pydeps}"
 IMAGE="${IMAGE:-gr00t-x2sim:latest}"
 NAME=x2hiking
-SCENE=park; VIEWER=1; PAD=gamepad; DEPTH=sim
+ACP_DIR="${ACP_DIR:-$HOME/projects/x2-perception/release/ckpt/acp}"
+ACP_STUDENT="$(readlink -f "${ACP_STUDENT:-$REPO/models/acp_depth/runs/fine_v3/student.pt}")"
+SCENE=park; VIEWER=1; PAD=gamepad; DEPTH=sim; POLICY=hiking
 
 if [[ "${1:-}" == "--stop" ]]; then
   docker stop -t 3 "${NAME}_view" >/dev/null 2>&1 || true
@@ -33,6 +38,7 @@ fi
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --scene) SCENE="$2"; shift 2 ;;
+    --policy) POLICY="$2"; shift 2 ;;
     --no-viewer) VIEWER=0; shift ;;
     --pad) PAD="$2"; shift 2 ;;
     --depth) DEPTH="$2"; shift 2 ;;     # sim = ray-cast the scene (the camera); flat = hiking_deploy/flat_depth.py (robot-side,
@@ -41,7 +47,9 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown arg $1" >&2; exit 2 ;;
   esac
 done
-for p in "$GWBC/gear_sonic_deploy/scripts/x2_mujoco_ros_bridge.py" "$MODEL/adapter_card.json" "$TP/apparatus/ours/eval/route.json" "$PYDEPS/onnxruntime"; do
+NEED=("$MODEL/adapter_card.json"); [[ "$POLICY" == acp ]] && NEED=("$ACP_DIR/actor.npz" "$ACP_DIR/planner_attn.onnx" "$ACP_STUDENT")
+[[ "$POLICY" == acp && "$DEPTH" != sim ]] && { echo "--policy acp needs --depth sim" >&2; exit 2; }
+for p in "$GWBC/gear_sonic_deploy/scripts/x2_mujoco_ros_bridge.py" "${NEED[@]}" "$TP/apparatus/ours/eval/route.json" "$PYDEPS/onnxruntime"; do
   [[ -e "$p" ]] || { echo "missing: $p (see deploy/hiking/STATUS.md)" >&2; exit 1; }
 done
 docker ps -q --filter "name=^${NAME}(_view)?$" | grep -q . && { echo "stack already running ($0 --stop first)" >&2; exit 1; }
@@ -50,7 +58,7 @@ RD="$GWBC/gear_sonic/data/assets/robot_description"
 S="$DEP/logs/$(date +%Y%m%d_%H%M%S)"; mkdir -p "$S"
 SC="$HERE/scenes/$SCENE"
 DOCK=(docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$HOME:$HOME" -w "$DEP"
-      -e PA_ROBOT_DIR="$RD" -e PA_APPARATUS_DIR="$TP/apparatus/ours" -e PA_TERRAIN_DIR="$TP/terrains/extended_v1")
+      -e PA_ROBOT_DIR="$RD" -e PA_APPARATUS_DIR="$TP/apparatus/ours" -e PA_TERRAIN_DIR="$TP/terrains/extended_v1" -e APPARATUS_MODEL)
 if [[ ! -f "$SC/scene.xml" ]]; then
   echo "[1/3] building scene '$SCENE' ..."
   "${DOCK[@]}" "$IMAGE" python3 "$HERE/make_scene.py" --scene "$SCENE" --out "$SC" > "$S/scene.log" 2>&1 \
@@ -72,18 +80,24 @@ if (( VIEWER )) && [[ -n "${DISPLAY:-}" ]]; then
   [[ -n "${XAUTHORITY:-}" ]] && X11+=(-e XAUTHORITY -v "$XAUTHORITY:$XAUTHORITY:ro")
 fi
 echo "[2/3] container: bridge + depth + deploy (logs $S)"
-ROSENV=(-e ROS_DOMAIN_ID=73 -e ROS_LOCALHOST_ONLY=1 -e ROS_LOG_DIR="$S/ros" -e PYTHONUNBUFFERED=1 -e PYTHONPATH="$DEP:$PYDEPS")
+ROSENV=(-e ROS_DOMAIN_ID=73 -e ROS_LOCALHOST_ONLY=1 -e ROS_LOG_DIR="$S/ros" -e PYTHONUNBUFFERED=1 -e PYTHONPATH="$DEP:$REPO/deploy/acp:$PYDEPS")
 # each process logs its exit code to exits.log (on 2026-11-15 a viewer crash took the whole stack down twice, unexplained)
-"${DOCK[@]}" -d --name "$NAME" --network host --ipc shareable "${ROSENV[@]}" -e HIKING_DEBUG -e BRIDGE_START -e DEPTH="$DEPTH" "$IMAGE" bash -c '
+"${DOCK[@]}" -d --name "$NAME" --network host --ipc shareable "${ROSENV[@]}" -e HIKING_DEBUG -e BRIDGE_START -e BRIDGE_SPAWN -e ACP_NODE_ARGS -e ACP_TRUTH -e DEPTH="$DEPTH" \
+  -e POLICY="$POLICY" -e ACP_DIR="$ACP_DIR" -e ACP_STUDENT="$ACP_STUDENT" -e CAM_PITCH="${CAM_PITCH:-0}" -e CAM_ROLL="${CAM_ROLL:-0}" "$IMAGE" bash -c '
     source /opt/ros/humble/setup.bash && source /ros2_ws/install/setup.bash
     S="$1"; shift; SC="$1"; shift; MODEL="$1"; shift; GWBC="$1"; shift; RD="$1"; shift
     run() { local n="$1"; shift; "$@" > "$S/$n.log" 2>&1; echo "$(date +%T) $n exited $?" >> "$S/exits.log"; }
     run bridge python3 "'"$HERE"'/bridge_run.py" "$GWBC/gear_sonic_deploy/scripts/x2_mujoco_ros_bridge.py" --mjcf "$SC/scene.xml" \
       --imu-from torso ${BRIDGE_START:---init-pose stand_settled --no-elastic-band} --no-scene-zmq --no-hand-zmq &
     sleep 4
-    if [[ "$DEPTH" == flat ]]; then run depth python3 -m hiking_deploy.flat_depth --mjcf "'"$FLAT"'/scene.xml" --model "$MODEL" &
-    else run depth python3 "'"$HERE"'/depth_pub.py" --scene "$SC/scene.xml" --model "$MODEL" & fi
-    run deploy python3 -m hiking_deploy.node --model "$MODEL" --sim-reset-port 5691 ${HIKING_DEBUG:+--debug} --limits-mjcf "$RD/mjcf/x2_ultra.xml" &
+    if [[ "$POLICY" == acp ]]; then
+      run depth python3 "'"$REPO"'/deploy/acp/sim/acp_depth_pub.py" --scene "$SC/scene.xml" --cam-pitch "$CAM_PITCH" --cam-roll "$CAM_ROLL" ${ACP_TRUTH:+--truth-scans} &
+      run deploy python3 -m acp_deploy.node --acp "$ACP_DIR" --student "$ACP_STUDENT" --sim-reset-port 5691 ${HIKING_DEBUG:+--debug} $ACP_NODE_ARGS &
+    else
+      if [[ "$DEPTH" == flat ]]; then run depth python3 -m hiking_deploy.flat_depth --mjcf "'"$FLAT"'/scene.xml" --model "$MODEL" &
+      else run depth python3 "'"$HERE"'/depth_pub.py" --scene "$SC/scene.xml" --model "$MODEL" & fi
+      run deploy python3 -m hiking_deploy.node --model "$MODEL" --sim-reset-port 5691 ${HIKING_DEBUG:+--debug} --limits-mjcf "$RD/mjcf/x2_ultra.xml" &
+    fi
     trap "echo \"\$(date +%T) container got TERM/INT\" >> \"$S/exits.log\"; kill 0" TERM INT; wait' _ "$S" "$SC" "$MODEL" "$GWBC" "$RD" > "$S/container.id"
 if (( VIEW )); then   # the viewer in a container of its own: its crash can never stop the robot; it reopens after a crash
   "${DOCK[@]}" -d --name "${NAME}_view" --network host --ipc "container:$NAME" --runtime nvidia -e NVIDIA_VISIBLE_DEVICES=all -e NVIDIA_DRIVER_CAPABILITIES=all \

@@ -60,19 +60,19 @@ def mjcf_limits(path):
 
 
 class HikingNode(Node):
+    """The state machine, safety and command writer; the policy behind it is the four hooks setup_policy, prep_depth,
+    reset_policy and policy (deploy/acp/acp_deploy/node.py runs ACP through the same node)."""
+    NODE = "x2_hiking_deploy"
+
     def __init__(self, a):
-        super().__init__("x2_hiking_deploy")
-        lim = mjcf_limits(a.limits_mjcf) if a.limits_mjcf else None
-        self.ctl = core.HikingController(a.model, clip=a.clip, limits=lim)
-        card = self.ctl.card
-        self.jo = card.joint_order
-        self.q0 = {n: card.default_pose[n] for n in self.jo}
-        self.kp, self.kd = card.kp, card.kd
+        super().__init__(self.NODE)
+        label = self.setup_policy(a)                     # sets self.jo, self.q0, self.kp, self.kd (dicts by joint name)
         self.lock = threading.Lock()
         self.names = {}                                  # group -> joint names in the robot's order (from its state)
         self.q, self.qd, self.t_state = {}, {}, {}
         self.imu = None                                  # (R, omega, t)
-        self.depth = None                                # (frame 36 x 32, t)
+        self.depth = None                                # (policy frame, t, sequence number)
+        self.depth_seq = 0
         self.pad = dict(vx=0.0, vy=0.0, wz=0.0, deadman=False, estop=False, ev={}, t=0.0)
         self.ev_seen = None
         self.state, self.t_enter = "WAIT", time.monotonic()
@@ -99,8 +99,38 @@ class HikingNode(Node):
         self.create_timer(1.0, self.report, callback_group=st)
         self.status_pub = self.create_publisher(String, "/x2_hiking/status", 10)
         self.create_timer(0.05, self.publish_status, callback_group=st)   # 20 Hz: the viewer's camera follows the right stick
-        self.get_logger().info("Hiking %s: clip %s, limits %s, writer %d Hz, pad udp :%d, depth %s"
-                               % (card.raw.get("checkpoint", "?"), a.clip, "mjcf" if lim else "none", a.writer_hz, a.pad_port, a.depth_topic))
+        self.get_logger().info("%s: writer %d Hz, pad udp :%d, depth %s" % (label, a.writer_hz, a.pad_port, a.depth_topic))
+
+    # ---- the policy (Hiking) ----
+    def setup_policy(self, a):
+        lim = mjcf_limits(a.limits_mjcf) if a.limits_mjcf else None
+        self.ctl = core.HikingController(a.model, clip=a.clip, limits=lim)
+        card = self.ctl.card
+        self.jo = card.joint_order
+        self.q0 = {n: card.default_pose[n] for n in self.jo}
+        self.kp, self.kd = card.kp, card.kd
+        self.blank_depth = np.ones((36, 32), np.float32)
+        return "Hiking %s: clip %s, limits %s" % (card.raw.get("checkpoint", "?"), a.clip, "mjcf" if lim else "none")
+
+    def prep_depth(self, z):
+        return core.preprocess_depth(z, self.ctl.card.depth)
+
+    def reset_policy(self):
+        self.ctl.reset()
+
+    def policy(self, imu, q, qd, cmd, depth, now):
+        """-> (joint targets by name, pelvis rotation). depth: (frame, t, seq) or None."""
+        frame = depth[0] if depth is not None else self.blank_depth
+        pol, info = self.ctl.step(imu[0], imu[1], q, qd, cmd, frame)
+        if self.debug and now - self.walk_t0 < 3.0:
+            gp = core.projected_gravity(info["R_pelvis"])
+            self.get_logger().info("dbg t %.2f g %s w %s cmd %s |a| %.1f a_wp %.1f q_wp %.3f" % (
+                now - self.walk_t0, np.round(gp, 3), np.round(info["omega_pelvis"], 2), np.round(cmd, 2),
+                np.abs(info["a_raw"]).max(), info["a_raw"][self.ctl.card.action_order.index("waist_pitch_joint")],
+                q["waist_pitch_joint"]))
+        self.stats["clipped"] += int(self.ctl.amap.clipped.sum()) if self.ctl.amap.clipped is not None else 0
+        self.stats["amax"] = max(self.stats["amax"], float(np.abs(info["a_raw"]).max()))
+        return pol, info["R_pelvis"]
 
     # ---- inputs ----
     def on_state(self, g, m):
@@ -120,9 +150,10 @@ class HikingNode(Node):
 
     def on_depth(self, m):
         z = np.frombuffer(m.data, np.float32).reshape(m.height, m.width)
-        f = core.preprocess_depth(z, self.ctl.card.depth)
+        f = self.prep_depth(z)
         with self.lock:
-            self.depth = (f, time.monotonic())
+            self.depth_seq += 1
+            self.depth = (f, time.monotonic(), self.depth_seq)
 
     def read_pad(self):
         while True:
@@ -143,7 +174,7 @@ class HikingNode(Node):
         self.state, self.t_enter = s, time.monotonic()
 
     def start_policy(self, now, why=""):
-        self.ctl.reset()
+        self.reset_policy()
         self.walk_t0 = now
         self.enter("STAND", why)
 
@@ -172,7 +203,7 @@ class HikingNode(Node):
         if self.reset_at and time.monotonic() >= self.reset_at:
             self.reset_at = 0.0
             self.sock.sendto(b"reset", ("127.0.0.1", self.sim_reset_port))
-            self.ctl.reset()
+            self.reset_policy()
         if not have:
             return
         now = time.monotonic()
@@ -211,20 +242,11 @@ class HikingNode(Node):
             if (ok_pad and ok_depth) != (s == "WALK"):
                 self.enter("WALK" if ok_pad and ok_depth else "STAND", "" if ok_depth else "(depth stale)")
             cmd = np.array([p.get("vx", 0.0), p.get("vy", 0.0), p.get("wz", 0.0)]) if ok_pad and ok_depth else np.zeros(3)
-            frame = depth[0] if depth is not None else np.ones((36, 32), np.float32)
-            pol, info = self.ctl.step(imu[0], imu[1], q, qd, cmd, frame)
-            gp = core.projected_gravity(info["R_pelvis"])
-            if self.debug and now - self.walk_t0 < 3.0:
-                self.get_logger().info("dbg t %.2f g %s w %s cmd %s |a| %.1f a_wp %.1f q_wp %.3f" % (
-                    now - self.walk_t0, np.round(gp, 3), np.round(info["omega_pelvis"], 2), np.round(cmd, 2),
-                    np.abs(info["a_raw"]).max(), info["a_raw"][self.ctl.card.action_order.index("waist_pitch_joint")],
-                    q["waist_pitch_joint"]))
-            if gp[2] > TILT_GZ:
+            pol, R_pelvis = self.policy(imu, q, qd, cmd, depth, now)
+            if core.projected_gravity(R_pelvis)[2] > TILT_GZ:
                 self.enter("SAFE", "(tilt)")
             b = min((now - self.walk_t0) / self.blend_s, 1.0)
             targets = {n: (1 - b) * self.ramp_from[n] + b * pol[n] for n in self.jo}
-            self.stats["clipped"] += int(self.ctl.amap.clipped.sum()) if self.ctl.amap.clipped is not None else 0
-            self.stats["amax"] = max(self.stats["amax"], float(np.abs(info["a_raw"]).max()))
             self.cmd_now = cmd
         self.targets = targets
         msgs = {}
@@ -276,9 +298,9 @@ class HikingNode(Node):
         self.stats.update(dt=[], amax=0.0, clipped=0)
 
 
-def main():
+def main(node_cls=None, add_args=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True)
+    ap.add_argument("--model", required=node_cls is None)
     ap.add_argument("--limits-mjcf", default=None)
     ap.add_argument("--clip", type=float, default=20.0)
     ap.add_argument("--writer-hz", type=float, default=500.0)
@@ -291,9 +313,11 @@ def main():
     ap.add_argument("--sim-reset-port", type=int, default=0,
                     help="sim only: pad reset -> WAIT, then 'reset' to the bridge wrapper on this UDP port (0 = off)")
     ap.add_argument("--debug", action="store_true", help="log every step of the first 3 s of WALK")
+    if add_args:
+        add_args(ap)
     a = ap.parse_args()
     rclpy.init()
-    node = HikingNode(a)
+    node = (node_cls or HikingNode)(a)
     ex = MultiThreadedExecutor(num_threads=4)
     ex.add_node(node)
     try:

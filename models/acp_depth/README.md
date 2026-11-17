@@ -38,6 +38,7 @@ the true map: 0.5 mm median).
 | `student.py`, `train.py` | The first, grid student (10 cm scans; kept for comparison; `train.d435` is the noise model) |
 | `region_error.py` | Grid-student error by region (behind / under the feet / ahead, flat / terrain) |
 | `render_showcase.sh`, `render_vis.py`, `align_apparatus.py` | The standard renders: ACP's overlay from the maps it was given, the chest depth inset, our apparatus with its real textures, five clips |
+| `park_sims.py`, `render_park.py` | The multi-robot terrain-park film (`docs/media/acp_depth_park.mp4`): one eval episode per robot on terrain-park tiles (`park_sims.py`), all replayed in one textured park (`deploy/hiking/sim/make_scene.py --scene showcase`, the apparatus from the current CAD); `--cut slot:s,...` picks the shots (the best take per slot) |
 | `run_v1.sh`, `run_dagger.sh`, `run_fine.sh`, `run_fine3.sh` | The unattended chains that produced the results above |
 
 Runs, data and checkpoints go to `models/acp_depth/runs/` (git-ignored; ~8 GB). The ACP export is
