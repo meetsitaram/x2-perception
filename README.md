@@ -7,7 +7,7 @@ eval on two apparatuses, ours and NIST's, which never appear in training ([`docs
 training states are on Hugging Face; code, recipes and run ledgers for each model are in [`models/`](models/). The models are
 simulation-trained and not yet tested on the real robot.
 
-## Results so far (2026-11-15)
+## Results so far
 
 All numbers are from the held-out MuJoCo apparatus eval ([`docs/EVAL.md`](docs/EVAL.md)), not the training simulator. Renders:
 MuJoCo, not the training simulator.
@@ -28,7 +28,7 @@ MuJoCo, not the training simulator.
 
 The Hiking staircase clip is from checkpoint 26,500.
 
-### ACP on a depth camera (2026-11-17)
+### ACP on a depth camera
 
 ACP's two height scans can come from the chest RealSense instead of the simulator: a small **fine-map depth student**
 ([`models/acp_depth/`](models/acp_depth/)) projects the chest depth through the camera pose (IMU attitude + leg kinematics,
@@ -50,7 +50,7 @@ Review page (status, training curves, paper-vs-code audits, renders): open [`doc
 ## Training setup and compute
 
 Each model trained on its own Nebius node with **one NVIDIA RTX PRO 6000 Blackwell (96 GB)**; evaluation ran on a desktop CPU
-(MuJoCo, chunked and parallel). All three started on 2026-11-11 about 20:00 UTC.
+(MuJoCo, chunked and parallel).
 
 | | ACP | Hiking in the Wild (X2) | SSR |
 |---|---|---|---|
@@ -62,7 +62,7 @@ Each model trained on its own Nebius node with **one NVIDIA RTX PRO 6000 Blackwe
 | Throughput | about 7.4 s/iteration (stage 1), 11.5-14 s (stages 2-3); 60-117k env-steps/s | about 9.6-9.8 s/iteration | about 6.5-6.8 s/iteration, about 30k samples/s |
 | Policy input (terrain) | height scans (planner 17x11, tracker 9x7) | chest depth camera, 8-frame history | chest depth camera + GRU |
 | Iterations reached | about 26,600 (stage 1 -> 2 -> 3; best at 23,000) | 27,000 (best at 24,500) | 32,750 (stopped) |
-| Wall-clock time | about 91.5 h (to 2026-11-15 15:32 UTC, paused) | about 91.5 h (paused 15:30 UTC) | about 82 h (stopped 06:01 UTC) |
+| Wall-clock time | about 91.5 h (paused) | about 91.5 h (paused) | about 82 h (stopped) |
 
 Total: about **265 GPU-hours** on three RTX PRO 6000 GPUs, including restarts, rollbacks and abandoned segments. Every
 segment, its settings and why it changed are in `models/<model>/LEDGER.md`; the single-run recipes are in
