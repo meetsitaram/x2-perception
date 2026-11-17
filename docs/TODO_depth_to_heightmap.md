@@ -1,4 +1,4 @@
-# TODO: depth camera -> height map for ACP (parked 2026-11-15, user: "We will work on it later")
+# Depth camera -> height map for ACP (parked 2026-11-15; started 2026-11-16 on the local RTX 5090)
 
 ## Why
 ACP (contact planner + tracker) reaches 96.5-99% on our apparatus route and 77.5% on the NIST one, but only with a
@@ -58,3 +58,63 @@ robot's own hands (user's tests; neither X2 paper, SSR or CReF, uses it either).
 ## Status
 Parked by the user on 2026-11-15. The full literature review (deep-research run) was started and paused; partial notes
 folder research_notes/Depth camera terrain mapping review/ (empty).
+
+## Started 2026-11-16 (user: "start working on ... depth camera to height map teacher student learning phase so we can use
+## acp similar to how we have the hiking model working"; "you can use the local 5090 gpu")
+Code: `models/acp_depth/` (collect.py, student.py, train.py, run_v1.sh) and `eval/adapters/acp_depth.py`. Data and runs in
+`models/acp_depth/runs/` (git-ignored). ACP export: Hugging Face `tinkerbuggy/x2-acp-contact-planner-tracker` in `release/ckpt/acp`.
+- **Approach (plan step 3-4, first pass):** the student sits under the unchanged ACP. `acp_depth.py` wraps the eval's view:
+  ACP's two height inputs (planner 17 x 11, tracker 9 x 7, height minus root height) are recorded from the simulator
+  (teacher labels) or replaced by the student's estimate. ACP and the eval are untouched.
+- **Camera:** the chest bracket's pose (Hiking variant H: torso_link (0.131, 0, 0.259) m, 61.6 deg down) plus a per-episode
+  offset around +4 deg pitch / -1.5 deg roll, spread +-8 / +-4 deg: covers the first real mount (+8.25 / -3.5, leg
+  calibration 2026-11-16) and the trained pose. 87 x 58 deg, 80 x 45, 25 Hz, ray-cast with the robot's own body (self-occlusion).
+- **Data:** ACP with perfect scans on terrain-park `extended_v4k` tile routes (levels 0-7, all nine types); the apparatus
+  and the eval ladder's courses stay held out. data_v1: 312 routes x 2 seeds.
+- **Student:** depth CNN + proprioception MLP -> GRU (memory for what left the view) -> two heads; D435-style noise added in
+  training (range-growing axial noise, edge and min-range holes, left strip, patches, repeated frames). L1, 1.3 s sequences.
+- **Baseline on this PC:** ACP with perfect scans on our apparatus: 46/50 (92 %, CI 81-97 %; published 96.5-99 %).
+- **Next:** score ACP + student on the same 50 seeds (run_v1.sh); then DAgger (student in the loop, relabel with true
+  scans), real-depth checks against the D435 captures, Orin CPU timing.
+- **Options kept open (user, 2026-11-16: "keep all options on the table"; the local GPU is available for any of them):**
+  (a) estimator under the frozen ACP (running), improved by DAgger and ACP-sensitive loss weighting; (b) brief ACP
+  fine-tune on estimated scans; (c) end-to-end depth encoder head inside ACP (distillation); memory: GRU (now) vs a fixed
+  frame stack vs explicit leg + IMU odometry fusion of the visible patch. Decide on the per-region error (visible / under
+  the feet / behind vs time since seen) and the closed-loop apparatus score against the 92 % perfect-map baseline.
+- **Finding 2026-11-16 (isolation tests, our apparatus, same 50 seeds; partial counts at 10:52):** true scans 46/50 (92 %);
+  planner's rear cells (x < -0.2 m) blanked 44/50 (88 %): the map behind is not needed; student v1 to the planner only
+  26/29 (90 %); student v1 to the tracker only 13/27 (48 %); student v1 to both 15/39 (38 %). The tracker's 9 x 7 scan,
+  not the planner's, is where the student's errors cost success, although its error is the smallest (0.8 cm flat, 3.4 cm
+  terrain). Next: controlled errors on the tracker scan only (2 cm noise; +-3 cm offset per episode) to see which error
+  kind hurts; then precision under the feet (DAgger, loss weights) or a brief ACP tracker fine-tune with scan noise and
+  offsets (the ACP paper trains its policy that way).
+- **Result 2026-11-16 (our apparatus, seeds 2000-2049):** student v1 18/50, v2 35/50 (794 teacher episodes), **d1 46/50 = the
+  perfect-map baseline** (one DAgger round: +624 episodes on v2's own scans), d2 38/50 (second round; lower validation error
+  but worse closed loop: validation error does not rank students). Tracker-scan errors: +-3 cm offset 30/30, 2 cm noise
+  24/30: shape errors at edges hurt, not bias. Confirming d1 vs the truth on 100 fresh seeds (3000-3099), paired.
+- **Confirmed 2026-11-16 (100 fresh seeds 3000-3099, paired):** student d1 85/100 = perfect scans 85/100; both 71, only d1 14,
+  only truth 14, neither 1. Closed loop on clean ray-cast depth (camera pose randomised). Open: closed loop with the D435-like
+  noise in the loop (ACPD_DEPTH_NOISE=1), map accuracy (the 4x4 comes out 4-6 cm of 8.9; stair descents 7-10 cm too shallow;
+  a +2-3 cm upward bias everywhere; foot anchoring ACPD_ANCHOR=1 removes part of the bias, not the shape error), real D435
+  captures. Edge-weighted loss (train.py --edge-w 10): student_e1, being scored.
+- **Renders (user, 2026-11-16):** always `models/acp_depth/render_showcase.sh STUDENT.pt OUT "label" [--noise] [--anchor]`: ACP's
+  overlay from the maps ACP was given (tiles, dots, landing rings, stance squares), the chest depth inset bottom right, the
+  apparatus with its real textures and a raised chase camera, and the same four scenes (apparatus seed 2007, stairs up / down,
+  4x4 log). Check the check_*.jpg frames before sharing.
+- **Fine-map student (started 2026-11-16 evening):** the 4x4 (8.9 cm wide) on 10 cm sample points flickers in the labels and
+  the grid students hedge at ~half height. `models/acp_depth/fine_student.py`: depth projected through the camera pose (IMU
+  attitude + leg kinematics) into a 2.5 cm bird's-eye grid (max / mean height, count, seen), the grids of 4 / 8 / 12 frames
+  before as short memory, a small U-Net -> fine map (52 x 44, x -0.40 .. 0.875 m), ACP's 17 x 11 / 9 x 7 read off it. Geometry
+  check: projected depth vs the true fine map 0.5 mm median. Data: data_v3 (teacher, beam tiles oversampled) + data_v3d (DAgger
+  on d1 with D435 noise in the loop; clean depth recorded). Chain: models/acp_depth/run_fine.sh (train, score clean + noisy on
+  seeds 2000-2049, showcase renders, 4x4 height).
+- **End-of-course spin (2026-11-16, user: "why is the robot spinning around at the end?"):** on a hold at a waypoint with no
+  station heading, eval/adapters/acp.py (line 267) faces the bearing of the waypoint, which swings wildly once the robot stands
+  on it: 200-490 deg of turning in the last 4 s of the ladder clips. acp_depth now keeps the arrival heading within 0.15 m
+  (ACPD_HOLD_HEADING=1, default): 0-1 deg. Success is decided before the spin, so scores are barely affected. OPEN: the same
+  bug is in the shared eval adapter that scores every ACP run (not changed; the user decides).
+- **Fine-map results 2026-11-17 (seeds 2000-2049; perfect scans 46/50):** fine_v1 (30 epochs, data_v3 + v3d) clean 41 / noisy
+  44; fine_v2 (150 epochs) 43 / 44; **fine_v3 (+ data_v4d, DAgger on fine_v1 with noise) clean 41 / noisy 46 = the perfect-map
+  baseline with D435-like noise in the loop.** 4x4 (true 8.9 cm): tracker 9.2 cm, planner 7.7 cm (d1: 4.1 / 5.6). Showcase
+  (vis_fine3): all five clips succeed. Clean depth scores lower than noisy: the fine student only ever trained on noisy depth
+  (next: a share of clean frames in training). d1 (10 cm grid) for comparison: clean 46, noisy 35.

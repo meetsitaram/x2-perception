@@ -151,6 +151,26 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
   than 1 cm and spawns in contact, per terrain type. Not built yet: a tunnelling check and whether spikes precede falls.
   Also noted: Hiking trains with the foot's convex hull and is scored in the eval on sole spheres.
 
+### B-app1. Our apparatus: the eval's physics geometry does not match terrain-park's CAD export (2026-11-16) - needs the user
+- **Found:** the eval scores "ours" on a raster + wall boxes from loco-manip-apparatus `scene_x2_env_mobility.xml`
+  (`apparatus/ours/eval/cad_walls.json`); terrain-park's CAD export (`apparatus/ours/sim/apparatus.xml`) differs: 377 of 437 tall
+  CAD parts have no wall box within 8 cm; both 4x4s sit ~7.5 cm (3 in) further from the door in the eval (front 4x4 centre
+  x 3.04 m) than in the CAD (2.965 m), at a slightly different angle; the CAD's z = 0 is the venue floor, 0.108 m below the
+  eval's deck top.
+- **Evidence:** ray casts of both models over the deck (deck offset median +0.108 m over 369 points), box matching, beam
+  geometry from route.json vs the CAD boxes (models/acp_depth/align_apparatus.py, the sim park in deploy/hiking/sim).
+- **Done:** renders lower the CAD dressing onto the physics deck (align_apparatus.py); the sim park uses the CAD as the
+  apparatus physics (deploy/hiking/sim/make_scene.py). The eval itself is unchanged.
+- **Open (user):** which one is the apparatus as built? If the CAD, every track's apparatus score is measured on stale walls
+  and beams: regenerate the raster, walls and route from the CAD, re-score.
+
+### B-acp1. ACP eval adapter: on a hold at a waypoint without a station heading the robot spins in place (2026-11-16) - acted (acp_depth only), open (shared adapter)
+- **Found:** `eval/adapters/acp.py` faces the bearing of the waypoint while holding; once the robot stands on it the bearing
+  swings with every centimetre of sway and ACP turns after it: 200-490 deg in the last 4 s of the ladder clips.
+- **Done:** `eval/adapters/acp_depth.py` keeps the arrival heading within 0.15 m (ACPD_HOLD_HEADING=1, default): 0-1 deg.
+  Success is decided before the spin, so scores barely change.
+- **Open:** the same 6-line fix in the shared adapter (every ACP run) waits for the user.
+
 ## C. Training, all tracks
 
 ### C1. Slow commands: standing pays (2026-11-11/12) — acted (SSR), partly open
@@ -261,6 +281,21 @@ Status words: **settled** (acted on and confirmed), **acted** (changed, result p
   depends on how many robots run or their order. Being diagnosed; CPU checks due 2026-11-13 12:00 UTC.
 - The running stage-2 log has 5,228 'height field collision overflow' lines on the existing ramp raster: contacts beyond 50 per
   pair are dropped in training today. Effect on the ramp clips unknown.
+
+### D-depth1. ACP on a depth camera: a fine-map student under the unchanged ACP matches perfect height scans on our apparatus with D435-like noise in the loop (2026-11-17) - acted, real-camera check next
+- **Found:** a student that predicts ACP's own 10 cm scans (planner 17 x 11, tracker 9 x 7) from chest depth + proprioception
+  reached the perfect-map score on clean depth (d1, one DAgger round: 85/100 vs 85/100 paired on fresh seeds) but flattened the
+  4x4s to 4-6 cm of 8.9 (an 8.9 cm beam on 10 cm sample points flickers in the labels; the net hedged) and fell to 35/50 with
+  stereo-like noise. Isolation tests: the tracker's scan, not the planner's, is where map errors cost success (student to the
+  planner only 45/50, to the tracker only 21/50); the map behind the robot is not needed (44/50 with it blanked); a +-3 cm offset
+  does not hurt the tracker (30/30), shape errors at edges do.
+- **Fix:** the fine-map student (`models/acp_depth/fine_student.py`): depth projected through the camera pose (IMU attitude + leg
+  kinematics) into a 2.5 cm bird's-eye grid, 0.5 s of grid memory, a small U-Net -> fine map, ACP's points read off it; trained on
+  D435-like noisy depth, two DAgger rounds with noise in the loop.
+- **Evidence (our apparatus, seeds 2000-2049, perfect scans 46/50):** fine_v3 46/50 with noise in the loop (clean 41/50); 4x4
+  estimated 9.2 cm (tracker) / 7.7 cm (planner); showcase clips all succeed (models/acp_depth/render_showcase.sh).
+- **Open:** the real D435 (captures from PC2), Orin CPU timing, clean-depth frames in training, the robot-side node.
+  Detail: docs/TODO_depth_to_heightmap.md, models/acp_depth/README.md.
 
 ## E. SSR
 
