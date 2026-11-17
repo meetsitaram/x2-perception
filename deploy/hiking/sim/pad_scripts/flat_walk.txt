@@ -1,0 +1,7 @@
+1 y
+6 deadman=1 vx=0.5
+16 vx=0 wz=0.8
+20 wz=-0.8
+24 wz=0 vx=0.3
+34 deadman=0 vx=0
+37 b

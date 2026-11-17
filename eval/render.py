@@ -175,10 +175,16 @@ def render(run: pathlib.Path, seed: int, view: str, track: str, t0=None, t1=None
             cam.lookat[:] = [lk[0], lk[1], lk[2] - 0.38]
             cam.azimuth = math.degrees(yaw_s) + (90.0 if side > 0 else -90.0)
         else:
-            cam.distance = float(os.environ.get("RENDER_CHASE_DIST", "3.2"))      # wider / higher: shows a staircase's shape
-            cam.elevation = float(os.environ.get("RENDER_CHASE_ELEV", "-22"))
-            cam.lookat[:] = [lk[0], lk[1], lk[2] - 0.20]
-            cam.azimuth = math.degrees(yaw_s) + 35.0             # behind and to the right
+            fixed = os.environ.get("RENDER_FIXED")                 # "x,y,z,azimuth,elevation,distance": a fixed camera (opt-in)
+            if fixed:
+                fx, fy, fz, faz, fel, fdist = (float(v) for v in fixed.split(","))
+                cam.lookat[:] = [fx, fy, fz]
+                cam.azimuth, cam.elevation, cam.distance = faz, fel, fdist
+            else:
+                cam.distance = float(os.environ.get("RENDER_CHASE_DIST", "3.2"))      # wider / higher: shows a staircase's shape
+                cam.elevation = float(os.environ.get("RENDER_CHASE_ELEV", "-22"))
+                cam.lookat[:] = [lk[0], lk[1], lk[2] - 0.20]
+                cam.azimuth = math.degrees(yaw_s) + 35.0             # behind and to the right
         ren.update_scene(d, cam, opt)
         if dressed is not None:                                 # dressed walls: see-through (chase) or not drawn (legs), as the boxes
             for i in range(ren.scene.ngeom):

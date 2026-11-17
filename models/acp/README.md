@@ -16,8 +16,8 @@ Weights and full training state: [tinkerbuggy/x2-acp-contact-planner-tracker](ht
 
 The eval is defined in [`docs/EVAL.md`](../../docs/EVAL.md). **Important:** the policy consumes terrain **height scans**
 (planner 17x11, tracker 9x7) read from the simulator. On a real robot these must come from a mapping pipeline (the paper uses
-a LiDAR neural map); a depth-camera height-map estimator is planned but not built
-([`docs/TODO_depth_to_heightmap.md`](../../docs/TODO_depth_to_heightmap.md)). Trained in simulation only; not yet tested on
+a LiDAR neural map); a depth-camera height-map student now exists in sim
+([`models/acp_depth/`](../acp_depth/README.md): on our apparatus it matches the perfect-map score with D435-like noise; real camera next). Trained in simulation only; not yet tested on
 the real robot.
 
 ## Files on Hugging Face

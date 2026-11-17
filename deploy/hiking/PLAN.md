@@ -19,6 +19,25 @@ real robot. Prompt to start a new Claude session on Linux:
   (131, 0, 259) mm on torso_link, 61.6 deg down). `docs/camera/README.md` still says 53 deg; that was an earlier fit to a
   reference photo and is superseded by the bracket, which reproduces the trained pose exactly. Measure it once mounted.
 
+- **Lightweight pipeline** (user, 2026-11-15): "this pipeline will be straight forward - gamepad style controls go to the
+  model and model output goes to the robot msg queues. no teleop, no motion replay etc. so it has to be very light weight".
+  So: pad -> velocity command -> Hiking policy (+ depth) -> `/aima/hal/joint/*/command`. Nothing from SONIC's planner,
+  teleop, pose wires or motion banks. In sim the only extras are the bridge (stands in for the robot) and the depth
+  renderer (stands in for the RealSense).
+- **Terrain park in sim first** (user, 2026-11-15): drive under the gamepad on the terrain park (`meetsitaram/terrain-park`,
+  cloned to `~/Projects/terrain-park`) before the robot.
+
+- **Pad layout = SONIC's** (user, 2026-11-15: "keep the commands normall, just liek we had it for sonic control"): stand =
+  hold L1+L2+R1+R2 ~3 s then Y; drive = hold L2 + left stick (up = forward, sideways = turn; no sidestep: user, 2026-11-15,
+  "side walk is not that good yet"); right stick = sim camera orbit (still following); release L2 = stop; L1/R1 speed -/+ 0.1;
+  e-stop = A+X then pump both triggers (clear: same gesture >= 5 s later). No separate walk mode; no clip banks.
+
+- **Apparatus in the sim = ours only** (user, 2026-11-15: "we only have to have our own apparatus in here. make sure we didn't
+  copy the nist official apparatus"). Checked 2026-11-15: the park uses terrain-park `apparatus/ours` (our CAD); no NIST file is
+  tracked in x2-perception (only `eval/collect_nist.py`, a script, no geometry) or terrain-park (only `apparatus/NIST.md`, a
+  pointer). Linking to the organisers' repo and pulling it at run time is fine (user: "we can still have a link to their
+  upstream repo and still be able to pull it"); never commit their CAD or anything derived from it.
+
 ## Reference: how SONIC runs on the X2 (repo gwbc-x2, branch main; it is a sparse checkout on Windows, full on Linux)
 - Robot: PC2 = Jetson Orin NX runs the deploy; PC1 runs the vendor motion controller (MC) and Environment Manager (EM).
 - ROS 2 Humble + `aimdk_msgs`. Joint state/command `/aima/hal/joint/{leg,waist,arm,head}/{state,command}` (position,

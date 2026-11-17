@@ -1,0 +1,10 @@
+# t(s) key=value. Y at 1 s: ramp 2.5 s, then the policy stands (zero command); the band lets go 4.5 s after the first command.
+1   y
+9   y
+10  deadman=1 vx=0.5
+20  vx=0 wz=0.8
+24  wz=-0.8
+28  wz=0
+30  deadman=0
+34  y
+36  b

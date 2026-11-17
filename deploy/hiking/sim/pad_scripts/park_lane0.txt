@@ -1,0 +1,6 @@
+# park lane y = 0 walked +x: flat to x = 4, slope_up 4..12, stairs_up 12..20 (Hiking row 2)
+1   y
+9   y
+10  deadman=1 vx=0.5
+50  vx=0
+53  deadman=0

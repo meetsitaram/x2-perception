@@ -10,4 +10,9 @@ eval/metrics/out/
 release/
 
 # Hiking deploy: downloaded model files
-deploy/hiking/models/
+deploy/hiking/models
+deploy/hiking/sim/scenes/
+deploy/hiking/logs/
+deploy/hiking/sim/renders/
+MUJOCO_LOG.TXT
+models/acp_depth/runs/
