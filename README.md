@@ -13,8 +13,8 @@ Success = the full apparatus route (22 waypoints: door, two 4x4s, ramps, wall, s
 |---|---|---|---|
 | **ACP** (adaptive contact planning) | simulator height scans | **198/200 (99%)** | 155/200 (77.5%) |
 | **ACP on depth** (ACP + fine-map depth student) | chest depth camera only | **46/50 (92%)**, = ACP on the same seeds | - |
-| **Hiking in the Wild** (X2 port) | chest depth camera | not yet qualified | - |
-| **SSR** | chest depth camera + GRU | not qualified (refuses high stairs) | - |
+| **Hiking in the Wild** (X2 port) | chest depth camera | not yet evaluated | - |
+| **SSR** | chest depth camera + GRU | not yet evaluated | - |
 
 ## Renders
 

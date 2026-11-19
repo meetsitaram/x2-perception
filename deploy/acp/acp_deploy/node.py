@@ -66,6 +66,7 @@ class ACPNode(hnode.HikingNode):
         self.goal_now = np.zeros(3)
         self.truth, self.true_scans = a.truth_scans, None
         self.goal_from_pad = a.goal_from_pad
+        self.fine_shm, self.fine_t = a.fine_shm, 0.0
         if a.truth_scans:
             from std_msgs.msg import Float32MultiArray
             self.create_subscription(Float32MultiArray, "/x2_acp/true_scans", self.on_true_scans, hnode.qos_profile_sensor_data)
@@ -87,6 +88,25 @@ class ACPNode(hnode.HikingNode):
         self.pad_goal.reset()
         self.seq_used = 0
 
+    def share_fine(self, now):
+        """The newest fine map for the face screen (face_depth_capture.py): one ~9 KB file in shared memory, replaced in place
+        (written aside, then renamed: the reader never sees half a file), at most 5 times a second. No ROS traffic."""
+        if not self.fine_shm or self.core.fine is None or now - self.fine_t < 0.2:
+            return
+        self.fine_t = now
+        tmp = self.fine_shm + ".tmp"
+        with open(tmp, "wb") as f:
+            np.save(f, np.asarray(self.core.fine, np.float32))
+        os.replace(tmp, self.fine_shm)
+
+    def observe(self, imu, q, qd, depth, now):
+        """Outside the policy: the student alone on each new frame, so the screen shows the fine map from the first data."""
+        if depth is None or depth[2] == self.seq_used or now - depth[1] > hnode.STALE_DEPTH_S:
+            return
+        self.seq_used = depth[2]
+        self.core.perceive(imu[0], imu[1], q, qd, depth[0], *self.cam)
+        self.share_fine(now)
+
     def policy(self, imu, q, qd, cmd, depth, now):
         R_t = imu[0]
         goal = self.pad_goal(cmd, math.atan2(R_t[1, 0], R_t[0, 0]))     # torso yaw: the heading hold needs only its change
@@ -100,6 +120,8 @@ class ACPNode(hnode.HikingNode):
             self.core.scans, frame = self.true_scans, None
         targets, info = self.core.step(imu[0], imu[1], q, qd, goal, depth=frame, cam_pitch=self.cam[0], cam_roll=self.cam[1])
         self.goal_now = goal
+        if frame is not None:
+            self.share_fine(now)
         self.stats["amax"] = max(self.stats["amax"], float(np.abs(info["action"]).max()))
         if self.debug and now - self.walk_t0 < 3.0:
             self.get_logger().info("dbg t %.2f goal %s |a| %.1f plan h [%.2f %.2f] targets %d" % (
@@ -120,6 +142,8 @@ def _args(ap):
                     help="SIM TEST only: a pad packet's 'goal' (gx, gy, dpsi, as the eval computes it) replaces the stick mapping")
     ap.add_argument("--truth-scans", action="store_true",
                     help="DIAGNOSTIC, sim only: ACP on the scene's true scans (/x2_acp/true_scans) instead of the student")
+    ap.add_argument("--fine-shm", default="/dev/shm/x2p_fine.npy",
+                    help="the newest fine map (52 x 44 float32 .npy, height minus root height) for the face screen; '' = off")
     ap.set_defaults(depth_topic="/x2_acp/chest_depth")
 
 

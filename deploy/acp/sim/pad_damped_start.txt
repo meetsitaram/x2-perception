@@ -1,0 +1,5 @@
+1 deadman=0
+24 y
+32 deadman=1 vx=0.5
+40 deadman=0 vx=0
+44 deadman=0

@@ -40,6 +40,23 @@ DT = 0.02
 STALE_STATE_S, STALE_DEPTH_S, STALE_PAD_S = 0.1, 0.2, 0.25
 TILT_GZ = -0.5                       # projected gravity z in the pelvis frame above this (tilt > 60 deg) -> SAFE
 DAMP_KD = 3.0
+# Pure damping (kp 0) fitted from the vendor MC's own damping mode (gwbc-x2 safety.cpp kVendorDampKd), by joint name.
+_VD = (9.0, 8.0, 8.0, 4.0, 7.5, 3.0)
+VENDOR_DAMP_KD = dict(zip(
+    ["left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint",
+     "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+     "waist_yaw_joint", "waist_pitch_joint", "waist_roll_joint",
+     "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_yaw_joint", "left_wrist_pitch_joint", "left_wrist_roll_joint",
+     "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_yaw_joint", "right_wrist_pitch_joint", "right_wrist_roll_joint",
+     "head_yaw_joint", "head_pitch_joint"],
+    _VD + _VD + (5.0, 6.25, 4.0) + (4.0, 5.0, 3.0, 3.0, 3.0, 1.0, 1.0) * 2 + (0.0, 0.0)))
+# Assisted stand-up (user, 2026-11-19: start damped like upstream GR00T WBC's G1, "a leaky assist - as i move the robot, it
+# also tries to go to its pose until we reach standing pose"): target = the stand pose, stiffness rising with progress.
+UPRIGHT_GZ, QUIET_W, QUIET_QD, QUIET_S = -0.95, 0.5, 1.0, 2.0     # gate: torso upright and still for 2 s (or Y)
+ASSIST_MIN, ASSIST_RAMP_S, ASSIST_FULL_S = 0.05, 3.0, 4.0          # stiffness share: >= 5 %; never faster than 3 s to
+                                                                  # full; full by 4 s even with no help (as SONIC RECOVER)
+ASSIST_DONE_RAD, ASSIST_DONE_S = 0.08, 0.5                        # full stiffness, upright, and every joint within
+                                                                  # 0.08 rad or all joints still, for 0.5 s
 
 
 def quat_xyzw_to_mat(x, y, z, w):
@@ -83,6 +100,14 @@ class HikingNode(Node):
         self.debug = a.debug
         self.ramp_s, self.blend_s = a.ramp_s, a.blend_s
         self.sim_reset_port, self.reset_at = a.sim_reset_port, 0.0
+        self.damped_start = a.start == "damp"
+        self.quiet_t, self.done_t, self.assist_e0, self.assist_share = 0.0, 0.0, 1.0, 0.0
+        self.band_released = False
+        self.start_pending = False
+        self.assist_on_start, self.assist_started = a.assist_on_start, False
+        self.no_publish = a.no_publish
+        if self.damped_start:
+            self.state = "INIT"
 
         st = MutuallyExclusiveCallbackGroup()
         for g in GROUPS:
@@ -117,6 +142,9 @@ class HikingNode(Node):
 
     def reset_policy(self):
         self.ctl.reset()
+
+    def observe(self, imu, q, qd, depth, now):
+        """Called every step outside STAND / WALK (DAMP, ASSIST, IDLE, SAFE, WAIT, also with --no-publish). Hiking: nothing."""
 
     def policy(self, imu, q, qd, cmd, depth, now):
         """-> (joint targets by name, pelvis rotation). depth: (frame, t, seq) or None."""
@@ -199,7 +227,7 @@ class HikingNode(Node):
         if "reset" in fired and self.sim_reset_port:
             self.cmd_msgs = None                         # stop commanding first, then ask the bridge (bridge_run.py)
             self.reset_at = time.monotonic() + 0.3
-            self.enter("WAIT", "(reset)")
+            self.enter("INIT" if self.damped_start else "WAIT", "(reset)")
         if self.reset_at and time.monotonic() >= self.reset_at:
             self.reset_at = 0.0
             self.sock.sendto(b"reset", ("127.0.0.1", self.sim_reset_port))
@@ -208,14 +236,39 @@ class HikingNode(Node):
             return
         now = time.monotonic()
         stale = now - min(t_state, imu[2]) > STALE_STATE_S
+        if self.state == "INIT":                         # first data: limp (damped start), nothing stiff until the assist
+            self.enter("DAMP", "(damped start)")
         if self.pad.get("estop") and self.state not in ("SAFE",):
             self.enter("SAFE", "(e-stop)")
         elif stale and self.state not in ("WAIT", "SAFE"):
             self.enter("SAFE", "(joint/IMU data %.0f ms old)" % (1e3 * (now - min(t_state, imu[2]))))
+        if self.state == "SAFE" and not self.pad.get("estop") and not stale and self.damped_start:
+            self.enter("DAMP", "(e-stop cleared: assist to stand again)")
         if "b" in fired and self.state != "WAIT":
             self.enter("DAMP", "(B)")
+        # pelvis attitude from the torso IMU through the waist (in damp the limp waist lets the torso slump while whoever holds
+        # the robot holds the hips): gravity z in the pelvis frame, -1 upright
+        R_p, _ = core.pelvis_from_torso(imu[0], imu[1], np.array([q[n] for n in core.WAIST]), np.array([qd[n] for n in core.WAIST]))
+        gz = float(core.projected_gravity(R_p)[2])
+        if self.debug and self.state in ("DAMP", "ASSIST", "IDLE") and now - getattr(self, "_dbg_t", 0.0) > 0.5:
+            self._dbg_t = now
+            jq = max(self.jo, key=lambda n: abs(qd[n]))
+            je = max(self.jo, key=lambda n: abs(self.q0[n] - q[n]))
+            self.get_logger().info("dbg %s gz %+.3f |w| %.2f |qd|max %.2f (%s) err %.2f (%s) a %.2f" % (
+                self.state, gz, float(np.abs(imu[1]).max()), abs(qd[jq]), jq, abs(self.q0[je] - q[je]), je, self.assist_share))
+        # the start sequence (L1+L2+R1+R2 3 s, then Y) starts the assist; standing, the policy follows by itself (user,
+        # 2026-11-19: "the sequence has to happen after we press the start sequence" - the operator's hands are on the robot)
+        if self.state == "DAMP" and self.assist_on_start and not self.assist_started:
+            self.assist_started = True                   # the robot ritual (SONIC's pad daemon) was the start sequence
+            fired.add("y")
+        if self.state == "DAMP" and "y" in fired:
+            self.assist_e0 = max(max(abs(self.q0[n] - q[n]) for n in self.jo), 1e-3)
+            self.done_t = 0.0
+            self.enter("ASSIST", "(start sequence: leaky assist to the stand pose, then the policy)")
+            fired.discard("y")
         if "y" in fired:
-            if self.state in ("WAIT", "DAMP") or (self.state == "SAFE" and not self.pad.get("estop")):
+            if self.state == "IDLE" or (not self.damped_start and (self.state in ("WAIT", "DAMP")
+                                                                   or (self.state == "SAFE" and not self.pad.get("estop")))):
                 self.ramp_from = {n: q[n] for n in self.jo}
                 if self.ramp_s > 0:
                     self.enter("RAMP", "(Y)")
@@ -224,10 +277,38 @@ class HikingNode(Node):
 
         s, el = self.state, now - self.t_enter
         gains = (self.kp, self.kd)
-        if s == "WAIT":
+        if s not in ("STAND", "WALK"):                   # perception for the screen outside the policy (ACP); never stops control
+            try:
+                self.observe(imu, q, qd, depth, now)
+            except Exception as e:                       # noqa: BLE001
+                self.get_logger().warning("observe failed: %s" % e, throttle_duration_sec=5.0)
+        if s in ("WAIT", "INIT"):
             return
         if s in ("DAMP", "SAFE"):
-            targets, gains = {n: q[n] for n in self.jo}, ({n: 0.0 for n in self.jo}, {n: DAMP_KD for n in self.jo})
+            kd = VENDOR_DAMP_KD if self.damped_start else {n: DAMP_KD for n in self.jo}
+            targets, gains = {n: q[n] for n in self.jo}, ({n: 0.0 for n in self.jo}, {n: kd.get(n, DAMP_KD) for n in self.jo})
+        elif s == "ASSIST":                              # leaky: aims at the stand pose, stiffer as it gets closer
+            err = max(abs(self.q0[n] - q[n]) for n in self.jo)
+            prog = 1.0 - min(err / self.assist_e0, 1.0)
+            a = min(max(ASSIST_MIN + (1 - ASSIST_MIN) * prog, el / ASSIST_FULL_S), max(ASSIST_MIN, el / ASSIST_RAMP_S), 1.0)
+            targets = dict(self.q0)
+            gains = ({n: a * self.kp[n] for n in self.jo},
+                     {n: (1 - a) * VENDOR_DAMP_KD.get(n, DAMP_KD) + a * self.kd[n] for n in self.jo})
+            if gz > TILT_GZ:
+                self.enter("DAMP", "(tilt during the assist)")
+            elif a > 0.99 and gz < UPRIGHT_GZ and (err < ASSIST_DONE_RAD or max(abs(qd[n]) for n in self.jo) < 0.05):
+                # at the pose, or as close as stiffness alone gets it (gravity sag, e.g. the waist) and settled
+                self.done_t = self.done_t or now
+                if now - self.done_t >= ASSIST_DONE_S:
+                    self.ramp_from = {n: q[n] for n in self.jo}
+                    self.start_policy(now, "(standing: the policy takes over)")
+            else:
+                self.done_t = 0.0
+            self.assist_share = a
+        elif s == "IDLE":                                # holding the stand pose at full gains
+            targets = dict(self.q0)
+            if gz > TILT_GZ:
+                self.enter("DAMP", "(tilt while standing)")
         elif s == "RAMP":
             a = min(el / self.ramp_s, 1.0)
             a = a * a * (3 - 2 * a)
@@ -248,6 +329,10 @@ class HikingNode(Node):
             b = min((now - self.walk_t0) / self.blend_s, 1.0)
             targets = {n: (1 - b) * self.ramp_from[n] + b * pol[n] for n in self.jo}
             self.cmd_now = cmd
+            if self.sim_reset_port and self.damped_start and not self.band_released and now - self.walk_t0 > 3.0:
+                self.band_released = True                # sim gantry: lower the robot once the policy has held it 3 s
+                self.sock.sendto(b"release", ("127.0.0.1", self.sim_reset_port))
+                self.get_logger().info("sim: asked the bridge to release the gantry band")
         self.targets = targets
         msgs = {}
         for g in GROUPS:
@@ -261,7 +346,7 @@ class HikingNode(Node):
 
     def write(self):
         msgs = self.cmd_msgs
-        if msgs is None or self.state == "WAIT":
+        if msgs is None or self.state == "WAIT" or self.no_publish:
             return
         stamp = self.get_clock().now().to_msg()
         for g, m in msgs.items():
@@ -270,7 +355,10 @@ class HikingNode(Node):
 
     HINT = dict(WAIT="hold L1+L2+R1+R2 3 s, then Y, to stand (fallen? View/Back 1 s resets)", RAMP="ramping to the stand pose",
                 STAND="hold L2 + left stick: up = walk, sideways = turn; right stick = camera; View 1 s = reset (sim)", WALK="release L2 to stop; L1 / R1 speed -/+",
-                DAMP="L1+L2+R1+R2 3 s, then Y, to stand again; View/Back 1 s = reset (sim)",
+                DAMP="limp: L1+L2+R1+R2 3 s, then Y: assist to standing, then the policy; View/Back 1 s = reset (sim)",
+                INIT="waiting for joint and IMU data",
+                ASSIST="assisting to the stand pose: guide the robot up; it stiffens as it nears standing, then the policy starts",
+                IDLE="standing: L1+L2+R1+R2 3 s, then Y, starts the policy",
                 SAFE="safe hold: View/Back 1 s resets (sim); or clear the e-stop, then L1+L2+R1+R2 3 s + Y")
 
     def publish_status(self):
@@ -313,6 +401,16 @@ def main(node_cls=None, add_args=None):
     ap.add_argument("--sim-reset-port", type=int, default=0,
                     help="sim only: pad reset -> WAIT, then 'reset' to the bridge wrapper on this UDP port (0 = off)")
     ap.add_argument("--debug", action="store_true", help="log every step of the first 3 s of WALK")
+    ap.add_argument("--assist-on-start", action="store_true",
+                    help="robot launch: the start ritual already happened (SONIC's pad daemon ran our launch script), so go "
+                         "from DAMP straight into the assist once the data is fresh")
+    ap.add_argument("--no-publish", action="store_true",
+                    help="observe only: run the whole pipeline (IMU, joints, depth, pad, policy, states) but never send a "
+                         "joint command (MC must keep the robot; never combine with stopping MC)")
+    ap.add_argument("--start", choices=("damp", "wait"), default="damp",
+                    help="damp (default, the real-robot start): limp from the first data, then a leaky assist to the stand pose "
+                         "(upright and still for 2 s, or Y), IDLE, Y = policy; e-stop -> limp, cleared -> assist again. "
+                         "wait: the old sim start (nothing published until Y, policy from the measured pose)")
     if add_args:
         add_args(ap)
     a = ap.parse_args()

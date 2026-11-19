@@ -3,7 +3,7 @@
 # camera) and our deploy node, one container, host network, ROS_DOMAIN_ID 73 on loopback (cannot reach a real X2).
 # The pad runs on the host and sends UDP to the deploy node.
 #
-#   deploy/hiking/sim/run_sim.sh [--policy hiking|acp] [--scene park|flat|<course>] [--depth sim|flat] [--no-viewer] [--pad gamepad|keyboard|none|script:FILE   (keyboard = keys in the launching terminal)]
+#   deploy/hiking/sim/run_sim.sh [--policy hiking|acp] [--gantry] [--scene park|flat|<course>] [--depth sim|flat] [--no-viewer] [--pad gamepad|keyboard|none|script:FILE   (keyboard = keys in the launching terminal)]
 #   deploy/hiking/sim/run_sim.sh --stop
 #
 # Logs: deploy/hiking/logs/<time>/{bridge,depth,deploy,pad}.log. Paths: GWBC (~/Projects/gwbc-x2), TERRAIN_PARK
@@ -39,6 +39,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --scene) SCENE="$2"; shift 2 ;;
     --policy) POLICY="$2"; shift 2 ;;
+    --gantry) # the robot hangs from a soft gantry band, limp and crouched, feet on the floor; the band drops 3 s after the
+              # deploy node's policy starts (it asks bridge_run), as one lowers a gantry once the controller holds the robot
+              # (the bridge's pull point is z = 1.0 + band-length: -0.32 puts it just above standing height)
+              export BRIDGE_START="--init-pose gantry-hang --band-length -0.32 --band-kp-mult 0.3 --band-release-after-s -1"; shift ;;
     --no-viewer) VIEWER=0; shift ;;
     --pad) PAD="$2"; shift 2 ;;
     --depth) DEPTH="$2"; shift 2 ;;     # sim = ray-cast the scene (the camera); flat = hiking_deploy/flat_depth.py (robot-side,

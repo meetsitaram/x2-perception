@@ -70,7 +70,9 @@ class Mlp:
 class ACPCore:
     def __init__(self, acp_dir, student_path, threads=1):
         import onnxruntime as ort
-        import torch
+        torch = None
+        if not student_path.endswith(".onnx"):
+            import torch
         z = np.load(os.path.join(acp_dir, "actor.npz"), allow_pickle=True)
         self.actor = Mlp(z)
         self.mean, self.std = np.asarray(z["norm_mean"], np.float64), np.sqrt(np.asarray(z["norm_var"], np.float64)) + 1e-5
@@ -81,9 +83,17 @@ class ACPCore:
         so = ort.SessionOptions()
         so.intra_op_num_threads = so.inter_op_num_threads = threads
         self.planner = ort.InferenceSession(os.path.join(acp_dir, "planner_attn.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
-        torch.set_num_threads(threads)
-        self.torch = torch
-        self.student = torch.jit.load(student_path, map_location="cpu").eval()
+        self.onnx_student = student_path.endswith(".onnx")
+        if self.onnx_student:                    # the robot (PC2 has onnxruntime, no torch): models/acp_depth/export_onnx.py
+            so2 = ort.SessionOptions()
+            so2.intra_op_num_threads = so2.inter_op_num_threads = threads
+            so2.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL   # its optimiser rejects this graph
+            self.student = ort.InferenceSession(student_path, sess_options=so2, providers=["CPUExecutionProvider"])
+            self.torch = None
+        else:
+            torch.set_num_threads(threads)
+            self.torch = torch
+            self.student = torch.jit.load(student_path, map_location="cpu").eval()
         self.iw = [self.joints.index(n) for n in WAIST]
         self.reset()
 
@@ -96,6 +106,14 @@ class ACPCore:
 
     def student_step(self, depth, prop, camT):
         """-> planner scan (187), tracker scan (63): height minus root height (clipped +-2 m, as ACP reads them)."""
+        if self.onnx_student:
+            h = self.h if self.h is not None else np.zeros((1, 13, 4, 52, 44), np.float32)
+            plan, track, self.h, fine = self.student.run(None, dict(
+                depth=np.asarray(depth, np.float32)[None, None], prop=np.asarray(prop, np.float32)[None],
+                cam_T=np.asarray(camT, np.float32)[None], h=h, first=np.array([1.0 if self.h is None else 0.0], np.float32)))
+            self.fine = fine[0]
+            self.scans = (np.clip(plan[0].astype(float), -2, 2), np.clip(track[0].astype(float), -2, 2))
+            return self.scans
         t = self.torch
         with t.no_grad():
             plan, track, self.h, fine = self.student(t.from_numpy(np.asarray(depth, np.float32))[None, None],
@@ -104,6 +122,15 @@ class ACPCore:
         self.fine = fine[0].numpy()
         self.scans = (np.clip(plan[0].numpy().astype(float), -2, 2), np.clip(track[0].numpy().astype(float), -2, 2))
         return self.scans
+
+    def perceive(self, R_torso, w_torso, q_by_name, qd_by_name, depth, cam_pitch=0.0, cam_roll=0.0):
+        """The student alone on a camera frame (no planner, no tracker, the action history untouched): the fine map outside the
+        policy states, for the face screen. start_policy resets the core, so the policy starts as validated."""
+        q = np.array([q_by_name[n] for n in self.joints])
+        qd = np.array([qd_by_name[n] for n in self.joints])
+        R_p, w_p = pelvis_from_torso(R_torso, w_torso, q[self.iw], qd[self.iw])
+        self.student_step(depth, self.proprio(R_p, w_p, q, qd), cam_T(R_p, q[self.iw], cam_pitch, cam_roll))
+        return self.fine
 
     def step(self, R_torso, w_torso, q_by_name, qd_by_name, goal, depth=None, cam_pitch=0.0, cam_roll=0.0):
         """goal: (gx, gy, dpsi). depth: a new camera frame (45 x 80) or None (the last scans are reused).
