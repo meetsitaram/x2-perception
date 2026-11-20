@@ -16,3 +16,6 @@ deploy/hiking/logs/
 deploy/hiking/sim/renders/
 MUJOCO_LOG.TXT
 models/acp_depth/runs/
+
+# C++ relay: local colcon build workspace
+deploy/acp/robot/cmd_relay/ws_sim/

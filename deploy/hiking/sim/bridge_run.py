@@ -33,6 +33,7 @@ def _xbody_local(m, d, objtype, objid, res, flg_local):
 
 mujoco.mj_objectVelocity = _xbody_local
 _reset_requested = threading.Event()
+_release_requested = threading.Event()             # "release": drop the gantry band (the deploy node sends it once its policy runs)
 _spawn = [tuple(float(v) for v in os.environ["BRIDGE_SPAWN"].split(","))] if os.environ.get("BRIDGE_SPAWN") else []
 if _spawn:
     _reset_requested.set()
@@ -42,8 +43,11 @@ def _listen():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind(("127.0.0.1", RESET_PORT))
     while True:
-        if s.recv(64).strip() == b"reset":
+        msg = s.recv(64).strip()
+        if msg == b"reset":
             _reset_requested.set()
+        elif msg == b"release":
+            _release_requested.set()
 
 
 def _floor(m, d, x, y, groups):
@@ -116,6 +120,12 @@ def _patch(cls):
 
     def drain_and_reset(self):
         # runs on the sim thread once per cycle, frozen or stepping: the one safe place to write mj_data
+        if _release_requested.is_set():
+            _release_requested.clear()
+            band = getattr(self, "elastic_band", None)
+            if band is not None and band.enable:
+                band.enable = False
+                print("[bridge_run] gantry band released (the policy is running)", flush=True)
         if _reset_requested.is_set():
             _reset_requested.clear()
             x0, y0 = float(self.mj_data.qpos[0]), float(self.mj_data.qpos[1])

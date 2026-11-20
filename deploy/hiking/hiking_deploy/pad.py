@@ -108,7 +108,7 @@ class Terminal:
 
 class Gamepad:
     """SONIC's X2 pad layout (gwbc-x2 docs/x2/gamepad_cheatsheet.md), without its clips and dances."""
-    IGNITE_S, ARMED_S = 3.0, 5.0
+    IGNITE_S, ARMED_S = 3.0, 8.0     # as SONIC's start ritual (gwbc-x2 gear_sonic/scripts/pc2_pad_daemon.py)
 
     def __init__(self):
         os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
@@ -123,6 +123,7 @@ class Gamepad:
         print("gamepad:", self.c.name, flush=True)
         self.prev, self.estop, self.estop_t = {}, False, -1e9
         self.vmax, self.hold_t, self.armed_until, self.pumps, self.chord = 0.5, None, 0.0, 0, False
+        self.hold_pulses, self.need_release = 0, False
         self.back_t, self.back_fired = None, False
 
     def rumble(self, lo, hi, ms):
@@ -131,26 +132,52 @@ class Gamepad:
         except Exception:
             pass
 
-    def poll(self, fire):
-        pg, c, now = self.pg, self.c, time.monotonic()
+    ritual = True                    # the start ritual runs here (False when SONIC's pad daemon owns it: ZmqPad)
+
+    def read(self):
+        """-> (buttons by name, axis(name) in -1..1, triggers 0..1)."""
+        pg, c = self.pg, self.c
         pg.event.pump()
         btn = {k: c.get_button(getattr(pg, "CONTROLLER_BUTTON_" + k))
                for k in ("A", "B", "X", "Y", "BACK", "LEFTSHOULDER", "RIGHTSHOULDER")}
-        ax = lambda n: c.get_axis(getattr(pg, "CONTROLLER_AXIS_" + n)) / 32767.0  # noqa: E731
+        return btn, (lambda n: c.get_axis(getattr(pg, "CONTROLLER_AXIS_" + n)) / 32767.0)
+
+    def poll(self, fire):
+        now = time.monotonic()
+        btn, ax = self.read()
+        if btn is None:                  # no fresh pad data: all neutral, no deadman
+            return dict(vx=0.0, vy=0.0, wz=0.0, deadman=False, estop=self.estop)
         edge = lambda k: btn[k] and not self.prev.get(k)  # noqa: E731
         l2, r2 = ax("TRIGGERLEFT") > 0.5, ax("TRIGGERRIGHT") > 0.5
-        # ignition: L1+L2+R1+R2 held 3 s arms (rumble), then Y within 5 s = stand
-        if btn["LEFTSHOULDER"] and btn["RIGHTSHOULDER"] and l2 and r2:
-            self.hold_t = self.hold_t or now
-            if now - self.hold_t >= self.IGNITE_S and self.armed_until < now:
+        # start ritual, as SONIC's: hold L1+R1+L2+R2 -> one pulse per held second (3); the 3rd = ARMED (8 s window);
+        # Y in the window = long strong buzz + start; A / B / X in the window = weak blip, disarmed; early release resets
+        if not self.ritual:
+            pass
+        elif now < self.armed_until:
+            if edge("Y"):
+                fire.add("y")
+                self.armed_until = 0.0
+                self.rumble(1.0, 1.0, 800)
+                self.need_release = True         # a new ritual only after the four are let go (no re-arm while held)
+            elif any(edge(k) for k in ("A", "B", "X")):
+                self.armed_until = 0.0
+                self.rumble(0.3, 0.3, 100)
+                print("start ritual: disarmed", flush=True)
+        elif btn["LEFTSHOULDER"] and btn["RIGHTSHOULDER"] and l2 and r2 and not self.need_release:
+            if self.hold_t is None:
+                self.hold_t, self.hold_pulses = now, 0
+            el = now - self.hold_t
+            if self.hold_pulses < int(el) and self.hold_pulses < self.IGNITE_S:
+                self.hold_pulses += 1
+                self.rumble(0.6, 0.6, 150)
+            if el >= self.IGNITE_S:
                 self.armed_until = now + self.ARMED_S
-                self.rumble(0.6, 0.6, 400)
-                print("ignition armed: press Y", flush=True)
+                self.hold_t = None
+                print("start ritual armed: press Y", flush=True)
+        elif not (btn["LEFTSHOULDER"] or btn["RIGHTSHOULDER"] or l2 or r2):
+            self.hold_t, self.hold_pulses, self.need_release = None, 0, False
         else:
-            self.hold_t = None
-        if edge("Y") and now < self.armed_until:
-            fire.add("y")
-            self.armed_until = 0.0
+            self.hold_t, self.hold_pulses = None, 0
         # reset (sim only): View / Back held 1 s
         if btn["BACK"]:
             self.back_t = self.back_t or now
@@ -195,16 +222,66 @@ class Gamepad:
                     estop=self.estop)
 
 
+
+class ZmqPad(Gamepad):
+    """The robot's pad as SONIC's PC2 pad daemon publishes it (ZMQ pad_state on :5569, raw SDL joystick indices; vibration
+    requests to its PULL :5570), with our layout and e-stop on top. The daemon keeps the Bluetooth pairing and owns the start
+    ritual (it launched us), so the ritual is off here."""
+    ritual = False
+    AX = dict(LEFTX=0, LEFTY=1, TRIGGERLEFT=2, RIGHTX=3, RIGHTY=4, TRIGGERRIGHT=5)
+    BTN = dict(A=0, B=1, X=2, Y=3, LEFTSHOULDER=4, RIGHTSHOULDER=5, BACK=6)
+
+    def __init__(self, host="127.0.0.1", port=5569, rumble_port=5570):
+        import zmq
+        ctx = zmq.Context.instance()
+        self.sub = ctx.socket(zmq.SUB)
+        self.sub.setsockopt(zmq.SUBSCRIBE, b"pad_state")
+        self.sub.connect("tcp://%s:%d" % (host, port))
+        self.push = ctx.socket(zmq.PUSH)
+        self.push.setsockopt(zmq.SNDTIMEO, 0)
+        self.push.connect("tcp://%s:%d" % (host, rumble_port))
+        self.zmq, self.last, self.last_t = zmq, None, 0.0
+        print("pad: SONIC pad daemon at tcp://%s:%d" % (host, port), flush=True)
+        self.prev, self.estop, self.estop_t = {}, False, -1e9
+        self.vmax, self.hold_t, self.armed_until, self.pumps, self.chord = 0.5, None, 0.0, 0, False
+        self.hold_pulses, self.need_release = 0, False
+        self.back_t, self.back_fired = None, False
+
+    def rumble(self, lo, hi, ms):
+        try:
+            self.push.send_string(json.dumps(dict(strength=max(lo, hi), ms=int(ms))))
+        except Exception:
+            pass
+
+    def read(self):
+        try:
+            while True:
+                parts = self.sub.recv_multipart(self.zmq.NOBLOCK)
+                self.last, self.last_t = json.loads(parts[-1]), time.monotonic()
+        except self.zmq.Again:
+            pass
+        if self.last is None or time.monotonic() - self.last_t > 0.5:      # the daemon publishes at >= 5 Hz
+            return None, None
+        b, a = self.last["buttons"], self.last["axes"]
+        btn = {k: (b[i] if i < len(b) else 0) for k, i in self.BTN.items()}
+
+        def ax(n):
+            v = a[self.AX[n]] if self.AX[n] < len(a) else 0.0
+            return (v + 1.0) / 2.0 if n.startswith("TRIGGER") else v      # triggers rest at -1 on the raw joystick
+        return btn, ax
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", choices=("gamepad", "terminal", "script"), default="gamepad")
+    ap.add_argument("--source", choices=("gamepad", "terminal", "script", "zmq"), default="gamepad",
+                    help="zmq: the robot's pad via SONIC's PC2 pad daemon (it keeps the Bluetooth pairing and the ritual)")
     ap.add_argument("--script")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=5690)
     a = ap.parse_args()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setblocking(False)
-    src = Script(a.script) if a.source == "script" else Terminal() if a.source == "terminal" else Gamepad()
+    src = (Script(a.script) if a.source == "script" else Terminal() if a.source == "terminal"
+           else ZmqPad() if a.source == "zmq" else Gamepad())
     tty = a.source == "terminal"
     if tty:
         print(" ".join(__doc__.split("terminal (")[1].split("script:")[0].split()))
