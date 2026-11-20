@@ -1,4 +1,4 @@
-# Chest depth-camera mount for the AgiBot X2 Ultra (Hiking and SSR policies)
+# Chest depth-camera mount for the AgiBot X2 Ultra (ACP, Hiking and SSR policies)
 
 A 3D-printable bracket that holds an Intel RealSense D435 / D435i on the X2 Ultra's chest at the camera pose our released
 Hiking-in-the-Wild and SSR policies were trained with. It sticks to the chest shell with double-sided foam tape (3M VHB); no
@@ -12,7 +12,7 @@ not hold). The pad's lower edge follows the seam 4 mm above it, which also locat
 |---|---|---|
 | Hiking in the Wild (X2 port, `release/hf/x2-hiking-in-the-wild`) | yes, variant **H** | `chest_mount_hiking_print.stl` |
 | SSR (X2 port, `release/hf/x2-ssr`) | yes, variant **S** | `chest_mount_ssr_print.stl` |
-| ACP | no (it uses no camera) | - |
+| ACP + depth student (the policy on the real X2) | yes, variant **H** (the same camera pose as Hiking; `deploy/acp/acp_deploy/core.py` `CAM_POS`) | `chest_mount_hiking_print.stl` or the simple block `simple_mount_hiking_print.stl` (below) |
 
 **One mount does not fit both policies.** The two policies were trained with the camera 99 mm apart in height. SSR's training
 moved its camera by at most 50 mm in height, so it never saw the Hiking position. Print the variant for the policy you run.
