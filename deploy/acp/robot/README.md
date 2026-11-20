@@ -8,9 +8,8 @@ this way, and the bugs found on the way: `docs/findings/real_robot_instability_i
 | Path on PC2 | Source |
 |---|---|
 | `deploy/acp/`, `deploy/hiking/` | this repo, same paths (copied with scp / rsync; nothing installed) |
-| `models/acp/` `actor.npz`, `planner_attn.onnx`, `adapter_card.json` | [tinkerbuggy/x2-acp-contact-planner-tracker](https://huggingface.co/tinkerbuggy/x2-acp-contact-planner-tracker) |
-| `models/acp/tracker.onnx` | `python models/acp_depth/export_tracker_onnx.py` from `actor.npz` (parity 1.8e-5) |
-| `models/student.onnx` | the fine-map depth student, `models/acp_depth/runs/fine_v3/student.onnx` (trained with `models/acp_depth/`) |
+| `models/acp/` `actor.npz`, `planner_attn.onnx`, `tracker.onnx`, `adapter_card.json` | [tinkerbuggy/x2-acp-contact-planner-tracker](https://huggingface.co/tinkerbuggy/x2-acp-contact-planner-tracker) (`tracker.onnx` is `models/acp_depth/export_tracker_onnx.py` of `actor.npz`, parity 1.8e-5) |
+| `models/student.onnx` | the fine-map depth student `fine_v3`: `depth_student/student.onnx` on the same Hugging Face page (trained with `models/acp_depth/`) |
 | `ws_robot/` | colcon workspace for the C++ command relay: `cmd_relay/` in `ws_robot/src`, then `colcon build --packages-select x2p_cmd_relay` |
 | `log/` | launch log `ritual_fired.log`, black boxes, camera recordings (`video/run_*`) |
 
