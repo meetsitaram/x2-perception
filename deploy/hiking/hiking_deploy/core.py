@@ -50,6 +50,13 @@ def _rz(a):
     return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
 
 
+# Where the robot's /aima/hal/imu/torso/state really sits. False: on torso_link (above the waist joints), converted to the pelvis
+# by the waist FK below. True: below the waist (on the pelvis side), used as the pelvis directly. The real X2 measured as True
+# (2026-11-19, FINDINGS X13: the IMU+waist pelvis pitch differed from the feet-flat leg kinematics by -0.93 x the waist pitch;
+# SONIC uses the raw IMU as its base). The deploy node sets this (--imu-on-pelvis); the sim bridge can emulate either.
+IMU_ON_PELVIS = False
+
+
 def pelvis_from_torso(R_world_torso, omega_torso, q_waist, qd_waist):
     """Torso IMU -> pelvis frame by waist FK (X2 MJCF: pelvis -> waist_yaw_link (z) -> waist_pitch_link (y) ->
     torso_link (x), identity body rotations, so R_pelvis_torso = Rz(yaw) Ry(pitch) Rx(roll)).
@@ -58,6 +65,8 @@ def pelvis_from_torso(R_world_torso, omega_torso, q_waist, qd_waist):
     q_waist, qd_waist: (yaw, pitch, roll) positions and rates. Returns (R_world_pelvis, omega_pelvis in the pelvis frame).
     omega_torso (in pelvis) = omega_pelvis + qd_yaw z + qd_pitch Rz y + qd_roll Rz Ry x.
     """
+    if IMU_ON_PELVIS:                                    # the IMU already gives the pelvis
+        return np.asarray(R_world_torso, float), np.asarray(omega_torso, float)
     y, p, r = (float(v) for v in q_waist)
     Rz, Ry = _rz(y), _ry(p)
     R_pt = Rz @ Ry @ _rx(r)

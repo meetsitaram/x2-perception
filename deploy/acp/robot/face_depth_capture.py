@@ -86,13 +86,19 @@ def compose(z, fine, W, H, show="depth"):
     """One full-screen panel: the chest depth (distance from the camera) or the student's raw fine map (height relative to the
     root), each with its own colour bar. The two use different quantities and scales; colours are for the screen only."""
     img = np.zeros((H, W, 3), np.uint8)
-    if show == "fine" and fine is not None:
-        fm = fine_img(fine, H - 60)[:, :-18]             # without fine_img's own bar (drawn labelled here)
-        x0 = (W - fm.shape[1]) // 2 - 40
-        img[45:45 + fm.shape[0], x0:x0 + fm.shape[1]] = fm
-        cv2.putText(img, "student height map (forward up)", (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+    if show == "fine" and fine is not None:              # the whole screen (cells stretched: wider than deep), forward up
+        u = np.clip((fine - H_LO) / (H_HI - H_LO), 0, 1)
+        m = cv2.applyColorMap((u * 255).astype(np.uint8), cv2.COLORMAP_TURBO)[::-1, ::-1]
+        img = cv2.resize(m, (W - 70, H), interpolation=cv2.INTER_NEAREST)
+        r = int((NX - 1 - round(-X0 / RES) + 0.5) * H / NX)
+        cv2.drawMarker(img, ((W - 70) // 2, r), (255, 255, 255), cv2.MARKER_TRIANGLE_UP, 30, 3)
+        img = np.concatenate((img, np.zeros((H, 70, 3), np.uint8)), 1)
         ramp = cv2.applyColorMap(np.linspace(255, 0, 256).astype(np.uint8)[:, None], cv2.COLORMAP_TURBO)[:, 0]
-        _bar(img, x0 + fm.shape[1] + 30, 45, 45 + fm.shape[0], ramp, "%+.1f" % H_HI, "%+.1f" % H_LO, "m vs root")
+        _bar(img, W - 62, 30, H - 10, ramp, "", "", "")
+        for t, y in (("%+.1f" % H_HI, 26), ("%+.1f" % H_LO, H - 14)):
+            cv2.putText(img, t, (W - 60, y + (0 if y < H / 2 else 0)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(img, "student height map", (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 4)
+        cv2.putText(img, "student height map", (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
         return img
     dw, dh = W - 120, (W - 120) * 9 // 16
     img[50:50 + dh, :dw] = cv2.resize(colour(z), (dw, dh), interpolation=cv2.INTER_NEAREST)

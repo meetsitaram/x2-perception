@@ -86,17 +86,21 @@ fi
 echo "[2/3] container: bridge + depth + deploy (logs $S)"
 ROSENV=(-e ROS_DOMAIN_ID=73 -e ROS_LOCALHOST_ONLY=1 -e ROS_LOG_DIR="$S/ros" -e PYTHONUNBUFFERED=1 -e PYTHONPATH="$DEP:$REPO/deploy/acp:$PYDEPS")
 # each process logs its exit code to exits.log (on 2026-11-15 a viewer crash took the whole stack down twice, unexplained)
-"${DOCK[@]}" -d --name "$NAME" --network host --ipc shareable "${ROSENV[@]}" -e HIKING_DEBUG -e BRIDGE_START -e BRIDGE_SPAWN -e ACP_NODE_ARGS -e ACP_TRUTH -e DEPTH="$DEPTH" \
+"${DOCK[@]}" -d --name "$NAME" --network host --ipc shareable "${ROSENV[@]}" -e HIKING_DEBUG -e BRIDGE_IMU -e BRIDGE_START -e BRIDGE_SPAWN -e ACP_NODE_ARGS -e ACP_TRUTH -e ACP_RELAY -e DEPTH="$DEPTH" \
   -e POLICY="$POLICY" -e ACP_DIR="$ACP_DIR" -e ACP_STUDENT="$ACP_STUDENT" -e CAM_PITCH="${CAM_PITCH:-0}" -e CAM_ROLL="${CAM_ROLL:-0}" "$IMAGE" bash -c '
     source /opt/ros/humble/setup.bash && source /ros2_ws/install/setup.bash
     S="$1"; shift; SC="$1"; shift; MODEL="$1"; shift; GWBC="$1"; shift; RD="$1"; shift
     run() { local n="$1"; shift; "$@" > "$S/$n.log" 2>&1; echo "$(date +%T) $n exited $?" >> "$S/exits.log"; }
     run bridge python3 "'"$HERE"'/bridge_run.py" "$GWBC/gear_sonic_deploy/scripts/x2_mujoco_ros_bridge.py" --mjcf "$SC/scene.xml" \
-      --imu-from torso ${BRIDGE_START:---init-pose stand_settled --no-elastic-band} --no-scene-zmq --no-hand-zmq &
+      --imu-from ${BRIDGE_IMU:-torso} ${BRIDGE_START:---init-pose stand_settled --no-elastic-band} --no-scene-zmq --no-hand-zmq &
     sleep 4
     if [[ "$POLICY" == acp ]]; then
       run depth python3 "'"$REPO"'/deploy/acp/sim/acp_depth_pub.py" --scene "$SC/scene.xml" --cam-pitch "$CAM_PITCH" --cam-roll "$CAM_ROLL" ${ACP_TRUTH:+--truth-scans} &
-      run deploy python3 -m acp_deploy.node --acp "$ACP_DIR" --student "$ACP_STUDENT" --sim-reset-port 5691 ${HIKING_DEBUG:+--debug} $ACP_NODE_ARGS &
+      if [[ -n "$ACP_RELAY" ]]; then   # the C++ command relay (deploy/acp/robot/cmd_relay, built in ws_sim) writes the bus
+        run relay "'"$REPO"'/deploy/acp/robot/cmd_relay/ws_sim/install/x2p_cmd_relay/lib/x2p_cmd_relay/x2p_cmd_relay" &
+        RELAY_ARGS="--relay-prefix /x2p/relay"
+      fi
+      run deploy python3 -m acp_deploy.node --acp "$ACP_DIR" --student "$ACP_STUDENT" --sim-reset-port 5691 ${HIKING_DEBUG:+--debug} $RELAY_ARGS $ACP_NODE_ARGS &
     else
       if [[ "$DEPTH" == flat ]]; then run depth python3 -m hiking_deploy.flat_depth --mjcf "'"$FLAT"'/scene.xml" --model "$MODEL" &
       else run depth python3 "'"$HERE"'/depth_pub.py" --scene "$SC/scene.xml" --model "$MODEL" & fi

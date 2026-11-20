@@ -76,7 +76,7 @@
 
 % *** CITATION PACKAGES ***
 %
-%\usepackage{cite}
+\usepackage{cite}
 % cite.sty was written by Donald Arseneau
 % V1.6 and later of IEEEtran pre-defines the format of the cite.sty package
 % \cite{} output to follow that of the IEEE. Loading the cite package will
@@ -325,10 +325,6 @@
 \hspace{10pt} Team Country: \hfill USA\\
 \hspace{10pt} Team Leader: \hfill Sitarama Chekuri\\
 \hspace{10pt} Team URL: \hfill \url{https://x2-perception.github.io}
-\\
-\vspace{5pt}
-\hspace{10pt} RoboCup TDP collection: 
- \url{https://tdp.robocup.org/tdp/}
 \end{flushleft}
 
 \begin{abstract}
@@ -338,7 +334,9 @@ LiDAR; we implemented it for the AgiBot X2 and replaced the LiDAR with a custom-
 camera cannot see the ground close to its feet, so we add an Intel RealSense depth camera on a 3D-printed chest mount and train a small depth student
 that turns the camera image into the height maps ACP expects, using only proprioception and the depth stream. In a held-out MuJoCo replica of the competition
 apparatus, ACP on the depth camera alone completes the full mobility route in 92\% of trials (46 of 50, with realistic
-depth-camera noise in the loop); with simulator height maps instead of the camera, ACP completes it in 99\% of 200 trials. Project page:
+depth-camera noise in the loop); with simulator height maps instead of the camera, ACP completes it in 99\% of 200 trials. On the
+real X2 the same policy runs zero-shot on the robot's onboard computer, with no training on the real robot: it stands steadily,
+recovers from pushes, and walks an outdoor course of patio, gravel, a step down and a doorway under gamepad control. Project page:
 \url{https://x2-perception.github.io}.
 \end{abstract}
 
@@ -364,14 +362,14 @@ X2, trained it from scratch, and replaced the LiDAR with a depth camera on a
 custom chest mount: a depth student we built supplies the height maps from that camera.
 
 At the competition the operator steers with a gamepad (walk, turn, stop) while the robot plans its own footholds from the
-depth camera. Every number in this paper comes from simulation; real-robot bring-up is in progress
-(Section~\ref{sec:experiments}).
+depth camera. The success rates in Table~\ref{tab:results} come from simulation; on the real X2 the same policy now stands,
+walks and turns zero-shot (Section~\ref{sec:realrobot}).
 
 \begin{figure}[!t]
 \centering
-\includegraphics[width=\linewidth]{figs/robot_photo_placeholder}
-\caption{The AgiBot X2 running ACP on depth only, in our simulation of the terrain park (placeholder until the robot photo
-is added). Tiles: the height map the depth student gave ACP; rings: its planned footholds.}
+\includegraphics[width=\linewidth]{figs/robot_photo}
+\caption{The AgiBot X2 with our chest-mounted Intel RealSense depth camera. The face display shows the live chest depth image
+while our perception stack runs.}
 \label{fig:robotPhoto}
 \end{figure}
 
@@ -381,8 +379,19 @@ is added). Tiles: the height map the depth student gave ACP; rings: its planned 
 We will use the AgiBot X2 provided at the conference, with a custom-mounted Intel RealSense depth camera on its chest
 (Fig.~\ref{fig:perception}) that connects to the robot's onboard computer (PC2) over USB.
 
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{figs/pipeline}
+\caption{Our perception-to-motion pipeline at one moment of a simulated stair climb on the apparatus. The chest depth camera
+and the depth student (trained with DAgger) are ours; the planner and tracker are ACP~\cite{acp}, which we re-implemented and
+trained for the X2 and deploy with our own robot software. Left to right: the chest depth image (the steps ahead and the robot's
+own hands and legs), the student's height map from it (forward up; the steps rise ahead), the planner's foot targets on that
+map (rings: left foot blue, right foot orange), and the tracker stepping up.}
+\label{fig:pipeline}
+\end{figure*}
+
 \subsection{Sensing, SLAM, and State Estimation}
-The robot senses the terrain with the chest depth camera alone, where the original ACP on the Unitree G1 used a LiDAR; the
+The robot senses the terrain with the chest depth camera alone (Fig.~\ref{fig:pipeline}), where the original ACP on the Unitree G1 used a LiDAR; the
 policy also uses the robot's proprioception (IMU and joint states). A learned depth student turns the depth stream, together
 with the camera pose from the robot's kinematics, into the local height maps ACP expects, and keeps a short memory so the
 ground under the feet stays known after it leaves the camera's view. It is trained in simulation against the true terrain with DAgger~\cite{dagger},
@@ -453,11 +462,27 @@ against 99\% for ACP with simulator height maps (Table~\ref{tab:results}). Acros
 wedges, straight, L- and U-shaped stairs, furnished rooms and corridors), 61 of 63 episodes succeed
 (Fig.~\ref{fig:apparatus}).
 
-\subsection{Deployment stack}
-The robot-side software uses only what the robot has (IMU, joints, depth camera, gamepad) and reproduces the evaluation's
-controller exactly. It runs in a simulation of the X2's own software interface, where the operator drives the robot around
-the terrain park with a gamepad. On the real X2, the chest camera streams depth on the onboard computer and its mounting is
-calibrated; walking on the real robot is next, first on a gantry.
+\subsection{Real robot}
+\label{sec:realrobot}
+The robot-side software uses only what the robot has (IMU, joints, depth camera, gamepad), reproduces the evaluation's
+controller exactly, and runs entirely on the X2's onboard computer. We first test every change in a simulation of the X2's
+own software interface, then on the real robot; a flight recorder logs each control step so a real-robot run can be replayed
+and compared with simulation. This found the main deployment issue: a mismatch between where our code assumed the robot's IMU
+sits and where it actually is, which we reproduced in simulation and fixed. With that fixed, the policy trained only in
+simulation runs zero-shot on the real X2. Standing still, its torso stays within about 3\textdegree{} of upright; when pushed it
+recovers from tilts of up to about 10\textdegree{}, comparable to the GR00T whole-body controller (SONIC)
+on the same robot. Under gamepad control it walked an outdoor course around a house: a patio, a step down onto gravel, gravel next to a
+path, and through a doorway (Fig.~\ref{fig:realwalk}). In first trials it also stepped over a 4x4 lying across its path, but
+usually only after first touching it: small obstacles close to the feet are not yet kept reliably in the depth student's map
+on the real camera, which is our current work.
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\linewidth]{figs/real_walk}
+\caption{The real X2 running ACP with the depth student on its chest camera, zero-shot. (a)--(c) Walking off a patio and down
+onto gravel. (d), (e) The robot's own head and chest camera views on the outdoor course, with a 4x4 lying on the gravel.}
+\label{fig:realwalk}
+\end{figure}
 
 \begin{figure}[!t]
 \centering
@@ -470,8 +495,10 @@ student (green level, yellow 4x4 height, orange a stair step, red higher, blue b
 
 \section{Conclusion}
 Our team brings learned, perception-driven locomotion to the mobility tasks: ACP plans footholds from a chest depth camera
-and completes 92\% of full routes in our held-out simulation on the camera alone (99\% with simulator height maps). The main risk is the gap between simulation and the real robot and camera; our plan is gantry tests on the
-X2, then the apparatus tasks one by one. All code, trained models and the evaluation are public.
+and completes 92\% of full routes in our held-out simulation on the camera alone (99\% with simulator height maps). On the
+real X2 the same policy already stands, recovers from pushes and walks an outdoor course zero-shot. Next is reliable stepping
+over obstacles before contact on the real camera, then the apparatus tasks one by one. All code, trained models and the
+evaluation are public.
 
 \appendices
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import select
 import subprocess
 import sys
 import tempfile
@@ -38,17 +39,43 @@ def main():
     rclpy.init()
     node = Node("x2_acp_d435")
     pub = node.create_publisher(Image, a.topic, qos_profile_sensor_data)
-    fifo = os.path.join(tempfile.mkdtemp(), "z16")
-    os.mkfifo(fifo)
-    cmd = ["v4l2-ctl", "-d", a.dev, "--set-fmt-video=width=%d,height=%d,pixelformat=Z16 " % (W, H),
-           "--set-parm=%d" % a.fps, "--stream-mmap", "--stream-to=%s" % fifo]
-    cap = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    node.get_logger().info("%s %dx%d @ %d fps -> %s %dx%d" % (a.dev, W, H, a.fps, a.topic, W_OUT, H_OUT))
+    tmp = tempfile.mkdtemp()
+    # the camera may not be ready just after boot (2026-11-19: v4l2-ctl died at once and the open below waited forever, so the
+    # session looked alive and published nothing): open the fifo without blocking, retry the capture, exit if it never streams
+    cap = None
+    for attempt in range(1, 11):
+        fifo = os.path.join(tmp, "z16_%d" % attempt)      # a fresh fifo each try: a dead writer leaves EOF behind
+        os.mkfifo(fifo)
+        fd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+        cmd = ["v4l2-ctl", "-d", a.dev, "--set-fmt-video=width=%d,height=%d,pixelformat=Z16 " % (W, H),
+               "--set-parm=%d" % a.fps, "--stream-mmap", "--stream-to=%s" % fifo]
+        cap = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        t_try = time.monotonic()
+        while cap.poll() is None and time.monotonic() - t_try < 5.0 and not select.select([fd], [], [], 0.2)[0]:
+            pass
+        if cap.poll() is None and select.select([fd], [], [], 0)[0]:
+            break
+        err = (cap.stderr.read() or b"").decode(errors="replace").strip()[-200:] if cap.poll() is not None else "no frames in 5 s"
+        node.get_logger().warning("capture attempt %d failed (%s); retrying in 2 s" % (attempt, err))
+        if cap.poll() is None:
+            cap.terminate()
+        os.close(fd)
+        time.sleep(2.0)
+    else:
+        node.get_logger().error("%s never streamed: exiting" % a.dev)
+        rclpy.try_shutdown()
+        sys.exit(1)
+    os.set_blocking(fd, True)
+    node.get_logger().info("%s %dx%d @ %d fps -> %s %dx%d (capture attempt %d)" % (a.dev, W, H, a.fps, a.topic, W_OUT, H_OUT, attempt))
     nbytes, n, t0 = W * H * 2, 0, time.monotonic()
     try:
-        with open(fifo, "rb") as f:
+        with os.fdopen(fd, "rb", buffering=0) as f:
             buf = bytearray()
             while rclpy.ok():
+                r, _, _ = select.select([f], [], [], 1.0)
+                if not r:
+                    node.get_logger().error("no depth for 1 s (capture %s)" % ("exited" if cap.poll() is not None else "stalled"))
+                    break
                 chunk = f.read(nbytes - len(buf))
                 if not chunk:
                     node.get_logger().error("depth stream ended")

@@ -170,6 +170,10 @@ def terrain(scene):
     res = 0.02
     if scene == "flat":
         return None, 0.0, 0.0, res, [], {}
+    if scene.startswith("beam"):    # flat floor + one 4x4 (8.9 cm) across the path, 'beam' at x 0.8 m, 'beam:X' at x X m
+        bx = float(scene.split(":")[1]) if ":" in scene else 0.8
+        grid = np.zeros((int(4.0 / res) + 1, int(4.0 / res) + 1))
+        return grid, -1.0, -2.0, res, [dict(center=[bx, 0.0, 0.0445], half=[0.0445, 0.6, 0.0445], quat=[1, 0, 0, 0], mat="cedar")], {}
     if scene not in PARKS:
         crs = course(scene)
         return (np.asarray(crs.grid, float), crs.x0, crs.y0, crs.res, list(getattr(crs, "boxes", []) or []),

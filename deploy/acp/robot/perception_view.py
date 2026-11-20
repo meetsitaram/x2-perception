@@ -30,6 +30,7 @@ def main():
     ap.add_argument("--cam-pitch", type=float, default=0.0)
     ap.add_argument("--cam-roll", type=float, default=0.0)
     ap.add_argument("--seconds", type=float, default=4.0)
+    ap.add_argument("--goal", default="0,0,0", help="planner goal (gx, gy, dpsi) as the node gets it from the pad; 1,0,0 = walk ahead")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     acp = core.ACPCore(a.acp, a.student, threads=2)
@@ -60,7 +61,7 @@ def main():
             continue
         t_end = t_end or time.monotonic() + a.seconds
         used = st["seq"]
-        _, info = acp.step(st["imu"][0], st["imu"][1], st["q"], st["qd"], np.zeros(3), depth=st["depth"],
+        _, info = acp.step(st["imu"][0], st["imu"][1], st["q"], st["qd"], np.array([float(v) for v in a.goal.split(",")]), depth=st["depth"],
                            cam_pitch=a.cam_pitch, cam_roll=a.cam_roll)
         q = np.array([st["q"][j] for j in acp.joints])
         camT = core.cam_T(info["R_pelvis"], q[acp.iw], a.cam_pitch, a.cam_roll)
